@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+<meta name="theme-color" content="#6366f1" />
+<title>Photo Upload | Gospel Fellowship Church</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  :root { --indigo-500: #6366f1; --indigo-600: #4f46e5; --indigo-700: #4338ca; --ink: #1a1a2e; --muted: #6b7280; }
+  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: linear-gradient(160deg, #eef0ff 0%, #ffffff 40%, #faf5ff 100%); color: var(--ink); min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 16px; }
+  .card { background: #ffffff; border-radius: 24px; box-shadow: 0 20px 60px rgba(79, 70, 229, 0.15); border: 1px solid #e6e8ff; width: 100%; max-width: 440px; padding: 28px 22px; }
+  .brand { text-align: center; margin-bottom: 20px; }
+  .brand img { width: 72px; height: 72px; border-radius: 50%; display: block; margin: 0 auto 10px; box-shadow: 0 8px 20px rgba(79,70,229,0.25); }
+  .brand h1 { font-size: 17px; font-weight: 800; letter-spacing: 0.01em; }
+  .brand p { font-size: 12.5px; color: var(--muted); margin-top: 2px; }
+  .chip { display: inline-flex; align-items: center; gap: 6px; background: #eef0ff; color: var(--indigo-700); font-size: 12px; font-weight: 700; padding: 6px 12px; border-radius: 999px; margin-bottom: 14px; }
+  .event-info { background: linear-gradient(135deg, #eef0ff, #f4f0ff); border: 1px solid #e0e3ff; border-radius: 16px; padding: 14px 16px; margin-bottom: 18px; }
+  .event-info h2 { font-size: 16px; font-weight: 800; line-height: 1.3; }
+  .event-info .date { font-size: 13px; color: var(--indigo-600); font-weight: 700; margin-top: 4px; }
+  .dropzone { border: 2px dashed #c7caff; border-radius: 18px; background: #fafbff; padding: 26px 14px; text-align: center; cursor: pointer; transition: all 0.2s ease; }
+  .dropzone.dragging { border-color: var(--indigo-500); background: #eef0ff; }
+  .dropzone .icon { font-size: 34px; }
+  .dropzone h3 { font-size: 15px; margin-top: 6px; font-weight: 700; }
+  .dropzone p { font-size: 12px; color: var(--muted); margin-top: 3px; }
+  .dropzone input { display: none; }
+  .previews { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-top: 16px; }
+  .preview { position: relative; aspect-ratio: 1; border-radius: 14px; overflow: hidden; background: #f1f1f5; box-shadow: 0 4px 12px rgba(0,0,0,0.08); }
+  .preview img { width: 100%; height: 100%; object-fit: cover; }
+  .preview .rm { position: absolute; top: 4px; right: 4px; width: 24px; height: 24px; border: none; border-radius: 50%; background: rgba(0,0,0,0.65); color: #fff; font-size: 12px; cursor: pointer; display: flex; align-items: center; justify-content: center; }
+  .preview.done { outline: 3px solid #10b981; outline-offset: -2px; }
+  .btn { width: 100%; margin-top: 18px; padding: 15px; border: none; border-radius: 16px; font-size: 15px; font-weight: 800; cursor: pointer; background: linear-gradient(135deg, var(--indigo-500), var(--indigo-600)); color: #fff; box-shadow: 0 10px 24px rgba(79,70,229,0.35); transition: transform 0.15s ease, opacity 0.2s ease; }
+  .btn:active { transform: scale(0.98); }
+  .btn:disabled { opacity: 0.5; cursor: not-allowed; box-shadow: none; }
+  .status { margin-top: 14px; font-size: 13px; font-weight: 600; text-align: center; min-height: 20px; }
+  .status.ok { color: #059669; }
+  .status.err { color: #dc2626; }
+  .hidden { display: none !important; }
+  .spinner { display: inline-block; width: 16px; height: 16px; border: 3px solid rgba(255,255,255,0.4); border-top-color: #fff; border-radius: 50%; animation: spin 0.8s linear infinite; vertical-align: -3px; margin-right: 8px; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .success-screen { text-align: center; padding: 26px 6px; }
+  .success-screen .big { font-size: 58px; }
+  .success-screen h2 { font-size: 20px; font-weight: 800; margin-top: 10px; }
+  .success-screen p { font-size: 13.5px; color: var(--muted); margin-top: 8px; line-height: 1.5; }
+  .success-screen button { margin-top: 22px; }
+</style>
+</head>
+<body>
+  <div class="card">
+    <div id="viewLoading" style="text-align:center; padding: 30px 0;">
+      <div class="spinner" style="border-color:#c7caff; border-top-color:var(--indigo-500); width:34px; height:34px;"></div>
+      <p style="margin-top:14px; font-weight:700; color:var(--muted);">Loading event...</p>
+    </div>
+
+    <div id="viewError" class="hidden">
+      <div style="text-align:center; padding: 24px 0;">
+        <div style="font-size:52px;">😔</div>
+        <h2 style="font-size:18px; font-weight:800; margin-top:10px;">Hindi mahanap ang event</h2>
+        <p style="font-size:13px; color:var(--muted); margin-top:8px; line-height:1.5;">Mukhang hindi balido ang QR code na ito.<br/>Subukan muli o i-contact ang church admin.</p>
+      </div>
+    </div>
+
+    <div id="viewUpload" class="hidden">
+      <div class="brand">
+        <img src="/image.png" alt="Gospel Fellowship Church" />
+        <h1>Gospel Fellowship Church</h1>
+        <p>Share your photos from the event</p>
+      </div>
+      <div style="text-align:center;"><span class="chip">📸 Photo Gallery Upload</span></div>
+      <div class="event-info">
+        <h2 id="eventTitle">—</h2>
+        <div class="date" id="eventDate">—</div>
+      </div>
+      <div class="dropzone" id="dropzone">
+        <div class="icon">🖼️</div>
+        <h3>Tap to choose photos</h3>
+        <p>Select one or multiple photos from your gallery</p>
+        <input type="file" id="fileInput" accept="image/*" multiple />
+      </div>
+      <div class="previews" id="previews"></div>
+      <button class="btn hidden" id="uploadBtn"><span id="uploadBtnLabel">Upload Photos</span></button>
+      <div class="status" id="status"></div>
+    </div>
+
+    <div id="viewSuccess" class="hidden">
+      <div class="success-screen">
+        <div class="big">🎉</div>
+        <h2>Thank you! Salamat po!</h2>
+        <p id="successText">Your photos have been uploaded successfully and will appear on the church website gallery.</p>
+        <button class="btn" id="uploadMoreBtn">Upload More Photos</button>
+      </div>
+    </div>
+  </div>
+<script src="/upload.js"></script>
+</body>
+</html>
