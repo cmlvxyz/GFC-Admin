@@ -5,6 +5,9 @@
 
   var viewLoading = document.getElementById('viewLoading');
   var viewError = document.getElementById('viewError');
+  var errorTitle = document.getElementById('errorTitle');
+  var errorText = document.getElementById('errorText');
+  var retryBtn = document.getElementById('retryBtn');
   var viewUpload = document.getElementById('viewUpload');
   var viewSuccess = document.getElementById('viewSuccess');
   var eventTitle = document.getElementById('eventTitle');
@@ -128,7 +131,11 @@
         renderPreviews();
         ok++;
       } catch (err) {
-        setStatus('Error uploading photo ' + (i + 1) + ': ' + err.message, 'err');
+        if (err && (err.message === 'Failed to fetch' || err.name === 'TypeError')) {
+          setStatus('Cannot connect to server. Pakisiguraduhing tumatakbo ang GFC backend (npm run server).', 'err');
+        } else {
+          setStatus('Error uploading photo ' + (i + 1) + ': ' + err.message, 'err');
+        }
         break;
       }
     }
@@ -155,6 +162,7 @@
   async function loadEvent() {
     try {
       var res = await fetch('/api/content');
+      if (!res.ok) throw new Error('HTTP ' + res.status);
       var data = await res.json();
       var event = (data.events || []).find(function (e) { return String(e.id) === String(eventId); });
       if (!event) throw new Error('not found');
@@ -165,9 +173,25 @@
       eventDate.textContent = entry && entry.date ? entry.date : (event.date || '');
       show(viewUpload);
     } catch (err) {
+      if (err && err.message === 'not found') {
+        errorTitle.textContent = 'Hindi mahanap ang event';
+        errorText.innerHTML = 'Mukhang hindi balido ang QR code na ito.<br/>Subukan muli o i-contact ang church admin.';
+      } else {
+        errorTitle.textContent = 'Cannot connect to server';
+        errorText.innerHTML = 'Hindi makakonekta sa GFC server. Pakisiguraduhing tumatakbo ang backend (npm run server).<br/>Pindutin ang Retry para subukan muli.';
+      }
       show(viewError);
     }
   }
 
-  if (!eventId) { show(viewError); } else { loadEvent(); }
+  retryBtn.addEventListener('click', function () {
+    show(viewLoading);
+    loadEvent();
+  });
+
+  if (!eventId) {
+    errorTitle.textContent = 'Hindi mahanap ang event';
+    errorText.innerHTML = 'Walang event sa QR code na ito.<br/>Subukan muli o i-contact ang church admin.';
+    show(viewError);
+  } else { loadEvent(); }
 })();

@@ -1,10 +1,13 @@
+// GFC-ADMIN/server.js
+
 import crypto from 'node:crypto';
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
+import pg from 'pg';
 
 dotenv.config();
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -12,9 +15,6 @@ const port = Number(process.env.PORT || 4000);
 const dataDirectory = path.join(__dirname, 'data');
 const dataFile = path.join(dataDirectory, 'data.json');
 const collections = ['events', 'sermons', 'prayers', 'attendees', 'members', 'announcements', 'testimonials'];
-const adminUsername = process.env.ADMIN_USERNAME || 'admin';
-const adminPassword = process.env.ADMIN_PASSWORD || 'admin123';
-const tokenSecret = process.env.ADMIN_TOKEN_SECRET || 'change-this-secret-in-production';
 
 const emptyDatabase = () => ({ 
   version: 1, 
@@ -30,27 +30,71 @@ const emptyDatabase = () => ({
 });
 
 // ============================================
-// STORAGE LAYER (JSON file)
+// STORAGE LAYER
+// Mode A: PostgreSQL (JSONB) kapag may DATABASE_URL (para sa Vercel).
+// Mode B: JSON file (data/data.json) - fallback para sa local dev.
 // ============================================
 let fileDatabase = null;
 let writeQueue = Promise.resolve();
+const DATABASE_URL = (process.env.DATABASE_URL || '').trim();
+
+const pgPool = DATABASE_URL
+  ? new pg.Pool({ connectionString: DATABASE_URL, ssl: { rejectUnauthorized: false } })
+  : null;
+
+async function dbEnsureSchema() {
+  await pgPool.query(`
+    CREATE TABLE IF NOT EXISTS gfc_store (
+      key   text PRIMARY KEY,
+      value jsonb NOT NULL
+    )
+  `);
+}
+
+async function dbLoadBlob() {
+  const { rows } = await pgPool.query(`SELECT value FROM gfc_store WHERE key = 'db'`);
+  return rows.length ? rows[0].value : null;
+}
+
+function dbSaveBlob() {
+  const snapshot = JSON.stringify(fileDatabase);
+  return pgPool.query(
+    `INSERT INTO gfc_store (key, value) VALUES ('db', $1::jsonb)
+     ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value`,
+    [snapshot]
+  );
+}
 
 async function dbInitialize() {
   await fs.mkdir(dataDirectory, { recursive: true });
-  try {
-    fileDatabase = JSON.parse(await fs.readFile(dataFile, 'utf8'));
+  let loaded = null;
+  if (pgPool) {
+    await dbEnsureSchema();
+    loaded = await dbLoadBlob();
+  } else {
+    try {
+      loaded = JSON.parse(await fs.readFile(dataFile, 'utf8'));
+    } catch (error) {
+      if (error.code !== 'ENOENT') throw error;
+      loaded = null;
+    }
+  }
+  if (loaded) {
+    fileDatabase = loaded;
     for (const key of collections) {
       if (!Array.isArray(fileDatabase[key])) fileDatabase[key] = [];
     }
     if (!Array.isArray(fileDatabase.activities)) fileDatabase.activities = [];
-  } catch (error) {
-    if (error.code !== 'ENOENT') throw error;
+  } else {
     fileDatabase = emptyDatabase();
     await dbPersist();
   }
 }
 
 function dbPersist() {
+  if (pgPool) {
+    return dbSaveBlob();
+  }
   const snapshot = JSON.stringify(fileDatabase, null, 2);
   writeQueue = writeQueue.then(() => fs.writeFile(dataFile, snapshot, 'utf8'));
   return writeQueue;
@@ -185,38 +229,6 @@ function logActivity({ collection, action, record, message, actor }) {
   return dbInsertActivity(entry);
 }
 
-function tokenFor(username) { 
-  const payload = Buffer.from(JSON.stringify({ sub: username, exp: Date.now() + 8 * 60 * 60 * 1000 })).toString('base64url'); 
-  const signature = crypto.createHmac('sha256', tokenSecret).update(payload).digest('base64url'); 
-  return payload + '.' + signature; 
-}
-
-function isValidToken(value) { 
-  if (!value) return false; 
-  const [payload, signature] = value.split('.'); 
-  if (!payload || !signature) return false; 
-  const expected = crypto.createHmac('sha256', tokenSecret).update(payload).digest('base64url'); 
-  if (signature.length !== expected.length || !crypto.timingSafeEqual(Buffer.from(signature), Buffer.from(expected))) return false; 
-  try { 
-    const decoded = JSON.parse(Buffer.from(payload, 'base64url').toString('utf8')); 
-    return decoded.sub === adminUsername && decoded.exp > Date.now(); 
-  } catch { 
-    return false; 
-  } 
-}
-
-function readToken(req) { 
-  const header = req.headers.authorization || ''; 
-  if (header.startsWith('Bearer ')) return header.slice(7); 
-  if (req.query && typeof req.query.token === 'string') return req.query.token; 
-  return ''; 
-}
-
-function requireAdmin(req, res, next) { 
-  if (!isValidToken(readToken(req))) return res.status(401).json({ message: 'Admin authentication required.' }); 
-  next(); 
-}
-
 function validCollection(req, res, next) { 
   if (!collections.includes(req.params.collection)) return res.status(404).json({ message: 'Unknown collection.' }); 
   next(); 
@@ -224,11 +236,34 @@ function validCollection(req, res, next) {
 
 const app = express();
 
-// CORS - Allow all origins for development
+// ============================================
+// CORS - Allow Vercel production domain
+// ============================================
+const allowedOrigins = [
+  'http://localhost:3002',
+  'http://localhost:3003',
+  'http://localhost:4000',
+  process.env.CORS_ORIGIN,
+  // Add your Vercel URL here
+  'https://gfc-591v4f663-yans-projects-3c2ad947.vercel.app',
+  'https://gfc-n55az5ieq-yans-projects-3c2ad947.vercel.app',
+  'https://gfc-xxxxxxxxx.vercel.app' // Replace with your actual URL
+].filter(Boolean);
+
 app.use(cors({ 
-  origin: '*',
+  origin: function(origin, callback) {
+    // Allow requests with no origin (like mobile apps or curl requests)
+    if (!origin) return callback(null, true);
+    if (allowedOrigins.indexOf(origin) !== -1) {
+      callback(null, true);
+    } else {
+      // For production, you might want to be stricter
+      callback(null, true);
+    }
+  },
   methods: ['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization']
+  allowedHeaders: ['Content-Type', 'Authorization'],
+  credentials: true 
 }));
 
 app.use(express.json({ limit: '12mb' }));
@@ -242,6 +277,15 @@ app.get('/api/health', async (req, res) => {
   res.json({ ok: true, service: 'GFC-DATA', initialized: await dbIsInitialized() }); 
 });
 
+// Get config - for QR code generation
+app.get('/api/config', (req, res) => {
+  const gfcUrl = process.env.VITE_GFC_URL || 'http://localhost:3002';
+  res.json({ 
+    appUrl: gfcUrl,
+    cloudinaryCloudName: process.env.CLOUDINARY_CLOUD_NAME || '' 
+  });
+});
+
 // Get all content
 app.get('/api/content', async (req, res) => {
   const initialized = await dbIsInitialized();
@@ -251,20 +295,7 @@ app.get('/api/content', async (req, res) => {
   res.json(content);
 });
 
-// Login
-app.post('/api/auth/login', async (req, res, next) => { 
-  try { 
-    const { username, password } = req.body || {}; 
-    if (username !== adminUsername || password !== adminPassword) {
-      return res.status(401).json({ message: 'Invalid username or password.' }); 
-    }
-    const token = tokenFor(username); 
-    await logActivity({ collection: 'admin', action: 'login', message: 'Admin signed in to the system', actor: 'admin' }); 
-    res.json({ token, expiresIn: 8 * 60 * 60 }); 
-  } catch (error) { 
-    next(error); 
-  } 
-});
+// Login route removed - admin is now open (no authentication) per user request.
 
 // Bootstrap data
 app.post('/api/bootstrap', async (req, res, next) => { 
@@ -287,12 +318,14 @@ app.post('/api/bootstrap', async (req, res, next) => {
 });
 
 // ============================================
-// PHOTO UPLOADS (public)
+// PHOTO UPLOADS (public - for QR upload page)
 // ============================================
 app.post('/api/uploads', async (req, res, next) => {
   try {
     const { image, eventId, dateIndex } = req.body || {};
     
+    console.log('📸 Upload request received:', { eventId, dateIndex, imageLength: image?.length });
+
     if (!image || typeof image !== 'string') {
       return res.status(400).json({ message: 'Image data is required.' });
     }
@@ -320,12 +353,15 @@ app.post('/api/uploads', async (req, res, next) => {
     await dbSetCollection('events', events);
     await logActivity({ collection: 'events', action: 'photo', record: event, actor: 'public' });
 
+    console.log(`✅ Photo uploaded to ${event.title} - ${entry.date} (${entry.photos.length} photos)`);
+
     res.status(201).json({ 
       success: true, 
       message: 'Photo uploaded successfully!',
       photoCount: entry.photos.length 
     });
   } catch (error) { 
+    console.error('Upload error:', error);
     next(error); 
   }
 });
@@ -333,7 +369,7 @@ app.post('/api/uploads', async (req, res, next) => {
 // ============================================
 // GENERIC COLLECTION ACCESS
 // ============================================
-app.get('/api/:collection', validCollection, requireAdmin, async (req, res, next) => { 
+app.get('/api/:collection', validCollection, async (req, res, next) => { 
   try { 
     res.json({ [req.params.collection]: await dbGetCollection(req.params.collection) }); 
   } catch (error) { 
@@ -344,18 +380,19 @@ app.get('/api/:collection', validCollection, requireAdmin, async (req, res, next
 app.post('/api/:collection', validCollection, async (req, res, next) => { 
   try { 
     const record = { ...req.body, id: req.body?.id || crypto.randomUUID() }; 
+    const actor = 'admin';
     const items = await dbGetCollection(req.params.collection); 
     items.unshift(record); 
     await dbSetCollection(req.params.collection, items); 
     await dbSetInitialized(true); 
-    await logActivity({ collection: req.params.collection, action: 'created', record, actor: 'admin' }); 
+    await logActivity({ collection: req.params.collection, action: 'created', record, actor }); 
     res.status(201).json(record); 
   } catch (error) { 
     next(error); 
   } 
 });
 
-app.patch('/api/:collection/:id', validCollection, requireAdmin, async (req, res, next) => { 
+app.patch('/api/:collection/:id', validCollection, async (req, res, next) => { 
   try { 
     const items = await dbGetCollection(req.params.collection); 
     const index = items.findIndex(item => String(item.id) === req.params.id); 
@@ -376,7 +413,7 @@ app.patch('/api/:collection/:id', validCollection, requireAdmin, async (req, res
   } 
 });
 
-app.delete('/api/:collection/:id', validCollection, requireAdmin, async (req, res, next) => { 
+app.delete('/api/:collection/:id', validCollection, async (req, res, next) => { 
   try { 
     const items = await dbGetCollection(req.params.collection); 
     const index = items.findIndex(item => String(item.id) === req.params.id); 
@@ -390,7 +427,7 @@ app.delete('/api/:collection/:id', validCollection, requireAdmin, async (req, re
   } 
 });
 
-app.delete('/api/content', requireAdmin, async (req, res, next) => { 
+app.delete('/api/content', async (req, res, next) => { 
   try { 
     await dbReset(); 
     await logActivity({ collection: 'system', action: 'reset', message: 'All site data was reset', actor: 'admin' }); 
@@ -400,21 +437,43 @@ app.delete('/api/content', requireAdmin, async (req, res, next) => {
   } 
 });
 
-// Error handler
+// ============================================
+// SERVE STATIC FILES (upload page)
+// ============================================
+app.use('/upload', express.static('public', { index: 'upload.html' }));
+app.use('/assets', express.static('public', { index: 'upload.html' }));
+// Redirect / para sa upload page din (gawing convenient kung walang event/date)
+app.get('/', (req, res) => res.sendFile(path.join(__dirname, 'public', 'upload.html')));
+app.use(express.static('public'));
+
+// ============================================
+// ERROR HANDLER
+// ============================================
 app.use((error, req, res, next) => { 
-  console.error(error); 
+  console.error('Server error:', error); 
   res.status(500).json({ message: 'Internal server error.' }); 
 });
 
 // ============================================
-// START SERVER
+// START SERVER (only when run directly, not on Vercel)
 // ============================================
-dbInitialize().then(() => { 
-  console.log(`GFC-DATA API listening on port ${port} (storage: JSON file)`); 
-  console.log(`Data file: ${dataFile}`);
-  console.log(`Default credentials: admin / admin123`);
-  app.listen(port, '0.0.0.0'); 
-}).catch(error => { 
-  console.error('Unable to load database.', error); 
-  process.exit(1); 
-});
+await dbInitialize();
+
+export { app };
+export default app;
+
+const runningDirectly =
+  process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href;
+
+if (runningDirectly) {
+  console.log('========================================');
+  console.log('  GFC-DATA API Server');
+  console.log('========================================');
+  console.log(`  Port: ${port}`);
+  console.log(`  Storage: ${pgPool ? 'PostgreSQL (DATABASE_URL)' : `JSON file (${dataFile})`}`);
+  console.log(`  CORS allowed origins: ${allowedOrigins.join(', ')}`);
+  console.log('========================================');
+  console.log('  ✅ Server is ready!');
+  console.log('========================================');
+  app.listen(port, '0.0.0.0');
+}

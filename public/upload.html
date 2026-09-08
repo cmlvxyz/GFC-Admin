@@ -54,9 +54,10 @@
 
     <div id="viewError" class="hidden">
       <div style="text-align:center; padding: 24px 0;">
-        <div style="font-size:52px;">😔</div>
-        <h2 style="font-size:18px; font-weight:800; margin-top:10px;">Hindi mahanap ang event</h2>
-        <p style="font-size:13px; color:var(--muted); margin-top:8px; line-height:1.5;">Mukhang hindi balido ang QR code na ito.<br/>Subukan muli o i-contact ang church admin.</p>
+        <div style="font-size:52px;">📡</div>
+        <h2 style="font-size:18px; font-weight:800; margin-top:10px;" id="errorTitle">Cannot connect to server</h2>
+        <p style="font-size:13px; color:var(--muted); margin-top:8px; line-height:1.5;" id="errorText">Hindi makakonekta sa server. Pakisiguraduhing tumatakbo ang GFC backend (npm run server).<br/>Subukan muli pagkatapos ng ilang segundo.</p>
+        <button class="btn" id="retryBtn" style="max-width:220px;">Retry</button>
       </div>
     </div>
 

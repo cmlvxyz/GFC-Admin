@@ -1,28 +1,206 @@
 // GFC-ADMIN/src/pages/QRCodePage.tsx
 
-import React, { useEffect, useMemo, useState } from 'react';
-import { QRCodeSVG } from 'qrcode.react';
-import { ChurchEvent } from '../types';
-import { QrCode, AlertCircle } from 'lucide-react';
+import React, { useEffect, useMemo, useState, useRef } from 'react';
+import { ChurchEvent, DateEntry } from '../types';
+import { QrCode, AlertCircle, Upload, Image, X, CheckCircle, Loader2, RefreshCw } from 'lucide-react';
+import QRCodeStyling from 'qr-code-styling';
+import { updateRecord as apiUpdateRecord } from '../api';
 
 interface QRCodePageProps {
   events: ChurchEvent[];
+  onUpdateEvent?: (updatedEvent: ChurchEvent) => void;
+  onReload?: () => void;
 }
 
-export const QRCodePage: React.FC<QRCodePageProps> = ({ events }) => {
-  // Get the production GFC URL from environment
-  const GFC_URL = import.meta.env.VITE_GFC_URL || 'https://gfc-591v4f663-yans-projects-3c2ad947.vercel.app';
+export const QRCodePage: React.FC<QRCodePageProps> = ({ events, onUpdateEvent, onReload }) => {
+  // Base URL ng GFC upload page (configurable via VITE_GFC_URL).
+  // Kung walang value: gamitin ang LAN IP na pinag-bubuksan ng admin (para ma-scan sa phone on same WiFi).
+  const GFC_BASE = (() => {
+    const fromEnv = (import.meta.env.VITE_GFC_URL as string | undefined)?.trim();
+    if (fromEnv) return fromEnv;
+    const host = typeof window !== 'undefined' ? window.location.hostname : '';
+    if (host && host !== 'localhost' && host !== '127.0.0.1') return `http://${host}:4000`;
+    return 'https://gfc-fxw4g8shx-yans-projects-3c2ad947.vercel.app';
+  })();
+
+  const getUploadUrl = (eventId: string, dateIndex: number) =>
+    `${GFC_BASE}/upload?event=${encodeURIComponent(eventId)}&date=${dateIndex}`;
+
+  // States
+  const [selectedEventId, setSelectedEventId] = useState<string>('');
+  const [uploadedPhotos, setUploadedPhotos] = useState<string[]>([]);
+  const [uploadedPhotoPreviews, setUploadedPhotoPreviews] = useState<string[]>([]);
+  const [isUploading, setIsUploading] = useState(false);
+  const [photoDateTitle, setPhotoDateTitle] = useState('');
+  const [photoVerse, setPhotoVerse] = useState('');
+  const [photoVerseRef, setPhotoVerseRef] = useState('');
+  const [uploadStatus, setUploadStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
+  const [errorMessage, setErrorMessage] = useState('');
+  const [selectedDateIndex, setSelectedDateIndex] = useState<number>(0);
+  const photoFileInputRef = useRef<HTMLInputElement>(null);
+  const [qrContainerEl, setQrContainerEl] = useState<HTMLDivElement | null>(null);
+  const qrStylingRef = useRef<QRCodeStyling | null>(null);
 
   const eventsWithAlbums = useMemo(
     () => events.filter(e => Array.isArray(e.dateEntries) && e.dateEntries.length > 0),
     [events]
   );
 
-  // Build QR URL using production GFC URL
-  const getQRUrl = (eventId: string, dateIndex: number) => {
-    return `${GFC_URL}/upload?event=${encodeURIComponent(eventId)}&date=${dateIndex}`;
+  // Auto-select the first event-with-album on load so a QR code always shows
+  useEffect(() => {
+    if (!selectedEventId && eventsWithAlbums.length > 0) {
+      setSelectedEventId(eventsWithAlbums[0].id);
+      setSelectedDateIndex(0);
+    }
+  }, [eventsWithAlbums, selectedEventId]);
+
+  // Build the branded QR (may church logo sa gitna) - gumagana ang scan papunta sa upload page
+  useEffect(() => {
+    if (!qrContainerEl) return;
+    qrContainerEl.innerHTML = '';
+    const qr = new QRCodeStyling({
+      width: 260,
+      height: 260,
+      margin: 0,
+      data: getUploadUrl(selectedEventId || 'none', selectedDateIndex),
+      image: '/image-circle.png',
+      imageOptions: { imageSize: 0.4, margin: 8, crossOrigin: 'anonymous' },
+      qrOptions: { errorCorrectionLevel: 'H', typeNumber: 0 },
+      dotsOptions: { color: '#1a1a2e', type: 'rounded' },
+      cornersSquareOptions: { color: '#1a1a2e', type: 'extra-rounded' },
+      backgroundOptions: { color: '#ffffff', round: 8 },
+    });
+    qr.append(qrContainerEl);
+    qrStylingRef.current = qr;
+    return () => {
+      qrStylingRef.current = null;
+    };
+  }, [qrContainerEl]);
+
+  // Update the QR kapag may binago sa event/date
+  useEffect(() => {
+    if (!qrStylingRef.current || !selectedEventId) return;
+    qrStylingRef.current.update({ data: getUploadUrl(selectedEventId, selectedDateIndex) });
+  }, [selectedEventId, selectedDateIndex, qrContainerEl]);
+
+  const getSelectedEvent = () => events.find(e => e.id === selectedEventId);
+  const getSelectedDateEntry = (): DateEntry | null => {
+    const event = getSelectedEvent();
+    if (!event || !event.dateEntries || selectedDateIndex < 0 || selectedDateIndex >= event.dateEntries.length) {
+      return null;
+    }
+    return event.dateEntries[selectedDateIndex];
   };
 
+  // Handle photo upload
+  const handlePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files) return;
+
+    const newPreviews: string[] = [];
+    const newUrls: string[] = [];
+    let processed = 0;
+
+    Array.from(files).forEach((file, index) => {
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        const base64String = event.target?.result as string;
+        newPreviews[index] = base64String;
+        newUrls[index] = base64String;
+        processed++;
+        
+        if (processed === files.length) {
+          setUploadedPhotoPreviews(prev => [...prev, ...newPreviews]);
+          setUploadedPhotos(prev => [...prev, ...newUrls]);
+          setUploadStatus('idle');
+          setErrorMessage('');
+        }
+      };
+      reader.readAsDataURL(file);
+    });
+    
+    if (photoFileInputRef.current) {
+      photoFileInputRef.current.value = '';
+    }
+  };
+
+  const handleRemoveUploadedPhoto = (index: number) => {
+    setUploadedPhotoPreviews(prev => prev.filter((_, i) => i !== index));
+    setUploadedPhotos(prev => prev.filter((_, i) => i !== index));
+  };
+
+  const handleSavePhotosToEvent = async () => {
+    if (!selectedEventId) {
+      setErrorMessage('Please select an event first.');
+      return;
+    }
+
+    if (uploadedPhotos.length === 0) {
+      setErrorMessage('Please select photos to upload.');
+      return;
+    }
+
+    setIsUploading(true);
+    setUploadStatus('loading');
+    setErrorMessage('');
+
+    try {
+      const event = getSelectedEvent();
+      if (!event || !event.dateEntries) {
+        setErrorMessage('Event or date entry not found.');
+        setIsUploading(false);
+        return;
+      }
+
+      // Use the selected date index (default 0)
+      const targetIndex = selectedDateIndex >= 0 && selectedDateIndex < event.dateEntries.length ? selectedDateIndex : 0;
+      const currentPhotos = event.dateEntries[targetIndex]?.photos || [];
+      const updatedPhotos = [...currentPhotos, ...uploadedPhotos];
+      
+      const updatedEntries = [...event.dateEntries];
+      updatedEntries[targetIndex] = {
+        ...updatedEntries[targetIndex],
+        photos: updatedPhotos,
+        verse: photoVerse || updatedEntries[targetIndex]?.verse || undefined,
+        verseRef: photoVerseRef || updatedEntries[targetIndex]?.verseRef || undefined
+      };
+
+      const updatedEvent: ChurchEvent = {
+        ...event,
+        dateEntries: updatedEntries
+      };
+
+      await apiUpdateRecord('events', event.id, { dateEntries: updatedEntries });
+      if (onUpdateEvent) onUpdateEvent(updatedEvent);
+
+      setUploadStatus('success');
+      setUploadedPhotos([]);
+      setUploadedPhotoPreviews([]);
+      setPhotoDateTitle('');
+      setPhotoVerse('');
+      setPhotoVerseRef('');
+    } catch (error) {
+      setUploadStatus('error');
+      setErrorMessage('Error uploading photos. Please try again.');
+    } finally {
+      setIsUploading(false);
+    }
+  };
+
+  const handleResetUpload = () => {
+    setUploadedPhotos([]);
+    setUploadedPhotoPreviews([]);
+    setUploadStatus('idle');
+    setErrorMessage('');
+    setPhotoDateTitle('');
+    setPhotoVerse('');
+    setPhotoVerseRef('');
+    if (photoFileInputRef.current) {
+      photoFileInputRef.current.value = '';
+    }
+  };
+
+  // Check if event has no albums
   if (eventsWithAlbums.length === 0) {
     return (
       <div className="space-y-6">
@@ -36,18 +214,44 @@ export const QRCodePage: React.FC<QRCodePageProps> = ({ events }) => {
             sa event gallery. Makikita ang mga na-upload na photos sa website ng church.
           </p>
           <div className="mt-3 inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-indigo-50 dark:bg-indigo-950/40 border border-indigo-200 dark:border-indigo-800/40 text-xs font-mono font-bold text-indigo-600 dark:text-indigo-400">
-            Upload URL: {GFC_URL}/upload?event=&lt;id&gt;&amp;date=&lt;index&gt;
+            Upload page: {GFC_BASE}
+          </div>
+          <div className="mt-2 text-xs text-emerald-500 dark:text-emerald-400">
+            ✅ GFC QR code image + upload link
           </div>
         </div>
 
         <div className="flex flex-col items-center justify-center gap-3 py-20 text-center">
-          <AlertCircle className="w-10 h-10 text-gray-300 dark:text-gray-600" />
-          <p className="text-sm text-gray-400 dark:text-[#A1A1A1] font-medium">
-            Walang event na may photo album (date entries) pa.
-          </p>
-          <p className="text-xs text-gray-400 dark:text-gray-500 max-w-md">
-            Magdagdag muna ng date album sa isang event, tapos i-generate ang QR code dito.
-          </p>
+          {events.length === 0 ? (
+            <>
+              <AlertCircle className="w-10 h-10 text-red-400" />
+              <p className="text-sm text-red-500 dark:text-red-400 font-medium">
+                Hindi ma-load ang events data. Mukhang hindi tumatakbo ang backend API.
+              </p>
+              <p className="text-xs text-gray-400 dark:text-gray-500 max-w-md">
+                Siguraduhing tumatakbo ang server (npm run server) sa port 4000, tapos i-reload ang page.
+              </p>
+              {onReload && (
+                <button
+                  onClick={onReload}
+                  className="mt-2 inline-flex items-center gap-2 px-4 py-2.5 bg-indigo-500 hover:bg-indigo-600 text-white rounded-xl text-xs font-bold transition-all"
+                >
+                  <RefreshCw className="w-4 h-4" />
+                  Reload Data
+                </button>
+              )}
+            </>
+          ) : (
+            <>
+              <AlertCircle className="w-10 h-10 text-gray-300 dark:text-gray-600" />
+              <p className="text-sm text-gray-400 dark:text-[#A1A1A1] font-medium">
+                Walang event na may photo album (date entries) pa.
+              </p>
+              <p className="text-xs text-gray-400 dark:text-gray-500 max-w-md">
+                Magdagdag muna ng date album sa isang event, tapos i-generate ang QR code dito.
+              </p>
+            </>
+          )}
         </div>
       </div>
     );
@@ -55,69 +259,123 @@ export const QRCodePage: React.FC<QRCodePageProps> = ({ events }) => {
 
   return (
     <div className="space-y-6">
+      {/* Header */}
       <div className="bg-white dark:bg-[#14141f]/80 backdrop-blur-sm p-6 rounded-2xl border border-gray-200 dark:border-white/5 shadow-sm">
         <h3 className="text-sm font-bold text-black dark:text-white mb-2 flex items-center gap-2">
           <QrCode className="w-5 h-5 text-indigo-500" />
           <span>Event QR Code Generator</span>
         </h3>
         <p className="text-sm text-gray-500 dark:text-[#A1A1A1] leading-relaxed">
-          I-scan ng church members ang QR code gamit ang kanilang phone para makapag-upload ng photos
-          sa event gallery. Makikita ang mga na-upload na photos sa website ng church.
+          Pumili ng event, tapos pumili ng date. May lalabas na QR code para sa napiling date.
+          I-scan ito para makapag-upload ng photos. Pwede ring mag-upload ng photos dito sa admin.
         </p>
         <div className="mt-3 inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-indigo-50 dark:bg-indigo-950/40 border border-indigo-200 dark:border-indigo-800/40 text-xs font-mono font-bold text-indigo-600 dark:text-indigo-400">
-          Upload URL: {GFC_URL}/upload?event=&lt;id&gt;&amp;date=&lt;index&gt;
-        </div>
-        <div className="mt-2 text-xs text-emerald-500 dark:text-emerald-400">
-          ✅ QR codes point to: {GFC_URL}
+          Upload page: {GFC_BASE}
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {eventsWithAlbums.map((event) => {
-          const entries = event.dateEntries || [];
-          const count = entries.reduce((n, e) => n + (e.photos?.length || 0), 0);
-          
-          return (
-            <div
-              key={event.id}
-              className="bg-white dark:bg-[#14141f]/70 backdrop-blur-sm rounded-2xl border border-gray-200 dark:border-white/5 shadow-sm overflow-hidden p-5"
-            >
-              {/* Event Info */}
-              <div className="mb-4 pb-3 border-b border-gray-100 dark:border-white/5">
-                <div className="text-sm font-bold text-black dark:text-white">{event.title}</div>
-                <div className="text-xs text-gray-400 dark:text-[#8888AA]">
-                  {event.date} • {entries.length} albums • {count} photos
+      {/* Selection Section */}
+      <div className="bg-white dark:bg-[#14141f]/80 backdrop-blur-sm p-6 rounded-2xl border border-gray-200 dark:border-white/5 shadow-sm">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          {/* Left: Event Selection */}
+          <div className="space-y-4">
+            <div>
+              <label className="block text-xs font-bold text-gray-700 dark:text-[#A1A1A1] uppercase tracking-wider mb-2">
+                Select Event
+              </label>
+              <select
+                value={selectedEventId}
+                onChange={(e) => {
+                  setSelectedEventId(e.target.value);
+                  setSelectedDateIndex(0);
+                  handleResetUpload();
+                }}
+                className="w-full px-4 py-2.5 rounded-xl border border-gray-200 dark:border-white/10 bg-gray-50 dark:bg-black/30 text-black dark:text-white text-sm focus:border-indigo-400 dark:focus:border-indigo-400/50 focus:outline-hidden focus:ring-2 focus:ring-indigo-400/20 transition-all"
+              >
+                <option value="">-- Select an event --</option>
+                {eventsWithAlbums.map(event => (
+                  <option key={event.id} value={event.id}>
+                    {event.title} ({event.dateEntries?.length || 0} albums)
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {selectedEventId && getSelectedEvent() && (
+              <div>
+                <label className="block text-xs font-bold text-gray-700 dark:text-[#A1A1A1] uppercase tracking-wider mb-2">
+                  Select Date Album (for upload)
+                </label>
+                <select
+                  value={selectedDateIndex}
+                  onChange={(e) => {
+                    setSelectedDateIndex(parseInt(e.target.value));
+                    handleResetUpload();
+                  }}
+                  className="w-full px-4 py-2.5 rounded-xl border border-gray-200 dark:border-white/10 bg-gray-50 dark:bg-black/30 text-black dark:text-white text-sm focus:border-indigo-400 dark:focus:border-indigo-400/50 focus:outline-hidden focus:ring-2 focus:ring-indigo-400/20 transition-all"
+                >
+                  {getSelectedEvent()?.dateEntries?.map((entry, index) => (
+                    <option key={index} value={index}>
+                      {entry.date} ({entry.photos?.length || 0} photos)
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+
+            {selectedEventId && getSelectedDateEntry() && (
+              <div className="p-4 bg-indigo-50 dark:bg-indigo-950/30 rounded-xl border border-indigo-200 dark:border-indigo-400/30">
+                <div className="flex items-center gap-2 text-sm">
+                  <span className="font-bold text-indigo-600 dark:text-indigo-400">Selected:</span>
+                  <span className="text-black dark:text-white">{getSelectedEvent()?.title}</span>
+                  <span className="text-gray-400">•</span>
+                  <span className="text-black dark:text-white">{getSelectedDateEntry()?.date}</span>
+                </div>
+                <div className="text-xs text-gray-500 dark:text-[#A1A1A1] mt-1">
+                  📸 {getSelectedDateEntry()?.photos?.length || 0} photos currently in this album
                 </div>
               </div>
+            )}
+          </div>
 
-              {/* QR Codes per date entry */}
-              <div className="space-y-4">
-                {entries.map((entry, index) => {
-                  const qrData = getQRUrl(event.id, index);
-                  
-                  return (
-                    <div key={index} className="flex flex-col items-center p-3 bg-gray-50 dark:bg-black/30 rounded-xl border border-gray-200 dark:border-white/10">
-                      <div className="text-xs font-bold text-gray-600 dark:text-[#A1A1A1] mb-2">
-                        {entry.date} ({entry.photos?.length || 0} photos)
-                      </div>
-                      <QRCodeSVG
-                        value={qrData}
-                        size={160}
-                        level="H"
-                        includeMargin
-                        bgColor="#ffffff"
-                        fgColor="#1a1a2e"
-                      />
-                      <div className="text-[8px] font-mono text-gray-400 dark:text-gray-500 break-all mt-1 text-center w-full">
-                        {qrData}
-                      </div>
-                    </div>
-                  );
-                })}
+          {/* Right: QR Code Display - GFC QR image */}
+          <div className="flex flex-col items-center justify-center p-4 bg-gray-50 dark:bg-black/30 rounded-xl border border-gray-200 dark:border-white/10">
+            {selectedEventId && getSelectedDateEntry() ? (
+              <>
+                <div className="flex items-center gap-2 mb-2">
+                  <QrCode className="w-5 h-5 text-indigo-500" />
+                  <span className="text-xs font-bold text-indigo-500 dark:text-indigo-400">
+                    GFC QR Code
+                  </span>
+                </div>
+                <div ref={(el) => setQrContainerEl(el)} className="bg-white rounded-xl shadow-md" />
+                <a
+                  href={getUploadUrl(selectedEventId, selectedDateIndex)}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="mt-2 text-[11px] font-mono text-indigo-500 dark:text-indigo-400 underline break-all text-center block hover:text-indigo-600 dark:hover:text-indigo-300"
+                >
+                  {getUploadUrl(selectedEventId, selectedDateIndex)}
+                </a>
+                <div className="text-[10px] text-gray-400 dark:text-gray-500 mt-1">
+                  📸 I-scan ang QR o i-click ang link para mag-upload ng photos (may logo ng GFC sa gitna)
+                </div>
+                <div className="text-[10px] text-amber-500 dark:text-amber-400 mt-1 text-center leading-snug">
+                  Para ma-scan sa phone (same WiFi), buksan ang admin gamit LAN IP:
+                  <br />
+                  <span className="font-mono">{`${GFC_BASE}`}</span>
+                </div>
+              </>
+            ) : (
+              <div className="text-center py-6">
+                <QrCode className="w-12 h-12 text-gray-300 dark:text-gray-600 mx-auto mb-2" />
+                <p className="text-sm text-gray-500 dark:text-[#A1A1A1]">
+                  Pumili ng event at date para makita ang QR code
+                </p>
               </div>
-            </div>
-          );
-        })}
+            )}
+          </div>
+        </div>
       </div>
     </div>
   );

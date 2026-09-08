@@ -1,0 +1,805 @@
+{
+  "version": 1,
+  "initialized": true,
+  "events": [
+    {
+      "id": "anniversary",
+      "title": "Church Anniversary Celebration",
+      "date": "Every 2nd Sunday of the month",
+      "tag": "🎉 Celebration",
+      "description": "Special thanksgiving gathering celebrating God's faithfulness and guidance in our church history.",
+      "location": "📍 Gospel Fellowship Church Main Sanctuary",
+      "defaultVerse": "I will bless the Lord at all times; His praise shall continually be in my mouth.",
+      "defaultVerseRef": "Psalm 34:1",
+      "image": "/Anniversary/3rd Year.jpg",
+      "dateEntries": [
+        {
+          "date": "1st Year Anniversary",
+          "photos": [
+            "/Anniversary/1st-year-1.jpg",
+            "/Anniversary/1st-year-2.jpg"
+          ],
+          "verse": "I will bless the Lord at all times; His praise shall continually be in my mouth.",
+          "verseRef": "Psalm 34:1"
+        },
+        {
+          "date": "2nd Year Anniversary",
+          "photos": [
+            "/Anniversary/2nd-year-1.jpg",
+            "/Anniversary/2nd-year-2.jpg"
+          ],
+          "verse": "The Lord has done great things for us, and we are filled with joy.",
+          "verseRef": "Psalm 126:3"
+        },
+        {
+          "date": "3rd Year Anniversary",
+          "photos": [
+            "/Anniversary/3rd Year.jpg",
+            "/Anniversary/3rd-year-2.jpg",
+            "/Anniversary/3rd-year-3.jpg"
+          ],
+          "verse": "Being confident of this, that he who began a good work in you will carry it on to completion.",
+          "verseRef": "Philippians 1:6"
+        }
+      ]
+    },
+    {
+      "id": "youth",
+      "title": "Next Generation Youth",
+      "date": "Every Sunday • 7:00 PM",
+      "tag": "🌟 Youth",
+      "description": "Fellowship, games, worship, and Bible discussions tailored specifically for students and young adults.",
+      "location": "📍 Gospel Fellowship Church Youth Hall",
+      "defaultVerse": "Let no one despise your youth, but set the believers an example.",
+      "defaultVerseRef": "1 Timothy 4:12",
+      "image": "/Next Gen/next-gen.jpg",
+      "dateEntries": []
+    },
+    {
+      "id": "biblestudy",
+      "title": "Bible Study",
+      "date": "Every Wednesday • 7:00 PM",
+      "tag": "📖 Word",
+      "description": "Interactive mid-week study diving deep into the scriptures and practical Christian living.",
+      "location": "📍 Gospel Fellowship Church",
+      "defaultVerse": "Your word is a lamp to my feet and a light to my path.",
+      "defaultVerseRef": "Psalm 119:105",
+      "image": "/Bible Study/bible-study.jpg",
+      "dateEntries": [
+        {
+          "date": "June 10",
+          "photos": [
+            "/Bible Study/June10/june10-1.png",
+            "/Bible Study/June10/june10-2.png",
+            "/Bible Study/June10/june10-3.png",
+            "/Bible Study/June10/june10-4.png",
+            "/Bible Study/June10/june10-5.png",
+            "/Bible Study/June10/june10-6.png",
+            "/Bible Study/June10/june10-7.png",
+            "/Bible Study/June10/june10-8.png",
+            "/Bible Study/June10/june10-9.png",
+            "/Bible Study/June10/june10-10.png",
+            "/Bible Study/June10/june10-11.png",
+            "/Bible Study/June10/june10-12.png",
+            "/Bible Study/June10/june10-13.png",
+            "/Bible Study/June10/june10-14.png",
+            "/Bible Study/June10/june10-15.png",
+            "/Bible Study/June10/june10-16.png",
+            "/Bible Study/June10/june10-17.png",
+            "/Bible Study/June10/june10-18.png",
+            "/Bible Study/June10/june10-19.png",
+            "/Bible Study/June10/june10-20.png",
+            "/Bible Study/June10/june10-21.png",
+            "/Bible Study/June10/june10-22.png"
+          ]
+        },
+        {
+          "date": "June 17",
+          "photos": [
+            "/Bible Study/June17/june17-1.png",
+            "/Bible Study/June17/june17-2.png",
+            "/Bible Study/June17/june17-3.png",
+            "/Bible Study/June17/june17-4.png",
+            "/Bible Study/June17/june17-5.png",
+            "/Bible Study/June17/june17-6.png",
+            "/Bible Study/June17/june17-7.png",
+            "/Bible Study/June17/june17-8.png",
+            "/Bible Study/June17/june17-9.png",
+            "/Bible Study/June17/june17-10.png"
+          ]
+        },
+        {
+          "date": "June 24",
+          "photos": [
+            "/Bible Study/June24/june24-1.png",
+            "/Bible Study/June24/june24-2.png",
+            "/Bible Study/June24/june24-3.png",
+            "/Bible Study/June24/june24-4.png",
+            "/Bible Study/June24/june24-5.png"
+          ]
+        },
+        {
+          "date": "July 1",
+          "photos": [
+            "/Bible Study/July1/july1-1.png"
+          ]
+        },
+        {
+          "date": "July 8",
+          "photos": [
+            "/Bible Study/July8/july8-1.png",
+            "/Bible Study/July8/july8-2.png",
+            "/Bible Study/July8/july8-3.png",
+            "/Bible Study/July8/july8-4.png",
+            "/Bible Study/July8/july8-5.png",
+            "/Bible Study/July8/july8-6.png",
+            "/Bible Study/July8/july8-7.png",
+            "/Bible Study/July8/july8-8.png",
+            "/Bible Study/July8/july8-9.png",
+            "/Bible Study/July8/july8-10.png",
+            "/Bible Study/July8/july8-11.png",
+            "/Bible Study/July8/july8-12.png",
+            "/Bible Study/July8/july8-13.png"
+          ]
+        },
+        {
+          "date": "July 16",
+          "photos": [
+            "/Bible Study/July16/july16-1.png",
+            "/Bible Study/July16/july16-2.png",
+            "/Bible Study/July16/july16-3.png",
+            "/Bible Study/July16/july16-4.png",
+            "/Bible Study/July16/july16-5.png",
+            "/Bible Study/July16/july16-6.png"
+          ]
+        },
+        {
+          "date": "July 23",
+          "photos": [
+            "/Bible Study/July23/july23-1.png",
+            "/Bible Study/July23/july23-2.png",
+            "/Bible Study/July23/july23-3.png",
+            "/Bible Study/July23/july23-4.png",
+            "/Bible Study/July23/july23-5.png"
+          ]
+        },
+        {
+          "date": "July 30",
+          "photos": [
+            "/Bible Study/July30/july30-1.png",
+            "/Bible Study/July30/july30-2.png",
+            "/Bible Study/July30/july30-3.png",
+            "/Bible Study/July30/july30-4.png",
+            "/Bible Study/July30/july30-5.png",
+            "/Bible Study/July30/july30-22.png"
+          ]
+        },
+        {
+          "date": "August 6",
+          "photos": [
+            "/Bible Study/August6/august6-1.png",
+            "/Bible Study/August6/august6-2.png",
+            "/Bible Study/August6/august6-21.png",
+            "/Bible Study/August6/august6-22.png"
+          ]
+        },
+        {
+          "date": "August 13",
+          "photos": [
+            "/Bible Study/August13/august13-1.png",
+            "/Bible Study/August13/august13-2.png"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "prayer",
+      "title": "Prayer Meeting",
+      "date": "Every Monday • 7:00 PM",
+      "tag": "🙏 Prayer",
+      "description": "Come together as a community to pray for our church, our nation, and one another.",
+      "location": "📍 Gospel Fellowship Church Sanctuary",
+      "defaultVerse": "Pray without ceasing.",
+      "defaultVerseRef": "Jeremiah 29:13",
+      "image": "/Prayer Meeting/prayer-meeting.jpg",
+      "dateEntries": [
+        {
+          "date": "June 8",
+          "photos": [
+            "/Prayer Meeting/June8/june8-1.png",
+            "/Prayer Meeting/June8/june8-2.png",
+            "/Prayer Meeting/June8/june8-3.png",
+            "/Prayer Meeting/June8/june8-4.png",
+            "/Prayer Meeting/June8/june8-5.png",
+            "/Prayer Meeting/June8/june8-6.png",
+            "/Prayer Meeting/June8/june8-7.png",
+            "/Prayer Meeting/June8/june8-8.png",
+            "/Prayer Meeting/June8/june8-9.png",
+            "/Prayer Meeting/June8/june8-10.png",
+            "/Prayer Meeting/June8/june8-11.png",
+            "/Prayer Meeting/June8/june8-12.png"
+          ]
+        },
+        {
+          "date": "June 15",
+          "photos": [
+            "/Prayer Meeting/June15/june15-1.jpg",
+            "/Prayer Meeting/June15/june15-2.jpg",
+            "/Prayer Meeting/June15/june15-3.jpg",
+            "/Prayer Meeting/June15/june15-4.jpg",
+            "/Prayer Meeting/June15/june15-5.jpg",
+            "/Prayer Meeting/June15/june15-6.jpg",
+            "/Prayer Meeting/June15/june15-7.jpg",
+            "/Prayer Meeting/June15/june15-8.jpg",
+            "/Prayer Meeting/June15/june15-9.jpg",
+            "/Prayer Meeting/June15/june15-10.jpg",
+            "/Prayer Meeting/June15/june15-11.jpg",
+            "/Prayer Meeting/June15/june15-12.jpg",
+            "/Prayer Meeting/June15/june15-13.jpg"
+          ]
+        },
+        {
+          "date": "June 22",
+          "photos": [
+            "/Prayer Meeting/June22/june22-1.png",
+            "/Prayer Meeting/June22/june22-2.png",
+            "/Prayer Meeting/June22/june22-3.png",
+            "/Prayer Meeting/June22/june22-4.png",
+            "/Prayer Meeting/June22/june22-5.png",
+            "/Prayer Meeting/June22/june22-6.png",
+            "/Prayer Meeting/June22/june22-7.png",
+            "/Prayer Meeting/June22/june22-8.png",
+            "/Prayer Meeting/June22/june22-9.png",
+            "/Prayer Meeting/June22/june22-10.png",
+            "/Prayer Meeting/June22/june22-11.png",
+            "/Prayer Meeting/June22/june22-12.png",
+            "/Prayer Meeting/June22/june22-13.png",
+            "/Prayer Meeting/June22/june22-14.png",
+            "/Prayer Meeting/June22/june22-15.png"
+          ]
+        },
+        {
+          "date": "June 29",
+          "photos": [
+            "/Prayer Meeting/June29/june29-1.png",
+            "/Prayer Meeting/June29/june29-2.png",
+            "/Prayer Meeting/June29/june29-3.png",
+            "/Prayer Meeting/June29/june29-4.png",
+            "/Prayer Meeting/June29/june29-5.png"
+          ]
+        },
+        {
+          "date": "July 6",
+          "photos": [
+            "/Prayer Meeting/July6/july6-1.png",
+            "/Prayer Meeting/July6/july6-2.png",
+            "/Prayer Meeting/July6/july6-3.png",
+            "/Prayer Meeting/July6/july6-4.png",
+            "/Prayer Meeting/July6/july6-5.png",
+            "/Prayer Meeting/July6/july6-6.png",
+            "/Prayer Meeting/July6/july6-7.png",
+            "/Prayer Meeting/July6/july6-8.png",
+            "/Prayer Meeting/July6/july6-9.png",
+            "/Prayer Meeting/July6/july6-10.png",
+            "/Prayer Meeting/July6/july6-11.png",
+            "/Prayer Meeting/July6/july6-12.png",
+            "/Prayer Meeting/July6/july6-13.png",
+            "/Prayer Meeting/July6/july6-14.png",
+            "/Prayer Meeting/July6/july6-15.png"
+          ]
+        },
+        {
+          "date": "July 13",
+          "photos": [
+            "/Prayer Meeting/July13/july13-1.png",
+            "/Prayer Meeting/July13/july13-2.png",
+            "/Prayer Meeting/July13/july13-3.png",
+            "/Prayer Meeting/July13/july13-4.png",
+            "/Prayer Meeting/July13/july13-5.png",
+            "/Prayer Meeting/July13/july13-6.png",
+            "/Prayer Meeting/July13/july13-7.png",
+            "/Prayer Meeting/July13/july13-8.png",
+            "/Prayer Meeting/July13/july13-9.png",
+            "/Prayer Meeting/July13/july13-10.png",
+            "/Prayer Meeting/July13/july13-11.png",
+            "/Prayer Meeting/July13/july13-12.png",
+            "/Prayer Meeting/July13/july13-13.png",
+            "/Prayer Meeting/July13/july13-14.png",
+            "/Prayer Meeting/July13/july13-15.png"
+          ]
+        },
+        {
+          "date": "July 21",
+          "photos": [
+            "/Prayer Meeting/July21/july21-1.png",
+            "/Prayer Meeting/July21/july21-2.png",
+            "/Prayer Meeting/July21/july21-3.png",
+            "/Prayer Meeting/July21/july21-4.png",
+            "/Prayer Meeting/July21/july21-5.png",
+            "/Prayer Meeting/July21/july21-6.png",
+            "/Prayer Meeting/July21/july21-7.png",
+            "/Prayer Meeting/July21/july21-8.png",
+            "/Prayer Meeting/July21/july21-9.png",
+            "/Prayer Meeting/July21/july21-10.png",
+            "/Prayer Meeting/July21/july21-11.png",
+            "/Prayer Meeting/July21/july21-12.png"
+          ]
+        },
+        {
+          "date": "August 4",
+          "photos": [
+            "/Prayer Meeting/August4/august4-1.png",
+            "/Prayer Meeting/August4/august4-2.png",
+            "/Prayer Meeting/August4/august4-3.png",
+            "/Prayer Meeting/August4/august4-4.png",
+            "/Prayer Meeting/August4/august4-5.png",
+            "/Prayer Meeting/August4/august4-6.png",
+            "/Prayer Meeting/August4/august4-7.png",
+            "/Prayer Meeting/August4/august4-8.png",
+            "/Prayer Meeting/August4/august4-9.png",
+            "/Prayer Meeting/August4/august4-10.png",
+            "/Prayer Meeting/August4/august4-11.png",
+            "/Prayer Meeting/August4/august4-12.png",
+            "/Prayer Meeting/August4/august4-13.png",
+            "/Prayer Meeting/August4/august4-14.png",
+            "/Prayer Meeting/August4/august4-15.png"
+          ]
+        },
+        {
+          "date": "August 11",
+          "photos": [
+            "/Prayer Meeting/August11/august11-1.png",
+            "/Prayer Meeting/August11/august11-2.png",
+            "/Prayer Meeting/August11/august11-3.png",
+            "/Prayer Meeting/August11/august11-4.png",
+            "/Prayer Meeting/August11/august11-5.png",
+            "/Prayer Meeting/August11/august11-6.png",
+            "/Prayer Meeting/August11/august11-7.png",
+            "/Prayer Meeting/August11/august11-8.png",
+            "/Prayer Meeting/August11/august11-9.png",
+            "/Prayer Meeting/August11/august11-10.png",
+            "/Prayer Meeting/August11/august11-11.png",
+            "/Prayer Meeting/August11/august11-12.png",
+            "/Prayer Meeting/August11/august11-13.png",
+            "/Prayer Meeting/August11/august11-14.png",
+            "/Prayer Meeting/August11/august11-15.png"
+          ]
+        },
+        {
+          "date": "August 18",
+          "photos": []
+        },
+        {
+          "date": "August 25",
+          "photos": []
+        },
+        {
+          "date": "September 1",
+          "photos": []
+        },
+        {
+          "date": "September 8",
+          "photos": []
+        },
+        {
+          "date": "September 15",
+          "photos": []
+        }
+      ]
+    },
+    {
+      "id": "worship",
+      "title": "Worship Night",
+      "date": "Every Friday • 7:00 PM",
+      "tag": "🎵 Music",
+      "description": "A dedicated evening of intimate praise, prayer, and acoustic worship.",
+      "location": "📍 Gospel Fellowship Church Sanctuary",
+      "defaultVerse": "Sing to the Lord a new song; sing to the Lord, all the earth.",
+      "defaultVerseRef": "Psalm 96:1",
+      "image": "/Worship Night/worship-night.jpg",
+      "dateEntries": [
+        {
+          "date": "June 12",
+          "photos": [
+            "/Worship Night/June12/june12-1.png",
+            "/Worship Night/June12/june12-2.png",
+            "/Worship Night/June12/june12-3.png",
+            "/Worship Night/June12/june12-4.png",
+            "/Worship Night/June12/june12-5.png",
+            "/Worship Night/June12/june12-6.png",
+            "/Worship Night/June12/june12-7.png",
+            "/Worship Night/June12/june12-8.png",
+            "/Worship Night/June12/june12-9.png"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "sunday",
+      "title": "Sunday Service",
+      "date": "Every Sunday • 8:30 AM",
+      "tag": "⛪ Worship",
+      "description": "Our main weekly worship service. Join us for joyful praise, passionate prayer, and the faithful preaching of God's Word.",
+      "location": "📍 Gospel Fellowship Church, Limay, Bataan",
+      "defaultVerse": "I was glad when they said to me, \"Let us go into the house of the Lord.\"",
+      "defaultVerseRef": "Psalm 122:1",
+      "image": "/Sunday Service/sunday-service.jpg",
+      "dateEntries": [
+        {
+          "date": "June 14",
+          "photos": [
+            "/Sunday Service/June14/june14-1.jpg",
+            "/Sunday Service/June14/june14-2.jpg",
+            "/Sunday Service/June14/june14-3.jpg",
+            "/Sunday Service/June14/june14-4.jpg",
+            "/Sunday Service/June14/june14-5.jpg"
+          ],
+          "verse": "Pray without ceasing.",
+          "verseRef": "1 Thessalonians 5:17"
+        },
+        {
+          "date": "June 21",
+          "photos": [
+            "/Sunday Service/sunday-service.jpg",
+            "/Sunday Service/sunday-service.jpg",
+            "/Sunday Service/sunday-service.jpg",
+            "/Sunday Service/sunday-service.jpg",
+            "/Sunday Service/sunday-service.jpg"
+          ],
+          "verse": "Pray without ceasing.",
+          "verseRef": "1 Thessalonians 5:17"
+        },
+        {
+          "date": "June 28",
+          "photos": [
+            "/Sunday Service/sunday-service.jpg",
+            "/Sunday Service/sunday-service.jpg",
+            "/Sunday Service/sunday-service.jpg",
+            "/Sunday Service/sunday-service.jpg",
+            "/Sunday Service/sunday-service.jpg"
+          ],
+          "verse": "Pray without ceasing.",
+          "verseRef": "1 Thessalonians 5:17"
+        },
+        {
+          "date": "July 5",
+          "photos": [
+            "/Sunday Service/June14/june14-1.jpg",
+            "/Sunday Service/June14/june14-2.jpg",
+            "/Sunday Service/June14/june14-3.jpg",
+            "/Sunday Service/June14/june14-4.jpg",
+            "/Sunday Service/June14/june14-5.jpg"
+          ],
+          "verse": "Pray without ceasing.",
+          "verseRef": "1 Thessalonians 5:17"
+        },
+        {
+          "date": "July 12",
+          "photos": []
+        },
+        {
+          "date": "July 19",
+          "photos": []
+        },
+        {
+          "date": "July 26",
+          "photos": []
+        },
+        {
+          "date": "August 2",
+          "photos": []
+        },
+        {
+          "date": "August 9",
+          "photos": []
+        },
+        {
+          "date": "August 16",
+          "photos": []
+        },
+        {
+          "date": "August 23",
+          "photos": []
+        },
+        {
+          "date": "August 30",
+          "photos": []
+        },
+        {
+          "date": "September 6",
+          "photos": []
+        },
+        {
+          "date": "September 13",
+          "photos": []
+        },
+        {
+          "date": "September 20",
+          "photos": []
+        },
+        {
+          "date": "September 27",
+          "photos": []
+        }
+      ]
+    },
+    {
+      "id": "anniversary",
+      "title": "Church Anniversary Celebration",
+      "date": "Every 2nd Sunday of the month",
+      "tag": "🎉 Celebration",
+      "description": "Special thanksgiving gathering celebrating God's faithfulness and guidance in our church history.",
+      "location": "📍 Gospel Fellowship Church Main Sanctuary",
+      "defaultVerse": "I will bless the Lord at all times; His praise shall continually be in my mouth.",
+      "defaultVerseRef": "Psalm 34:1",
+      "image": "/Anniversary/3rd Year.jpg",
+      "dateEntries": []
+    },
+    {
+      "id": "youth",
+      "title": "Next Generation Youth",
+      "date": "Every Sunday • 7:00 PM",
+      "tag": "🌟 Youth",
+      "description": "Fellowship, games, worship, and Bible discussions tailored specifically for students and young adults.",
+      "location": "📍 Gospel Fellowship Church Youth Hall",
+      "defaultVerse": "Let no one despise your youth, but set the believers an example.",
+      "defaultVerseRef": "1 Timothy 4:12",
+      "image": "/Next Gen/next-gen.jpg",
+      "dateEntries": []
+    },
+    {
+      "id": "biblestudy",
+      "title": "Bible Study",
+      "date": "Every Wednesday • 7:00 PM",
+      "tag": "📖 Word",
+      "description": "Interactive mid-week study diving deep into the scriptures and practical Christian living.",
+      "location": "📍 Gospel Fellowship Church",
+      "defaultVerse": "Your word is a lamp to my feet and a light to my path.",
+      "defaultVerseRef": "Psalm 119:105",
+      "image": "/Bible Study/bible-study.jpg",
+      "dateEntries": []
+    },
+    {
+      "id": "prayer",
+      "title": "Prayer Meeting",
+      "date": "Every Monday • 7:00 PM",
+      "tag": "🙏 Prayer",
+      "description": "Come together as a community to pray for our church, our nation, and one another.",
+      "location": "📍 Gospel Fellowship Church Sanctuary",
+      "defaultVerse": "Pray without ceasing.",
+      "defaultVerseRef": "Jeremiah 29:13",
+      "image": "/Prayer Meeting/prayer-meeting.jpg",
+      "dateEntries": []
+    },
+    {
+      "id": "worship",
+      "title": "Worship Night",
+      "date": "Every Friday • 7:00 PM",
+      "tag": "🎵 Music",
+      "description": "A dedicated evening of intimate praise, prayer, and acoustic worship.",
+      "location": "📍 Gospel Fellowship Church Sanctuary",
+      "defaultVerse": "Sing to the Lord a new song; sing to the Lord, all the earth.",
+      "defaultVerseRef": "Psalm 96:1",
+      "image": "/Worship Night/worship-night.jpg",
+      "dateEntries": []
+    },
+    {
+      "id": "sunday",
+      "title": "Sunday Service",
+      "date": "Every Sunday • 8:30 AM",
+      "tag": "⛪ Worship",
+      "description": "Our main weekly worship service. Join us for joyful praise, passionate prayer, and the faithful preaching of God's Word.",
+      "location": "📍 Gospel Fellowship Church, Limay, Bataan",
+      "defaultVerse": "I was glad when they said to me, \"Let us go into the house of the Lord.\"",
+      "defaultVerseRef": "Psalm 122:1",
+      "image": "/Sunday Service/sunday-service.jpg",
+      "dateEntries": []
+    }
+  ],
+  "sermons": [],
+  "prayers": [],
+  "attendees": [],
+  "members": [],
+  "announcements": [],
+  "testimonials": [],
+  "activities": [
+    {
+      "id": "32ef2962-d714-4414-a1b8-52f6de886a88",
+      "type": "admin",
+      "action": "login",
+      "message": "Admin signed in to the system",
+      "icon": "🔐",
+      "actor": "admin",
+      "createdAt": "2026-09-08T01:43:15.996Z"
+    },
+    {
+      "id": "aab4dba8-1257-4443-83ff-4ff7f132106a",
+      "type": "admin",
+      "action": "login",
+      "message": "Admin signed in to the system",
+      "icon": "🔐",
+      "actor": "admin",
+      "createdAt": "2026-09-07T13:56:51.369Z"
+    },
+    {
+      "id": "75805f84-651c-469b-85a3-456eb1b9ba56",
+      "type": "events",
+      "action": "created",
+      "message": "New event \"Church Anniversary Celebration\" was added",
+      "icon": "📅",
+      "actor": "admin",
+      "createdAt": "2026-09-07T13:41:48.062Z"
+    },
+    {
+      "id": "8e3fbb6a-e710-425d-8adb-8f872f9e4b85",
+      "type": "events",
+      "action": "created",
+      "message": "New event \"Next Generation Youth\" was added",
+      "icon": "📅",
+      "actor": "admin",
+      "createdAt": "2026-09-07T13:41:48.051Z"
+    },
+    {
+      "id": "2d636264-dfd3-4145-a87c-3c09ac6b5337",
+      "type": "events",
+      "action": "created",
+      "message": "New event \"Bible Study\" was added",
+      "icon": "📅",
+      "actor": "admin",
+      "createdAt": "2026-09-07T13:41:48.039Z"
+    },
+    {
+      "id": "9709747a-12d6-454a-a8f5-cb49460b46b6",
+      "type": "events",
+      "action": "created",
+      "message": "New event \"Prayer Meeting\" was added",
+      "icon": "📅",
+      "actor": "admin",
+      "createdAt": "2026-09-07T13:41:48.027Z"
+    },
+    {
+      "id": "4fdce028-a54d-46ca-927f-1a735a60d67f",
+      "type": "events",
+      "action": "created",
+      "message": "New event \"Worship Night\" was added",
+      "icon": "📅",
+      "actor": "admin",
+      "createdAt": "2026-09-07T13:41:48.015Z"
+    },
+    {
+      "id": "211b0ff0-5315-48bc-8451-fb42c69ec3cf",
+      "type": "events",
+      "action": "created",
+      "message": "New event \"Sunday Service\" was added",
+      "icon": "📅",
+      "actor": "admin",
+      "createdAt": "2026-09-07T13:41:48.002Z"
+    },
+    {
+      "id": "220e23c8-ebb5-44f4-be8e-48ee923aa837",
+      "type": "events",
+      "action": "created",
+      "message": "New event \"Church Anniversary Celebration\" was added",
+      "icon": "📅",
+      "actor": "admin",
+      "createdAt": "2026-09-07T13:39:32.938Z"
+    },
+    {
+      "id": "7350bed9-96cb-4d22-b551-da663eb4f47d",
+      "type": "events",
+      "action": "created",
+      "message": "New event \"Next Generation Youth\" was added",
+      "icon": "📅",
+      "actor": "admin",
+      "createdAt": "2026-09-07T13:39:32.927Z"
+    },
+    {
+      "id": "78a16342-daf7-4945-ac14-68c6266a5056",
+      "type": "events",
+      "action": "created",
+      "message": "New event \"Bible Study\" was added",
+      "icon": "📅",
+      "actor": "admin",
+      "createdAt": "2026-09-07T13:39:32.916Z"
+    },
+    {
+      "id": "0ad80f83-a88e-4d24-8b62-21321424a1fb",
+      "type": "events",
+      "action": "created",
+      "message": "New event \"Prayer Meeting\" was added",
+      "icon": "📅",
+      "actor": "admin",
+      "createdAt": "2026-09-07T13:39:32.906Z"
+    },
+    {
+      "id": "33803281-df09-4324-8ba1-37c711a76d36",
+      "type": "events",
+      "action": "created",
+      "message": "New event \"Worship Night\" was added",
+      "icon": "📅",
+      "actor": "admin",
+      "createdAt": "2026-09-07T13:39:32.892Z"
+    },
+    {
+      "id": "b6f10ef5-a7e4-41e3-8d90-db143f790202",
+      "type": "events",
+      "action": "created",
+      "message": "New event \"Sunday Service\" was added",
+      "icon": "📅",
+      "actor": "admin",
+      "createdAt": "2026-09-07T13:39:32.881Z"
+    },
+    {
+      "id": "6678821a-b22a-4dd0-9d20-49510242abb5",
+      "type": "admin",
+      "action": "login",
+      "message": "Admin signed in to the system",
+      "icon": "🔐",
+      "actor": "admin",
+      "createdAt": "2026-09-07T11:18:59.529Z"
+    },
+    {
+      "id": "41863241-a313-4682-b2a8-34d2831f0024",
+      "type": "events",
+      "action": "deleted",
+      "message": "Event \"Test Worship Night\" was deleted",
+      "icon": "📅",
+      "actor": "admin",
+      "createdAt": "2026-09-07T11:15:10.251Z"
+    },
+    {
+      "id": "6d9c3101-df7b-49bc-8ed6-5aa58c39d140",
+      "type": "admin",
+      "action": "login",
+      "message": "Admin signed in to the system",
+      "icon": "🔐",
+      "actor": "admin",
+      "createdAt": "2026-09-07T11:15:10.162Z"
+    },
+    {
+      "id": "f26e6880-962c-46df-882d-fdb567266270",
+      "type": "admin",
+      "action": "login",
+      "message": "Admin signed in to the system",
+      "icon": "🔐",
+      "actor": "admin",
+      "createdAt": "2026-09-07T11:14:46.138Z"
+    },
+    {
+      "id": "a67b506c-ac1a-434f-acba-3207bc293092",
+      "type": "events",
+      "action": "photo",
+      "message": "Photo uploaded to \"Test Worship Night\"",
+      "icon": "📅",
+      "actor": "public",
+      "createdAt": "2026-09-07T11:14:17.548Z"
+    },
+    {
+      "id": "bb0c6ced-db1e-45a8-b02d-799b0b868daf",
+      "type": "events",
+      "action": "created",
+      "message": "New event \"Test Worship Night\" was added",
+      "icon": "📅",
+      "actor": "admin",
+      "createdAt": "2026-09-07T11:13:19.668Z"
+    },
+    {
+      "id": "5277b9c6-3712-4fbe-bf42-57f46eae373b",
+      "type": "admin",
+      "action": "login",
+      "message": "Admin signed in to the system",
+      "icon": "🔐",
+      "actor": "admin",
+      "createdAt": "2026-09-07T11:13:19.596Z"
+    },
+    {
+      "id": "53431daf-3301-459a-902c-87bbdefc6bee",
+      "type": "admin",
+      "action": "login",
+      "message": "Admin signed in to the system",
+      "icon": "🔐",
+      "actor": "admin",
+      "createdAt": "2026-09-01T13:06:39.483Z"
+    }
+  ]
+}

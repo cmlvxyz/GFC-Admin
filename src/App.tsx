@@ -1,12 +1,11 @@
 import React, { useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import { Bell, Menu, ArrowLeft, LayoutDashboard, Calendar as CalendarIcon, Video, Megaphone, Heart, Users, MessageSquare, Settings, Shield, Trash2, X, QrCode } from 'lucide-react';
 import type { Activity, Collection, RecordMap } from './types';
-import { API_URL, clearActivities, clearToken, createRecord, deleteRecord as apiDeleteRecord, getActivities, getActivityStream, isLoggedIn, listCollection, resetRemoteData, updateRecord as apiUpdateRecord } from './api';
+import { API_URL, clearActivities, createRecord, deleteRecord as apiDeleteRecord, getActivities, getActivityStream, listCollection, resetRemoteData, updateRecord as apiUpdateRecord } from './api';
 import { Sidebar } from './components/Sidebar';
 import { ToastHost, ToastItem, ToastType } from './components/ToastHost';
 import { ConfirmDialog, ConfirmState } from './components/ConfirmDialog';
 import { ManagePage } from './components/ManagePage';
-import { LoginPage } from './pages/LoginPage';
 import { DashboardPage } from './pages/DashboardPage';
 import { QRCodePage } from './pages/QRCodePage';
 import { collections, todayDisplay } from './config';
@@ -25,7 +24,6 @@ const pageTitles: Record<string, { title: string; icon: string }> = {
 };
 
 export default function App() {
-  const [authed, setAuthed] = useState<boolean>(() => isLoggedIn());
   const [loading, setLoading] = useState(true);
   const [page, setPage] = useState('dashboard');
   const [isDark, setIsDark] = useState(true);
@@ -62,8 +60,8 @@ export default function App() {
   }, []);
 
   // ============ LOAD DATA ============
+  const [dataLoadedOnce, setDataLoadedOnce] = useState(false);
   const loadAll = useCallback(async () => {
-    if (!isLoggedIn()) { setAuthed(false); setLoading(false); return; }
     setLoading(true);
     try {
       const [events, sermons, prayers, attendees, members, announcements, testimonials] = await Promise.all([
@@ -79,9 +77,9 @@ export default function App() {
         announcements: announcements.announcements,
         testimonials: testimonials.testimonials
       });
-      setAuthed(true);
+      setDataLoadedOnce(true);
     } catch (error) {
-      setAuthed(false);
+      console.error(error);
     } finally {
       setLoading(false);
     }
@@ -89,10 +87,14 @@ export default function App() {
 
   useEffect(() => {
     void loadAll();
-    const onLogoutEvent = () => { clearToken(); setAuthed(false); };
-    window.addEventListener('gfc-admin-logout', onLogoutEvent);
-    return () => window.removeEventListener('gfc-admin-logout', onLogoutEvent);
   }, [loadAll]);
+
+  // Auto-retry kapag hindi pa gumagana ang backend (e.g. kaka-start pa lang ng server)
+  useEffect(() => {
+    if (dataLoadedOnce) return;
+    const t = setInterval(() => { void loadAll(); }, 15000);
+    return () => clearInterval(t);
+  }, [dataLoadedOnce, loadAll]);
 
   // ============ ACTIVITIES (SSE + polling) ============
   const setActivitiesMerged = useCallback((incoming: Activity[]) => {
@@ -107,17 +109,20 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    if (!authed) return;
+    let disposed = false;
+    let closeStream: (() => void) | undefined;
     const refresh = () => {
       getActivities()
-        .then(res => { setActivitiesMerged(res.activities); setActivitiesLoading(false); })
-        .catch(() => setActivitiesLoading(false));
+        .then(res => { if (!disposed) { setActivitiesMerged(res.activities); setActivitiesLoading(false); } })
+        .catch(() => { if (!disposed) setActivitiesLoading(false); });
     };
     refresh();
-    const closeStream = getActivityStream(activity => setActivities(prev => prev.some(a => a.id === activity.id) ? prev : [activity, ...prev].slice(0, 300)));
+    void getActivityStream(activity => {
+      if (!disposed) setActivities(prev => prev.some(a => a.id === activity.id) ? prev : [activity, ...prev].slice(0, 300));
+    }).then(close => { if (disposed) close(); else closeStream = close; });
     const poll = setInterval(refresh, 10000);
-    return () => { closeStream(); clearInterval(poll); };
-  }, [authed, setActivitiesMerged]);
+    return () => { disposed = true; closeStream?.(); clearInterval(poll); };
+  }, [setActivitiesMerged]);
 
   // ============ CRUD ============
   const handleCreate = async (collection: Collection, record: unknown) => {
@@ -186,15 +191,6 @@ export default function App() {
     });
   };
 
-  const handleLogout = () => {
-    setConfirm({
-      show: true,
-      title: 'Logout?',
-      message: 'Are you sure you want to logout of GFC-ADMIN?',
-      onConfirm: () => { clearToken(); setAuthed(false); setPage('dashboard'); showToast('👋 Logged out successfully', 'info'); }
-    });
-  };
-
   // ============ RECORD BUILDERS ============
   const buildRecord = (key: string) => (values: Record<string, string>): any => {
     const idPrefix = key === 'events' ? 'event' : key === 'sermons' ? 'sermon' : key === 'announcements' ? 'ann' : key === 'prayers' ? 'prayer' : key === 'attendees' ? 'att' : key === 'testimonials' ? 'test' : 'mem';
@@ -249,7 +245,7 @@ export default function App() {
     }
 
     if (page === 'qrcodes') {
-      return <QRCodePage events={data.events} />;
+      return <QRCodePage events={data.events} onReload={() => void loadAll()} />;
     }
 
     if (page === 'settings') {
@@ -264,10 +260,6 @@ export default function App() {
               <div className="p-4 rounded-2xl bg-gray-50 dark:bg-black/30 border border-gray-200 dark:border-white/5">
                 <div className="text-xs font-bold text-gray-500 dark:text-[#A1A1A1] uppercase tracking-wider mb-1">Backend API URL</div>
                 <div className="font-mono font-bold text-black dark:text-white">{API_URL}</div>
-              </div>
-              <div className="p-4 rounded-2xl bg-gray-50 dark:bg-black/30 border border-gray-200 dark:border-white/5">
-                <div className="text-xs font-bold text-gray-500 dark:text-[#A1A1A1] uppercase tracking-wider mb-1">Admin Credentials</div>
-                <div><span className="font-mono font-bold text-indigo-500 dark:text-indigo-400">admin</span> <span className="text-gray-400 mx-1">|</span> <span className="font-mono font-bold text-indigo-500 dark:text-indigo-400">admin123</span></div>
               </div>
             </div>
             <div className="mt-4 p-4 rounded-2xl bg-indigo-50 dark:bg-indigo-950/30 border border-indigo-200 dark:border-indigo-800/30">
@@ -379,15 +371,6 @@ export default function App() {
     { id: 'settings', icon: <Settings className="w-5 h-5" />, label: 'Settings', badge: null }
   ], [data]);
 
-  // ============ LOGIN ============
-  if (!authed) {
-    return (
-      <div className={isDark ? 'dark' : ''}>
-        <LoginPage onSuccess={() => { void loadAll(); }} apiUrl={API_URL} />
-      </div>
-    );
-  }
-
   // ============ MAIN LAYOUT ============
   return (
     <div className={isDark ? 'dark' : ''}>
@@ -401,7 +384,6 @@ export default function App() {
           onNavigate={setPage}
           isDark={isDark}
           onToggleTheme={() => setIsDark(!isDark)}
-          onLogout={handleLogout}
           mobileOpen={mobileOpen}
           onCloseMobile={() => setMobileOpen(false)}
         />
