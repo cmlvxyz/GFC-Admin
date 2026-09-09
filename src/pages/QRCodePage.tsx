@@ -2,7 +2,17 @@
 
 import React, { useEffect, useState, useRef } from 'react';
 import { ChurchEvent, DateEntry, AllPhotoAlbum } from '../types';
-import { QrCode, AlertCircle, Upload, Image, X, CheckCircle, Loader2, RefreshCw, CalendarPlus } from 'lucide-react';
+import {
+  QrCode,
+  AlertCircle,
+  Upload,
+  Image,
+  X,
+  CheckCircle,
+  Loader2,
+  RefreshCw,
+  CalendarPlus
+} from 'lucide-react';
 import QRCodeStyling from 'qr-code-styling';
 import { updateRecord as apiUpdateRecord } from '../api';
 
@@ -14,138 +24,313 @@ interface QRCodePageProps {
   onAllPhotosUpdated?: () => void;
 }
 
-export const QRCodePage: React.FC<QRCodePageProps> = ({ 
-  events, 
-  onUpdateEvent, 
+export const QRCodePage: React.FC<QRCodePageProps> = ({
+  events,
+  onUpdateEvent,
   onReload,
   allPhotos = [],
-  onAllPhotosUpdated 
+  onAllPhotosUpdated
 }) => {
   const GFC_BASE = (() => {
     const fromEnv = (import.meta.env.VITE_GFC_URL as string | undefined)?.trim();
+
     if (fromEnv) return fromEnv;
-    const host = typeof window !== 'undefined' ? window.location.hostname : '';
-    const isLocalhost = !host || host === 'localhost' || host === '127.0.0.1';
-    const isLanIp = /^\d{1,3}(\.\d{1,3}){3}$/.test(host);
+
+    const host =
+      typeof window !== 'undefined'
+        ? window.location.hostname
+        : '';
+
+    const isLocalhost =
+      !host ||
+      host === 'localhost' ||
+      host === '127.0.0.1';
+
+    const isLanIp =
+      /^\d{1,3}(\.\d{1,3}){3}$/.test(host);
+
     if (isLocalhost || isLanIp) {
-      return host ? `http://${host}:4000` : 'http://localhost:4000';
+      return host
+        ? `http://${host}:4000`
+        : 'http://localhost:4000';
     }
-    return typeof window !== 'undefined' ? window.location.origin : 'https://gfc-admin-rosy.vercel.app';
+
+    return typeof window !== 'undefined'
+      ? window.location.origin
+      : 'https://gfc-admin-rosy.vercel.app';
   })();
 
-  const getUploadUrl = (eventId: string, dateIndex: number) =>
-    `${GFC_BASE}/upload?event=${encodeURIComponent(eventId)}&date=${dateIndex}`;
+  /*
+   * IMPORTANT:
+   * The QR URL must use the ACTUAL DATE VALUE, not the array index.
+   *
+   * Example:
+   * selectedDateIndex = 11
+   * selected entry = { date: "August 30", photos: [...] }
+   *
+   * QR URL:
+   * /upload?event=sunday&date=August%2030
+   *
+   * NOT:
+   * /upload?event=sunday&date=11
+   */
+  const getUploadUrl = (eventId: string, dateValue: string) =>
+    `${GFC_BASE}/upload?event=${encodeURIComponent(eventId)}&date=${encodeURIComponent(dateValue)}`;
 
   const [selectedEventId, setSelectedEventId] = useState<string>('');
   const [uploadedPhotos, setUploadedPhotos] = useState<string[]>([]);
   const [uploadedPhotoPreviews, setUploadedPhotoPreviews] = useState<string[]>([]);
   const [isUploading, setIsUploading] = useState(false);
-  const [uploadStatus, setUploadStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
+  const [uploadStatus, setUploadStatus] = useState<
+    'idle' | 'loading' | 'success' | 'error'
+  >('idle');
   const [errorMessage, setErrorMessage] = useState('');
   const [selectedDateIndex, setSelectedDateIndex] = useState<number>(0);
   const [newDateInput, setNewDateInput] = useState('');
   const [addDateError, setAddDateError] = useState('');
   const [addingDate, setAddingDate] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
+
   const photoFileInputRef = useRef<HTMLInputElement>(null);
-  const [qrContainerEl, setQrContainerEl] = useState<HTMLDivElement | null>(null);
+  const [qrContainerEl, setQrContainerEl] =
+    useState<HTMLDivElement | null>(null);
   const qrStylingRef = useRef<QRCodeStyling | null>(null);
+
+  const getSelectedEvent = (): ChurchEvent | undefined =>
+    events.find(e => e.id === selectedEventId);
+
+  const getSelectedDateEntry = (): DateEntry | null => {
+    const event = getSelectedEvent();
+
+    if (
+      !event ||
+      !Array.isArray(event.dateEntries) ||
+      selectedDateIndex < 0 ||
+      selectedDateIndex >= event.dateEntries.length
+    ) {
+      return null;
+    }
+
+    return event.dateEntries[selectedDateIndex];
+  };
+
+  /*
+   * Get the actual selected date value.
+   *
+   * selectedDateIndex is ONLY used internally to locate the selected
+   * DateEntry. The QR code itself receives entry.date.
+   */
+  const getSelectedDateValue = (): string => {
+    const entry = getSelectedDateEntry();
+
+    return entry?.date
+      ? String(entry.date).trim()
+      : '';
+  };
+
+  const getSelectedUploadUrl = (): string => {
+    const dateValue = getSelectedDateValue();
+
+    return getUploadUrl(
+      selectedEventId || 'none',
+      dateValue
+    );
+  };
 
   const isPhotoInAllPhotos = (photoData: string): boolean => {
     for (const album of allPhotos) {
-      if (album.photos && album.photos.some((p: string) => p === photoData)) {
+      if (
+        album.photos &&
+        album.photos.some((p: string) => p === photoData)
+      ) {
         return true;
       }
     }
+
     return false;
   };
 
-  const getPhotoAllPhotosLocation = (photoData: string): string | null => {
+  const getPhotoAllPhotosLocation = (
+    photoData: string
+  ): string | null => {
     for (const album of allPhotos) {
-      if (album.photos && album.photos.some((p: string) => p === photoData)) {
-        const monthName = new Date(0, album.month).toLocaleString('default', { month: 'long' });
+      if (
+        album.photos &&
+        album.photos.some((p: string) => p === photoData)
+      ) {
+        const monthName = new Date(
+          0,
+          album.month
+        ).toLocaleString('default', {
+          month: 'long'
+        });
+
         return `${monthName} ${album.year}`;
       }
     }
+
     return null;
   };
 
+  /*
+   * Auto-select a sensible event on load.
+   */
   useEffect(() => {
     if (!selectedEventId && events.length > 0) {
-      const firstWithAlbum = events.find(e => Array.isArray(e.dateEntries) && e.dateEntries.length > 0);
-      setSelectedEventId((firstWithAlbum || events[0]).id);
+      const firstWithAlbum = events.find(
+        e =>
+          Array.isArray(e.dateEntries) &&
+          e.dateEntries.length > 0
+      );
+
+      const eventToSelect =
+        firstWithAlbum || events[0];
+
+      setSelectedEventId(eventToSelect.id);
       setSelectedDateIndex(0);
     }
   }, [events, selectedEventId]);
 
+  /*
+   * Create the QR code.
+   *
+   * IMPORTANT:
+   * Use the actual selected date value instead of selectedDateIndex.
+   */
   useEffect(() => {
     if (!qrContainerEl) return;
+
     qrContainerEl.innerHTML = '';
+
     const qr = new QRCodeStyling({
       width: 260,
       height: 260,
       margin: 0,
-      data: getUploadUrl(selectedEventId || 'none', selectedDateIndex),
+      data: getSelectedUploadUrl(),
       image: '/image-circle.png',
-      imageOptions: { imageSize: 0.4, margin: 8, crossOrigin: 'anonymous' },
-      qrOptions: { errorCorrectionLevel: 'H', typeNumber: 0 },
-      dotsOptions: { color: '#1a1a2e', type: 'rounded' },
-      cornersSquareOptions: { color: '#1a1a2e', type: 'extra-rounded' },
-      backgroundOptions: { color: '#ffffff', round: 8 },
+      imageOptions: {
+        imageSize: 0.4,
+        margin: 8,
+        crossOrigin: 'anonymous'
+      },
+      qrOptions: {
+        errorCorrectionLevel: 'H',
+        typeNumber: 0
+      },
+      dotsOptions: {
+        color: '#1a1a2e',
+        type: 'rounded'
+      },
+      cornersSquareOptions: {
+        color: '#1a1a2e',
+        type: 'extra-rounded'
+      },
+      backgroundOptions: {
+        color: '#ffffff',
+        round: 8
+      }
     });
+
     qr.append(qrContainerEl);
     qrStylingRef.current = qr;
+
     return () => {
       qrStylingRef.current = null;
     };
-  }, [qrContainerEl]);
+  }, [
+    qrContainerEl,
+    selectedEventId,
+    selectedDateIndex,
+    events
+  ]);
 
+  /*
+   * Update QR whenever the selected event/date changes.
+   *
+   * The date value comes from the selected DateEntry,
+   * NOT from selectedDateIndex.
+   */
   useEffect(() => {
     if (!qrStylingRef.current || !selectedEventId) return;
-    qrStylingRef.current.update({ data: getUploadUrl(selectedEventId, selectedDateIndex) });
-  }, [selectedEventId, selectedDateIndex, qrContainerEl]);
 
-  const getSelectedEvent = () => events.find(e => e.id === selectedEventId);
-  const getSelectedDateEntry = (): DateEntry | null => {
-    const event = getSelectedEvent();
-    if (!event || !event.dateEntries || selectedDateIndex < 0 || selectedDateIndex >= event.dateEntries.length) {
-      return null;
-    }
-    return event.dateEntries[selectedDateIndex];
-  };
+    qrStylingRef.current.update({
+      data: getSelectedUploadUrl()
+    });
+  }, [
+    selectedEventId,
+    selectedDateIndex,
+    events,
+    qrContainerEl
+  ]);
 
-  // OPTIMIZED: Faster image resize with lower quality and smaller size
+  /*
+   * Resize image for faster upload.
+   */
   const resizeImage = (file: File): Promise<string> =>
     new Promise((resolve, reject) => {
       const img = new window.Image();
       const reader = new FileReader();
+
       reader.onload = () => {
         img.onload = () => {
-          // Reduced max size from 1600 to 1200 for faster upload
           const MAX = 1200;
-          const scale = Math.min(1, MAX / Math.max(img.width, img.height));
+
+          const scale = Math.min(
+            1,
+            MAX / Math.max(img.width, img.height)
+          );
+
           const w = Math.round(img.width * scale);
           const h = Math.round(img.height * scale);
+
           const canvas = document.createElement('canvas');
+
           canvas.width = w;
           canvas.height = h;
+
           const ctx = canvas.getContext('2d');
-          if (!ctx) return reject(new Error('Canvas not supported'));
+
+          if (!ctx) {
+            return reject(
+              new Error('Canvas not supported')
+            );
+          }
+
           ctx.fillStyle = '#ffffff';
           ctx.fillRect(0, 0, w, h);
-          ctx.drawImage(img, 0, 0, w, h);
-          // Reduced quality from 0.85 to 0.75 for smaller file size
-          resolve(canvas.toDataURL('image/jpeg', 0.75));
+
+          ctx.drawImage(
+            img,
+            0,
+            0,
+            w,
+            h
+          );
+
+          resolve(
+            canvas.toDataURL(
+              'image/jpeg',
+              0.75
+            )
+          );
         };
+
         img.onerror = reject;
         img.src = reader.result as string;
       };
+
       reader.onerror = reject;
       reader.readAsDataURL(file);
     });
 
-  const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  /*
+   * Handle photo selection.
+   */
+  const handlePhotoUpload = async (
+    e: React.ChangeEvent<HTMLInputElement>
+  ) => {
     const files = e.target.files;
+
     if (!files) return;
 
     setUploadStatus('loading');
@@ -153,24 +338,45 @@ export const QRCodePage: React.FC<QRCodePageProps> = ({
 
     const urls: string[] = [];
     const totalFiles = files.length;
+
     let processed = 0;
 
     for (const file of Array.from(files)) {
-      if (file && file.type && file.type.indexOf('image') === 0) {
+      if (
+        file &&
+        file.type &&
+        file.type.indexOf('image') === 0
+      ) {
         try {
-          const imageData = await resizeImage(file);
+          const imageData =
+            await resizeImage(file);
+
           urls.push(imageData);
+
           processed++;
-          setUploadProgress(Math.round((processed / totalFiles) * 100));
+
+          setUploadProgress(
+            Math.round(
+              (processed / totalFiles) * 100
+            )
+          );
         } catch {
-          /* skip unreadable image */
+          // Skip unreadable image
         }
       }
     }
 
     if (urls.length > 0) {
-      setUploadedPhotoPreviews(prev => [...prev, ...urls]);
-      setUploadedPhotos(prev => [...prev, ...urls]);
+      setUploadedPhotoPreviews(prev => [
+        ...prev,
+        ...urls
+      ]);
+
+      setUploadedPhotos(prev => [
+        ...prev,
+        ...urls
+      ]);
+
       setUploadStatus('idle');
       setErrorMessage('');
     } else {
@@ -182,20 +388,33 @@ export const QRCodePage: React.FC<QRCodePageProps> = ({
     }
   };
 
-  const handleRemoveUploadedPhoto = (index: number) => {
-    setUploadedPhotoPreviews(prev => prev.filter((_, i) => i !== index));
-    setUploadedPhotos(prev => prev.filter((_, i) => i !== index));
+  const handleRemoveUploadedPhoto = (
+    index: number
+  ) => {
+    setUploadedPhotoPreviews(prev =>
+      prev.filter((_, i) => i !== index)
+    );
+
+    setUploadedPhotos(prev =>
+      prev.filter((_, i) => i !== index)
+    );
   };
 
-  // OPTIMIZED: Parallel uploads using Promise.all
+  /*
+   * Save photos to the selected event and All Photos.
+   */
   const handleSavePhotosToEvent = async () => {
     if (!selectedEventId) {
-      setErrorMessage('Please select an event first.');
+      setErrorMessage(
+        'Please select an event first.'
+      );
       return;
     }
 
     if (uploadedPhotos.length === 0) {
-      setErrorMessage('Please select photos to upload.');
+      setErrorMessage(
+        'Please select photos to upload.'
+      );
       return;
     }
 
@@ -206,20 +425,47 @@ export const QRCodePage: React.FC<QRCodePageProps> = ({
 
     try {
       const event = getSelectedEvent();
-      if (!event || !event.dateEntries) {
-        setErrorMessage('Event or date entry not found.');
+
+      if (
+        !event ||
+        !Array.isArray(event.dateEntries)
+      ) {
+        setErrorMessage(
+          'Event or date entry not found.'
+        );
+
         setIsUploading(false);
         return;
       }
 
-      const targetIndex = selectedDateIndex >= 0 && selectedDateIndex < event.dateEntries.length ? selectedDateIndex : 0;
-      const currentPhotos = event.dateEntries[targetIndex]?.photos || [];
-      
-      const existingPhotoSet = new Set(currentPhotos);
-      const newPhotos = uploadedPhotos.filter((p: string) => !existingPhotoSet.has(p));
-      const updatedPhotos = [...currentPhotos, ...newPhotos];
-      
-      const updatedEntries = [...event.dateEntries];
+      const targetIndex =
+        selectedDateIndex >= 0 &&
+        selectedDateIndex <
+          event.dateEntries.length
+          ? selectedDateIndex
+          : 0;
+
+      const currentPhotos =
+        event.dateEntries[targetIndex]?.photos || [];
+
+      const existingPhotoSet =
+        new Set(currentPhotos);
+
+      const newPhotos =
+        uploadedPhotos.filter(
+          (p: string) =>
+            !existingPhotoSet.has(p)
+        );
+
+      const updatedPhotos = [
+        ...currentPhotos,
+        ...newPhotos
+      ];
+
+      const updatedEntries = [
+        ...event.dateEntries
+      ];
+
       updatedEntries[targetIndex] = {
         ...updatedEntries[targetIndex],
         photos: updatedPhotos
@@ -230,39 +476,85 @@ export const QRCodePage: React.FC<QRCodePageProps> = ({
         dateEntries: updatedEntries
       };
 
-      // Save to events
-      await apiUpdateRecord('events', event.id, { dateEntries: updatedEntries });
-      if (onUpdateEvent) onUpdateEvent(updatedEvent);
+      /*
+       * Save to Events first.
+       */
+      await apiUpdateRecord(
+        'events',
+        event.id,
+        {
+          dateEntries: updatedEntries
+        }
+      );
 
-      // OPTIMIZED: Parallel upload to All Photos
+      if (onUpdateEvent) {
+        onUpdateEvent(updatedEvent);
+      }
+
+      /*
+       * Upload to All Photos.
+       */
       const now = new Date();
-      const currentMonth = now.getMonth();
-      const currentYear = now.getFullYear();
-      const dateLabel = event.dateEntries[targetIndex]?.date || `${currentMonth + 1}/${currentYear}`;
 
-      // Upload all photos to All Photos in parallel
-      const uploadPromises = newPhotos.map((photoData, index) => {
-        return fetch(`${GFC_BASE}/api/uploads/all`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            image: photoData,
-            month: currentMonth,
-            year: currentYear,
-            date: dateLabel
-          })
-        }).then(response => {
-          setUploadProgress(Math.round(((index + 1) / newPhotos.length) * 100));
-          if (!response.ok) {
-            console.warn('Failed to save photo to All Photos:', response.status);
+      const currentMonth =
+        now.getMonth();
+
+      const currentYear =
+        now.getFullYear();
+
+      const dateLabel =
+        event.dateEntries[targetIndex]?.date ||
+        `${currentMonth + 1}/${currentYear}`;
+
+      const uploadPromises =
+        newPhotos.map(
+          (photoData, index) => {
+            return fetch(
+              `${GFC_BASE}/api/uploads/all`,
+              {
+                method: 'POST',
+                headers: {
+                  'Content-Type':
+                    'application/json'
+                },
+                body: JSON.stringify({
+                  image: photoData,
+                  month: currentMonth,
+                  year: currentYear,
+                  date: dateLabel
+                })
+              }
+            )
+              .then(response => {
+                setUploadProgress(
+                  Math.round(
+                    ((index + 1) /
+                      newPhotos.length) *
+                      100
+                  )
+                );
+
+                if (!response.ok) {
+                  console.warn(
+                    'Failed to save photo to All Photos:',
+                    response.status
+                  );
+                }
+
+                return response;
+              })
+              .catch(err => {
+                console.warn(
+                  'Error saving photo to All Photos:',
+                  err
+                );
+              });
           }
-          return response;
-        }).catch(err => {
-          console.warn('Error saving photo to All Photos:', err);
-        });
-      });
+        );
 
-      await Promise.all(uploadPromises);
+      await Promise.all(
+        uploadPromises
+      );
 
       if (onAllPhotosUpdated) {
         onAllPhotosUpdated();
@@ -270,79 +562,156 @@ export const QRCodePage: React.FC<QRCodePageProps> = ({
 
       setUploadStatus('success');
       setUploadProgress(100);
+
       setUploadedPhotos([]);
       setUploadedPhotoPreviews([]);
-      
-      // Auto-hide success after 3 seconds
+
+      /*
+       * Auto-hide success after 3 seconds.
+       */
       setTimeout(() => {
         setUploadStatus('idle');
         setUploadProgress(0);
       }, 3000);
     } catch (error) {
+      console.error(
+        'Error uploading photos:',
+        error
+      );
+
       setUploadStatus('error');
-      setErrorMessage('Error uploading photos. Please try again.');
+      setErrorMessage(
+        'Error uploading photos. Please try again.'
+      );
     } finally {
       setIsUploading(false);
     }
   };
 
+  /*
+   * Add a new date album.
+   */
   const handleAddDate = async () => {
     const event = getSelectedEvent();
     const value = newDateInput.trim();
+
     if (!event) {
-      setAddDateError('Please select an event first.');
-      return;
-    }
-    if (!value) {
-      setAddDateError('Please enter a date first.');
-      return;
-    }
-    const entries = Array.isArray(event.dateEntries) ? event.dateEntries : [];
-    if (entries.some((e: DateEntry) => e.date === value)) {
-      setAddDateError(`The date "${value}" already exists in this event.`);
+      setAddDateError(
+        'Please select an event first.'
+      );
       return;
     }
 
-    const updatedEntries = [...entries, { date: value, photos: [] }];
-    const updatedEvent: ChurchEvent = { ...event, dateEntries: updatedEntries };
+    if (!value) {
+      setAddDateError(
+        'Please enter a date first.'
+      );
+      return;
+    }
+
+    const entries = Array.isArray(
+      event.dateEntries
+    )
+      ? event.dateEntries
+      : [];
+
+    if (
+      entries.some(
+        (e: DateEntry) =>
+          e.date === value
+      )
+    ) {
+      setAddDateError(
+        `The date "${value}" already exists in this event.`
+      );
+      return;
+    }
+
+    const updatedEntries = [
+      ...entries,
+      {
+        date: value,
+        photos: []
+      }
+    ];
+
+    const updatedEvent: ChurchEvent = {
+      ...event,
+      dateEntries: updatedEntries
+    };
 
     setAddingDate(true);
     setAddDateError('');
+
     try {
-      await apiUpdateRecord('events', event.id, { dateEntries: updatedEntries });
-      if (onUpdateEvent) onUpdateEvent(updatedEvent);
+      await apiUpdateRecord(
+        'events',
+        event.id,
+        {
+          dateEntries: updatedEntries
+        }
+      );
+
+      if (onUpdateEvent) {
+        onUpdateEvent(updatedEvent);
+      }
+
       setNewDateInput('');
-      setSelectedDateIndex(updatedEntries.length - 1);
+
+      setSelectedDateIndex(
+        updatedEntries.length - 1
+      );
     } catch (error) {
-      setAddDateError('Error adding date. Please try again.');
+      console.error(
+        'Error adding date:',
+        error
+      );
+
+      setAddDateError(
+        'Error adding date. Please try again.'
+      );
+
       setAddingDate(false);
       return;
     }
+
     setAddingDate(false);
   };
 
+  /*
+   * Reset selected/uploaded photos.
+   */
   const handleResetUpload = () => {
     setUploadedPhotos([]);
     setUploadedPhotoPreviews([]);
     setUploadStatus('idle');
     setErrorMessage('');
     setUploadProgress(0);
+
     if (photoFileInputRef.current) {
       photoFileInputRef.current.value = '';
     }
   };
 
+  /*
+   * No events.
+   */
   if (events.length === 0) {
     return (
       <div className="space-y-6">
         <div className="bg-white dark:bg-[#14141f]/80 backdrop-blur-sm p-6 rounded-2xl border border-gray-200 dark:border-white/5 shadow-sm">
           <h3 className="text-sm font-bold text-black dark:text-white mb-2 flex items-center gap-2">
             <QrCode className="w-5 h-5 text-indigo-500" />
-            <span>Event QR Code Generator</span>
+
+            <span>
+              Event QR Code Generator
+            </span>
           </h3>
+
           <div className="mt-3 inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-indigo-50 dark:bg-indigo-950/40 border border-indigo-200 dark:border-indigo-800/40 text-xs font-mono font-bold text-indigo-600 dark:text-indigo-400">
             Upload page: {GFC_BASE}
           </div>
+
           <div className="mt-2 text-xs text-emerald-500 dark:text-emerald-400">
             ✅ GFC QR code image + upload link
           </div>
@@ -350,6 +719,7 @@ export const QRCodePage: React.FC<QRCodePageProps> = ({
 
         <div className="flex flex-col items-center justify-center gap-3 py-20 text-center">
           <AlertCircle className="w-10 h-10 text-red-400" />
+
           {onReload && (
             <button
               onClick={onReload}
@@ -366,136 +736,222 @@ export const QRCodePage: React.FC<QRCodePageProps> = ({
 
   return (
     <div className="space-y-6">
+      {/* Header */}
       <div className="bg-white dark:bg-[#14141f]/80 backdrop-blur-sm p-6 rounded-2xl border border-gray-200 dark:border-white/5 shadow-sm">
         <h3 className="text-sm font-bold text-black dark:text-white mb-2 flex items-center gap-2">
           <QrCode className="w-5 h-5 text-indigo-500" />
-          <span>Event QR Code Generator</span>
+
+          <span>
+            Event QR Code Generator
+          </span>
         </h3>
+
         <div className="mt-3 inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-indigo-50 dark:bg-indigo-950/40 border border-indigo-200 dark:border-indigo-800/40 text-xs font-mono font-bold text-indigo-600 dark:text-indigo-400">
           Upload page: {GFC_BASE}
         </div>
       </div>
 
+      {/* Selection Section */}
       <div className="bg-white dark:bg-[#14141f]/80 backdrop-blur-sm p-6 rounded-2xl border border-gray-200 dark:border-white/5 shadow-sm">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          {/* Left: Event Selection */}
           <div className="space-y-4">
             <div>
               <label className="block text-xs font-bold text-gray-700 dark:text-[#A1A1A1] uppercase tracking-wider mb-2">
                 Select Event
               </label>
+
               <select
                 value={selectedEventId}
-                onChange={(e) => {
-                  setSelectedEventId(e.target.value);
+                onChange={e => {
+                  setSelectedEventId(
+                    e.target.value
+                  );
+
                   setSelectedDateIndex(0);
+
                   handleResetUpload();
                 }}
                 className="w-full px-4 py-2.5 rounded-xl border border-gray-200 dark:border-white/10 bg-gray-50 dark:bg-black/30 text-black dark:text-white text-sm focus:border-indigo-400 dark:focus:border-indigo-400/50 focus:outline-hidden focus:ring-2 focus:ring-indigo-400/20 transition-all"
               >
-                <option value="">-- Select an event --</option>
+                <option value="">
+                  -- Select an event --
+                </option>
+
                 {events.map(event => (
-                  <option key={event.id} value={event.id}>
+                  <option
+                    key={event.id}
+                    value={event.id}
+                  >
                     {event.title}
                   </option>
                 ))}
               </select>
             </div>
 
-            {selectedEventId && getSelectedEvent() && (() => {
-              const selectedEvent = getSelectedEvent()!;
-              const hasDates = Array.isArray(selectedEvent.dateEntries) && selectedEvent.dateEntries.length > 0;
-              return (
-                <>
-                  {hasDates && (
+            {selectedEventId &&
+              getSelectedEvent() &&
+              (() => {
+                const selectedEvent =
+                  getSelectedEvent()!;
+
+                const hasDates =
+                  Array.isArray(
+                    selectedEvent.dateEntries
+                  ) &&
+                  selectedEvent.dateEntries
+                    .length > 0;
+
+                return (
+                  <>
+                    {hasDates && (
+                      <div>
+                        <label className="block text-xs font-bold text-gray-700 dark:text-[#A1A1A1] uppercase tracking-wider mb-2">
+                          Select Date Album (for upload)
+                        </label>
+
+                        <select
+                          value={
+                            selectedDateIndex
+                          }
+                          onChange={e => {
+                            setSelectedDateIndex(
+                              parseInt(
+                                e.target.value,
+                                10
+                              )
+                            );
+
+                            handleResetUpload();
+                          }}
+                          className="w-full px-4 py-2.5 rounded-xl border border-gray-200 dark:border-white/10 bg-gray-50 dark:bg-black/30 text-black dark:text-white text-sm focus:border-indigo-400 dark:focus:border-indigo-400/50 focus:outline-hidden focus:ring-2 focus:ring-indigo-400/20 transition-all"
+                        >
+                          {selectedEvent.dateEntries?.map(
+                            (
+                              entry: DateEntry,
+                              index: number
+                            ) => (
+                              <option
+                                key={index}
+                                value={index}
+                              >
+                                {entry.date}
+                              </option>
+                            )
+                          )}
+                        </select>
+                      </div>
+                    )}
+
                     <div>
                       <label className="block text-xs font-bold text-gray-700 dark:text-[#A1A1A1] uppercase tracking-wider mb-2">
-                        Select Date Album (for upload)
+                        Add Date Album
                       </label>
-                      <select
-                        value={selectedDateIndex}
-                        onChange={(e) => {
-                          setSelectedDateIndex(parseInt(e.target.value));
-                          handleResetUpload();
-                        }}
-                        className="w-full px-4 py-2.5 rounded-xl border border-gray-200 dark:border-white/10 bg-gray-50 dark:bg-black/30 text-black dark:text-white text-sm focus:border-indigo-400 dark:focus:border-indigo-400/50 focus:outline-hidden focus:ring-2 focus:ring-indigo-400/20 transition-all"
-                      >
-                        {selectedEvent.dateEntries?.map((entry: DateEntry, index: number) => (
-                          <option key={index} value={index}>
-                            {entry.date}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                  )}
 
-                  <div>
-                    <label className="block text-xs font-bold text-gray-700 dark:text-[#A1A1A1] uppercase tracking-wider mb-2">
-                      Add Date Album
-                    </label>
-                    <div className="flex gap-2">
-                      <input
-                        type="text"
-                        value={newDateInput}
-                        onChange={(e) => {
-                          setNewDateInput(e.target.value);
-                          setAddDateError('');
-                        }}
-                        onKeyDown={(e) => { if (e.key === 'Enter') { void handleAddDate(); } }}
-                        placeholder="e.g. August 18, 2026"
-                        className="flex-1 px-4 py-2.5 rounded-xl border border-gray-200 dark:border-white/10 bg-gray-50 dark:bg-black/30 text-black dark:text-white text-sm focus:border-indigo-400 dark:focus:border-indigo-400/50 focus:outline-hidden focus:ring-2 focus:ring-indigo-400/20 transition-all"
-                      />
-                      <button
-                        onClick={() => void handleAddDate()}
-                        disabled={addingDate}
-                        className="inline-flex items-center gap-2 px-4 py-2.5 bg-indigo-500 hover:bg-indigo-600 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-xl text-xs font-bold transition-all"
-                      >
-                        {addingDate ? (
-                          <Loader2 className="w-4 h-4 animate-spin" />
-                        ) : (
-                          <CalendarPlus className="w-4 h-4" />
-                        )}
-                        Add Date
-                      </button>
+                      <div className="flex gap-2">
+                        <input
+                          type="text"
+                          value={
+                            newDateInput
+                          }
+                          onChange={e => {
+                            setNewDateInput(
+                              e.target.value
+                            );
+
+                            setAddDateError('');
+                          }}
+                          onKeyDown={e => {
+                            if (
+                              e.key ===
+                              'Enter'
+                            ) {
+                              void handleAddDate();
+                            }
+                          }}
+                          placeholder="e.g. August 18, 2026"
+                          className="flex-1 px-4 py-2.5 rounded-xl border border-gray-200 dark:border-white/10 bg-gray-50 dark:bg-black/30 text-black dark:text-white text-sm focus:border-indigo-400 dark:focus:border-indigo-400/50 focus:outline-hidden focus:ring-2 focus:ring-indigo-400/20 transition-all"
+                        />
+
+                        <button
+                          onClick={() =>
+                            void handleAddDate()
+                          }
+                          disabled={
+                            addingDate
+                          }
+                          className="inline-flex items-center gap-2 px-4 py-2.5 bg-indigo-500 hover:bg-indigo-600 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-xl text-xs font-bold transition-all"
+                        >
+                          {addingDate ? (
+                            <Loader2 className="w-4 h-4 animate-spin" />
+                          ) : (
+                            <CalendarPlus className="w-4 h-4" />
+                          )}
+
+                          Add Date
+                        </button>
+                      </div>
+
+                      {addDateError && (
+                        <p className="mt-2 text-xs text-red-500 dark:text-red-400 flex items-center gap-1">
+                          <AlertCircle className="w-3.5 h-3.5" />
+                          {addDateError}
+                        </p>
+                      )}
                     </div>
-                    {addDateError && (
-                      <p className="mt-2 text-xs text-red-500 dark:text-red-400 flex items-center gap-1">
-                        <AlertCircle className="w-3.5 h-3.5" /> {addDateError}
-                      </p>
-                    )}
+                  </>
+                );
+              })()}
+
+            {selectedEventId &&
+              getSelectedDateEntry() && (
+                <div className="p-4 bg-indigo-50 dark:bg-indigo-950/30 rounded-xl border border-indigo-200 dark:border-indigo-400/30">
+                  <div className="flex items-center gap-2 text-sm">
+                    <span className="font-bold text-indigo-600 dark:text-indigo-400">
+                      Selected:
+                    </span>
+
+                    <span className="text-black dark:text-white">
+                      {getSelectedEvent()?.title}
+                    </span>
+
+                    <span className="text-gray-400">
+                      •
+                    </span>
+
+                    <span className="text-black dark:text-white">
+                      {getSelectedDateEntry()?.date}
+                    </span>
                   </div>
-                </>
-              );
-            })()}
-
-            {selectedEventId && getSelectedDateEntry() && (
-              <div className="p-4 bg-indigo-50 dark:bg-indigo-950/30 rounded-xl border border-indigo-200 dark:border-indigo-400/30">
-                <div className="flex items-center gap-2 text-sm">
-                  <span className="font-bold text-indigo-600 dark:text-indigo-400">Selected:</span>
-                  <span className="text-black dark:text-white">{getSelectedEvent()?.title}</span>
-                  <span className="text-gray-400">•</span>
-                  <span className="text-black dark:text-white">{getSelectedDateEntry()?.date}</span>
                 </div>
-              </div>
-            )}
+              )}
           </div>
 
+          {/* Right: QR Code Display */}
           <div className="flex flex-col items-center justify-center p-4 bg-gray-50 dark:bg-black/30 rounded-xl border border-gray-200 dark:border-white/10">
-            {selectedEventId && getSelectedDateEntry() ? (
+            {selectedEventId &&
+            getSelectedDateEntry() ? (
               <>
                 <div className="flex items-center gap-2 mb-2">
                   <QrCode className="w-5 h-5 text-indigo-500" />
+
                   <span className="text-xs font-bold text-indigo-500 dark:text-indigo-400">
                     GFC QR Code
                   </span>
                 </div>
-                <div ref={(el) => setQrContainerEl(el)} className="bg-white rounded-xl shadow-md" />
+
+                <div
+                  ref={setQrContainerEl}
+                  className="bg-white rounded-xl shadow-md"
+                />
+
                 <a
-                  href={getUploadUrl(selectedEventId, selectedDateIndex)}
+                  href={getSelectedUploadUrl()}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="mt-2 text-[11px] font-mono text-indigo-500 dark:text-indigo-400 underline break-all text-center block hover:text-indigo-600 dark:hover:text-indigo-300"
                 >
-                  {getUploadUrl(selectedEventId, selectedDateIndex)}
+                  {getSelectedUploadUrl()}
                 </a>
               </>
             ) : (
@@ -507,137 +963,204 @@ export const QRCodePage: React.FC<QRCodePageProps> = ({
         </div>
       </div>
 
-      {selectedEventId && getSelectedDateEntry() && (
-        <div className="bg-white dark:bg-[#14141f]/80 backdrop-blur-sm p-6 rounded-2xl border border-gray-200 dark:border-white/5 shadow-sm">
-          <h4 className="text-sm font-bold text-black dark:text-white mb-4 flex items-center gap-2">
-            <Upload className="w-4 h-4 text-indigo-500" />
-            Upload Photos to Event
-          </h4>
+      {/* Upload Photos */}
+      {selectedEventId &&
+        getSelectedDateEntry() && (
+          <div className="bg-white dark:bg-[#14141f]/80 backdrop-blur-sm p-6 rounded-2xl border border-gray-200 dark:border-white/5 shadow-sm">
+            <h4 className="text-sm font-bold text-black dark:text-white mb-4 flex items-center gap-2">
+              <Upload className="w-4 h-4 text-indigo-500" />
+              Upload Photos to Event
+            </h4>
 
-          <div className="flex flex-wrap items-center gap-3">
-            <label className="cursor-pointer inline-flex items-center gap-2 px-4 py-2.5 bg-indigo-500 hover:bg-indigo-600 text-white rounded-xl text-xs font-bold transition-all shadow-md">
-              <Image className="w-4 h-4" />
-              Select Photos
-              <input
-                ref={photoFileInputRef}
-                type="file"
-                accept="image/*"
-                multiple
-                onChange={handlePhotoUpload}
-                className="hidden"
-              />
-            </label>
-            <button
-              onClick={handleResetUpload}
-              className="px-4 py-2.5 bg-gray-100 dark:bg-white/5 hover:bg-gray-200 dark:hover:bg-white/10 text-gray-700 dark:text-[#A1A1A1] rounded-xl text-xs font-bold transition-all border border-gray-200 dark:border-white/10"
-            >
-              Clear All
-            </button>
-          </div>
+            <div className="flex flex-wrap items-center gap-3">
+              <label className="cursor-pointer inline-flex items-center gap-2 px-4 py-2.5 bg-indigo-500 hover:bg-indigo-600 text-white rounded-xl text-xs font-bold transition-all shadow-md">
+                <Image className="w-4 h-4" />
+                Select Photos
 
-          {/* Progress Bar */}
-          {uploadStatus === 'loading' && uploadProgress > 0 && (
-            <div className="mt-4">
-              <div className="flex items-center justify-between text-xs text-gray-500 dark:text-gray-400 mb-1">
-                <span>Processing...</span>
-                <span>{uploadProgress}%</span>
-              </div>
-              <div className="w-full h-2 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
-                <div 
-                  className="h-full bg-indigo-500 transition-all duration-300 rounded-full"
-                  style={{ width: `${uploadProgress}%` }}
+                <input
+                  ref={photoFileInputRef}
+                  type="file"
+                  accept="image/*"
+                  multiple
+                  onChange={handlePhotoUpload}
+                  className="hidden"
                 />
-              </div>
-            </div>
-          )}
+              </label>
 
-          {uploadedPhotoPreviews.length > 0 && (
-            <div className="mt-4">
-              <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-3">
-                {uploadedPhotoPreviews.map((preview: string, index: number) => {
-                  const isDuplicate = isPhotoInAllPhotos(preview);
-                  const location = getPhotoAllPhotosLocation(preview);
-                  return (
-                    <div key={index} className="relative group">
-                      <div className="relative rounded-xl overflow-hidden aspect-square bg-gray-100 dark:bg-black/20 border border-gray-200 dark:border-white/10">
-                        <img
-                          src={preview}
-                          alt={`Upload ${index + 1}`}
-                          className="w-full h-full object-cover"
-                        />
-                        {isDuplicate && (
-                          <div className="absolute top-0 right-0 m-1 bg-red-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full flex items-center gap-1 shadow-lg">
-                            <span className="w-1.5 h-1.5 bg-white rounded-full animate-pulse" />
-                            In All Photos
-                          </div>
-                        )}
-                        {isDuplicate && location && (
-                          <div className="absolute bottom-0 left-0 right-0 bg-black/70 text-white text-[9px] px-1.5 py-0.5 truncate">
-                            📍 {location}
-                          </div>
-                        )}
-                        <button
-                          onClick={() => handleRemoveUploadedPhoto(index)}
-                          className="absolute top-1 right-1 p-1 bg-black/60 hover:bg-red-500 text-white rounded-full opacity-0 group-hover:opacity-100 transition-all"
-                          title="Remove photo"
-                        >
-                          <X className="w-3.5 h-3.5" />
-                        </button>
-                      </div>
-                      <div className="mt-1 text-[9px] text-gray-400 dark:text-gray-500 truncate">
-                        Photo {index + 1}
-                        {isDuplicate && (
-                          <span className="text-red-400 ml-1">(duplicate)</span>
-                        )}
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-              <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">
-                {uploadedPhotoPreviews.length} photo{uploadedPhotoPreviews.length > 1 ? 's' : ''} selected
-                {uploadedPhotoPreviews.some((preview: string) => isPhotoInAllPhotos(preview)) && (
-                  <span className="text-red-400 ml-2">
-                    ⚠️ Some photos already exist in All Photos
-                  </span>
-                )}
-              </p>
+              <button
+                onClick={handleResetUpload}
+                className="px-4 py-2.5 bg-gray-100 dark:bg-white/5 hover:bg-gray-200 dark:hover:bg-white/10 text-gray-700 dark:text-[#A1A1A1] rounded-xl text-xs font-bold transition-all border border-gray-200 dark:border-white/10"
+              >
+                Clear All
+              </button>
             </div>
-          )}
 
-          <div className="mt-4 flex flex-wrap gap-3">
-            <button
-              onClick={handleSavePhotosToEvent}
-              disabled={uploadedPhotos.length === 0 || isUploading}
-              className="inline-flex items-center gap-2 px-6 py-2.5 bg-emerald-500 hover:bg-emerald-600 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-xl text-xs font-bold transition-all shadow-md"
-            >
-              {isUploading ? (
-                <>
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                  Uploading...
-                </>
-              ) : (
-                <>
-                  <Upload className="w-4 h-4" />
-                  Save to Event & All Photos
-                </>
+            {/* Progress Bar */}
+            {uploadStatus === 'loading' &&
+              uploadProgress > 0 && (
+                <div className="mt-4">
+                  <div className="flex items-center justify-between text-xs text-gray-500 dark:text-gray-400 mb-1">
+                    <span>
+                      Processing...
+                    </span>
+
+                    <span>
+                      {uploadProgress}%
+                    </span>
+                  </div>
+
+                  <div className="w-full h-2 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
+                    <div
+                      className="h-full bg-indigo-500 transition-all duration-300 rounded-full"
+                      style={{
+                        width: `${uploadProgress}%`
+                      }}
+                    />
+                  </div>
+                </div>
               )}
-            </button>
-            {uploadStatus === 'success' && (
-              <span className="flex items-center gap-1 text-emerald-500 dark:text-emerald-400 text-sm font-bold">
-                <CheckCircle className="w-4 h-4" />
-                Photos saved!
-              </span>
+
+            {uploadedPhotoPreviews.length >
+              0 && (
+              <div className="mt-4">
+                <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-3">
+                  {uploadedPhotoPreviews.map(
+                    (
+                      preview: string,
+                      index: number
+                    ) => {
+                      const isDuplicate =
+                        isPhotoInAllPhotos(
+                          preview
+                        );
+
+                      const location =
+                        getPhotoAllPhotosLocation(
+                          preview
+                        );
+
+                      return (
+                        <div
+                          key={index}
+                          className="relative group"
+                        >
+                          <div className="relative rounded-xl overflow-hidden aspect-square bg-gray-100 dark:bg-black/20 border border-gray-200 dark:border-white/10">
+                            <img
+                              src={preview}
+                              alt={`Upload ${index + 1}`}
+                              className="w-full h-full object-cover"
+                            />
+
+                            {isDuplicate && (
+                              <div className="absolute top-0 right-0 m-1 bg-red-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full flex items-center gap-1 shadow-lg">
+                                <span className="w-1.5 h-1.5 bg-white rounded-full animate-pulse" />
+                                In All Photos
+                              </div>
+                            )}
+
+                            {isDuplicate &&
+                              location && (
+                                <div className="absolute bottom-0 left-0 right-0 bg-black/70 text-white text-[9px] px-1.5 py-0.5 truncate">
+                                  📍 {location}
+                                </div>
+                              )}
+
+                            <button
+                              onClick={() =>
+                                handleRemoveUploadedPhoto(
+                                  index
+                                )
+                              }
+                              className="absolute top-1 right-1 p-1 bg-black/60 hover:bg-red-500 text-white rounded-full opacity-0 group-hover:opacity-100 transition-all"
+                              title="Remove photo"
+                            >
+                              <X className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+
+                          <div className="mt-1 text-[9px] text-gray-400 dark:text-gray-500 truncate">
+                            Photo {index + 1}
+
+                            {isDuplicate && (
+                              <span className="text-red-400 ml-1">
+                                (duplicate)
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    }
+                  )}
+                </div>
+
+                <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">
+                  {uploadedPhotoPreviews.length}{' '}
+                  photo
+                  {uploadedPhotoPreviews.length >
+                  1
+                    ? 's'
+                    : ''}{' '}
+                  selected
+
+                  {uploadedPhotoPreviews.some(
+                    (
+                      preview: string
+                    ) =>
+                      isPhotoInAllPhotos(
+                        preview
+                      )
+                  ) && (
+                    <span className="text-red-400 ml-2">
+                      ⚠️ Some photos already
+                      exist in All Photos
+                    </span>
+                  )}
+                </p>
+              </div>
             )}
-            {errorMessage && (
-              <span className="flex items-center gap-1 text-red-500 dark:text-red-400 text-sm font-bold">
-                <AlertCircle className="w-4 h-4" />
-                {errorMessage}
-              </span>
-            )}
+
+            <div className="mt-4 flex flex-wrap gap-3">
+              <button
+                onClick={
+                  handleSavePhotosToEvent
+                }
+                disabled={
+                  uploadedPhotos.length ===
+                    0 ||
+                  isUploading
+                }
+                className="inline-flex items-center gap-2 px-6 py-2.5 bg-emerald-500 hover:bg-emerald-600 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-xl text-xs font-bold transition-all shadow-md"
+              >
+                {isUploading ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    Uploading...
+                  </>
+                ) : (
+                  <>
+                    <Upload className="w-4 h-4" />
+                    Save to Event & All Photos
+                  </>
+                )}
+              </button>
+
+              {uploadStatus ===
+                'success' && (
+                <span className="flex items-center gap-1 text-emerald-500 dark:text-emerald-400 text-sm font-bold">
+                  <CheckCircle className="w-4 h-4" />
+                  Photos saved!
+                </span>
+              )}
+
+              {errorMessage && (
+                <span className="flex items-center gap-1 text-red-500 dark:text-red-400 text-sm font-bold">
+                  <AlertCircle className="w-4 h-4" />
+                  {errorMessage}
+                </span>
+              )}
+            </div>
           </div>
-        </div>
-      )}
+        )}
     </div>
   );
 };

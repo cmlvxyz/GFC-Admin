@@ -553,56 +553,93 @@ app.post('/api/uploads/all', async (req, res, next) => {
   }
 });
 
-// DELETE PHOTO FROM EVENT
 app.delete('/api/events/photo/delete', async (req, res, next) => {
   try {
     const { eventId, dateEntryIndex, photoUrl } = req.body;
     
+    // Validate required fields
     if (!eventId || dateEntryIndex === undefined || !photoUrl) {
-      return res.status(400).json({ message: 'Event ID, date entry index, and photo URL are required.' });
+      return res.status(400).json({
+        message: 'Event ID, date entry index, and photo URL are required.'
+      });
     }
 
     const events = await dbGetCollection('events');
-    const eventIndex = events.findIndex(e => String(e.id) === String(eventId));
+    const eventIndex = events.findIndex(
+      e => String(e.id) === String(eventId)
+    );
     
     if (eventIndex === -1) {
-      return res.status(404).json({ message: 'Event not found.' });
+      return res.status(404).json({
+        message: 'Event not found.'
+      });
     }
 
     const event = events[eventIndex];
-    const entries = Array.isArray(event.dateEntries) ? event.dateEntries : [];
+    const entries = Array.isArray(event.dateEntries)
+      ? event.dateEntries
+      : [];
     
-    if (dateEntryIndex < 0 || dateEntryIndex >= entries.length) {
-      return res.status(404).json({ message: 'Date entry not found.' });
+    if (
+      dateEntryIndex < 0 ||
+      dateEntryIndex >= entries.length
+    ) {
+      return res.status(404).json({
+        message: 'Date entry not found.'
+      });
     }
 
     const entry = entries[dateEntryIndex];
-    const photoIndex = entry.photos ? entry.photos.findIndex(p => p === photoUrl) : -1;
+
+    // Find photo by exact raw URL match
+    const photoIndex = entry.photos
+      ? entry.photos.findIndex(
+          p => p === photoUrl
+        )
+      : -1;
     
     if (photoIndex === -1) {
-      return res.status(404).json({ message: 'Photo not found in this date entry.' });
+      return res.status(404).json({
+        message: 'Photo not found in this date entry.',
+        requestedUrl: photoUrl,
+        availablePhotos: entry.photos || []
+      });
     }
 
-    // Remove the photo
+    // Remove photo from array
     entry.photos.splice(photoIndex, 1);
-    
-    // If date entry has no photos, remove it
-    if (entry.photos.length === 0) {
-      entries.splice(dateEntryIndex, 1);
-    }
 
+    // Save back to database
     await dbSetCollection('events', events);
-    await logActivity({ 
-      collection: 'events', 
-      action: 'delete', 
-      record: { eventId, dateEntryIndex, photoIndex },
+
+    // Log the activity
+    await logActivity({
+      collection: 'events',
+      action: 'delete',
+      record: {
+        eventId,
+        dateEntryIndex,
+        photoIndex,
+        photoUrl
+      },
       actor: 'admin',
-      message: `Photo deleted from event "${event.title}"`
+      message: `Photo "${photoUrl}" deleted from event "${event.title}"`
     });
 
-    res.status(200).json({ success: true, message: 'Photo deleted successfully.' });
+    res.status(200).json({
+      success: true,
+      message: 'Photo deleted successfully.',
+      eventId,
+      dateEntryIndex,
+      photoUrl
+    });
+
   } catch (error) {
-    console.error('Delete event photo error:', error);
+    console.error(
+      'Delete event photo error:',
+      error
+    );
+
     next(error);
   }
 });
