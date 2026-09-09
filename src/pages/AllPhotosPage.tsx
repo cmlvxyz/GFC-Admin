@@ -34,8 +34,12 @@ const GFC_BASE = (() => {
   return typeof window !== 'undefined' ? window.location.origin : 'https://gfc-admin-rosy.vercel.app';
 })();
 
+const CURRENT_YEAR = new Date().getFullYear();
+
 const parseEntryDate = (value: string): { month: number; year: number } | null => {
-  const d = new Date(value);
+  if (!value) return null;
+  const hasYear = /\d{4}/.test(value);
+  const d = new Date(hasYear ? value : `${value}, ${CURRENT_YEAR}`);
   if (Number.isNaN(d.getTime())) return null;
   return { month: d.getMonth(), year: d.getFullYear() };
 };
@@ -48,9 +52,10 @@ export const AllPhotosPage: React.FC<AllPhotosPageProps> = ({ events }) => {
     for (const ev of events) {
       for (const entry of ev.dateEntries || []) {
         const parsed = parseEntryDate(entry.date);
-        if (!parsed) continue;
+        const month = parsed ? parsed.month : -1;
+        const year = parsed ? parsed.year : -1;
         for (const url of entry.photos || []) {
-          list.push({ url, month: parsed.month, year: parsed.year, eventTitle: ev.title, date: entry.date });
+          list.push({ url, month, year, eventTitle: ev.title, date: entry.date });
         }
       }
     }
@@ -82,28 +87,29 @@ export const AllPhotosPage: React.FC<AllPhotosPageProps> = ({ events }) => {
 
   const grouped = useMemo(() => {
     const filtered = selectedMonth === '' ? allPhotos : allPhotos.filter(p => p.month === selectedMonth);
-    const order: { key: string; label: string }[] = [];
+    const order: { key: string; label: string; year: number; month: number }[] = [];
     const byKey = new Map<string, PhotoItem[]>();
     for (const p of filtered) {
       const key = `${p.year}-${p.month}`;
       if (!byKey.has(key)) {
         byKey.set(key, []);
-        order.push({ key, label: `${MONTH_NAMES[p.month]} ${p.year}` });
+        order.push({
+          key,
+          label: p.year === -1 ? '📁 Other / Not Categorized' : `${MONTH_NAMES[p.month]} ${p.year}`,
+          year: p.year,
+          month: p.month
+        });
       }
       byKey.get(key)!.push(p);
     }
-    order.sort((a, b) => {
-      const [ya, ma] = a.key.split('-').map(Number);
-      const [yb, mb] = b.key.split('-').map(Number);
-      return yb - ya || mb - ma;
-    });
+    order.sort((a, b) => b.year - a.year || b.month - a.month);
     return order.map(o => ({ label: o.label, photos: byKey.get(o.key)! }));
   }, [allPhotos, selectedMonth]);
 
   const monthCountsForYear = (year: number): number[] => {
     const counts = new Array(12).fill(0);
     for (const p of allPhotos) {
-      if (p.year === year) counts[p.month] += 1;
+      if (p.year === year && p.year !== -1) counts[p.month] += 1;
     }
     return counts;
   };
