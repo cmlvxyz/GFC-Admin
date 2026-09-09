@@ -20,6 +20,7 @@ interface PhotoItem {
   date: string;
   albumIndex?: number;
   photoIndex?: number;
+  isCover?: boolean;
 }
 
 const MONTH_NAMES = [
@@ -167,11 +168,6 @@ export const AllPhotosPage: React.FC<AllPhotosPageProps> = ({
   // Get total count of photos
   const totalPhotos = allPhotosList.length;
 
-  // Get cover photo for a group (first photo)
-  const getCoverPhoto = (photos: PhotoItem[]): PhotoItem | null => {
-    return photos.length > 0 ? photos[0] : null;
-  };
-
   // Toggle expansion of a month group
   const toggleExpand = (key: string) => {
     setExpandedMonth(expandedMonth === key ? null : key);
@@ -179,7 +175,7 @@ export const AllPhotosPage: React.FC<AllPhotosPageProps> = ({
 
   // Delete a photo from All Photos
   const deletePhoto = async (photo: PhotoItem) => {
-    if (!photo.albumIndex !== undefined || photo.photoIndex !== undefined) {
+    if (photo.albumIndex !== undefined && photo.photoIndex !== undefined) {
       if (!confirm('Are you sure you want to delete this photo permanently?')) {
         return;
       }
@@ -352,7 +348,7 @@ export const AllPhotosPage: React.FC<AllPhotosPageProps> = ({
             </div>
           </div>
 
-          {/* Gallery - Month Cards */}
+          {/* Gallery - Month Cards with Small Thumbnails */}
           <div className="space-y-4">
             {grouped.length === 0 ? (
               <div className="bg-white dark:bg-[#14141f]/80 backdrop-blur-sm p-10 rounded-2xl border border-gray-200 dark:border-white/5 shadow-sm text-center">
@@ -366,17 +362,18 @@ export const AllPhotosPage: React.FC<AllPhotosPageProps> = ({
             ) : (
               grouped.map(group => {
                 const isExpanded = expandedMonth === group.key;
-                const coverPhoto = getCoverPhoto(group.photos);
                 const photoCount = group.photos.length;
+                // Get all photos for the grid (all photos including the first one)
+                const allPhotosInGroup = group.photos;
 
                 return (
                   <div 
                     key={group.key} 
                     className="bg-white dark:bg-[#14141f]/80 backdrop-blur-sm rounded-2xl border border-gray-200 dark:border-white/5 shadow-sm overflow-hidden transition-all"
                   >
-                    {/* Month Header - Click to expand/collapse */}
+                    {/* Month Header */}
                     <div 
-                      className="flex items-center justify-between p-4 cursor-pointer hover:bg-gray-50 dark:hover:bg-white/5 transition-all"
+                      className="flex items-center justify-between p-3 cursor-pointer hover:bg-gray-50 dark:hover:bg-white/5 transition-all"
                       onClick={() => toggleExpand(group.key)}
                     >
                       <div className="flex items-center gap-3">
@@ -394,36 +391,15 @@ export const AllPhotosPage: React.FC<AllPhotosPageProps> = ({
                       </div>
                     </div>
 
-                    {/* Cover Photo (always visible) */}
-                    {coverPhoto && (
-                      <div 
-                        className="relative aspect-[16/9] cursor-pointer overflow-hidden"
-                        onClick={() => toggleExpand(group.key)}
-                      >
-                        <img
-                          src={coverPhoto.url}
-                          alt={`${group.label} cover`}
-                          className="w-full h-full object-cover transition-transform hover:scale-105 duration-500"
-                          onError={(e) => {
-                            (e.target as HTMLImageElement).src = 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="100" height="100" viewBox="0 0 100 100"%3E%3Crect fill="%23ddd" width="100" height="100"/%3E%3Ctext x="50" y="50" text-anchor="middle" dy=".3em" font-family="sans-serif" font-size="12" fill="%23999"%3ENo image%3C/text%3E%3C/svg%3E';
-                          }}
-                        />
-                        <div className="absolute bottom-0 left-0 right-0 px-4 py-2 bg-gradient-to-t from-black/70 to-transparent">
-                          <div className="text-white text-xs font-semibold">
-                            {photoCount} photo{photoCount !== 1 ? 's' : ''} • Click to expand
-                          </div>
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Expanded Photo Grid (4 columns) */}
-                    {isExpanded && group.photos.length > 0 && (
-                      <div className="p-4 pt-2 border-t border-gray-100 dark:border-white/5">
-                        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
-                          {group.photos.map((photo, idx) => (
+                    {/* Thumbnail Grid - Always visible, same size whether expanded or not */}
+                    <div className="p-3 pt-0">
+                      {isExpanded ? (
+                        // Expanded: Show ALL photos in 4-column grid
+                        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
+                          {allPhotosInGroup.map((photo, idx) => (
                             <div
                               key={idx}
-                              className="group relative rounded-xl overflow-hidden shadow-md hover:shadow-xl transition-all aspect-square cursor-pointer hover:scale-[1.02]"
+                              className="group relative rounded-lg overflow-hidden shadow-sm hover:shadow-md transition-all aspect-square cursor-pointer hover:scale-[1.02]"
                               title={`${photo.eventTitle} — ${photo.date}`}
                               onClick={() => setSelectedPhoto(photo.url)}
                             >
@@ -456,8 +432,39 @@ export const AllPhotosPage: React.FC<AllPhotosPageProps> = ({
                             </div>
                           ))}
                         </div>
-                      </div>
-                    )}
+                      ) : (
+                        // Collapsed: Show only the first photo as thumbnail (small)
+                        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
+                          {allPhotosInGroup.slice(0, 1).map((photo, idx) => (
+                            <div
+                              key={idx}
+                              className="relative rounded-lg overflow-hidden shadow-sm hover:shadow-md transition-all aspect-square cursor-pointer hover:scale-[1.02]"
+                              title={`${group.label} - Click to expand`}
+                              onClick={() => toggleExpand(group.key)}
+                            >
+                              <img
+                                src={photo.url}
+                                alt={`${group.label} cover`}
+                                loading="lazy"
+                                className="w-full h-full object-cover transition-transform hover:scale-110 duration-500"
+                                onError={(e) => {
+                                  (e.target as HTMLImageElement).src = 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="100" height="100" viewBox="0 0 100 100"%3E%3Crect fill="%23ddd" width="100" height="100"/%3E%3Ctext x="50" y="50" text-anchor="middle" dy=".3em" font-family="sans-serif" font-size="12" fill="%23999"%3ENo image%3C/text%3E%3C/svg%3E';
+                                }}
+                              />
+                              <div className="absolute bottom-0 left-0 right-0 px-2 py-1 bg-black/50 text-white text-[9px] font-semibold truncate">
+                                {photoCount} photo{photoCount !== 1 ? 's' : ''} • Click to expand
+                              </div>
+                            </div>
+                          ))}
+                          {/* Show empty placeholder if no photos (should not happen) */}
+                          {allPhotosInGroup.length === 0 && (
+                            <div className="aspect-square rounded-lg bg-gray-100 dark:bg-black/20 flex items-center justify-center text-gray-400 text-xs">
+                              No photos
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
                   </div>
                 );
               })
@@ -555,7 +562,7 @@ export const AllPhotosPage: React.FC<AllPhotosPageProps> = ({
         </div>
       )}
 
-      {/* Lightbox with Delete Button */}
+      {/* Lightbox */}
       {selectedPhoto && (
         <div
           className="fixed inset-0 z-[100] bg-black/90 flex items-center justify-center p-4 cursor-pointer"
