@@ -103,46 +103,81 @@ function dbSaveBlob() {
   return Promise.resolve();
 }
 
+// CRITICAL FIX: Ensure dbPersist always returns a Promise and handles errors
+function dbPersist() {
+  if (dbClient) {
+    return dbSaveBlob().catch(err => {
+      console.error('❌ Failed to save to database:', err.message);
+      // Don't throw - we want to keep the app running even if save fails
+      return Promise.resolve();
+    });
+  }
+  const snapshot = JSON.stringify(fileDatabase, null, 2);
+  writeQueue = writeQueue.then(() => fs.writeFile(dataFile, snapshot, 'utf8').catch(err => {
+    console.error('❌ Failed to write to file:', err.message);
+  }));
+  return writeQueue;
+}
+
 async function dbInitialize() {
+  console.log('🔄 Initializing database...');
+  console.log(`   DATABASE_URL: ${DATABASE_URL ? '✅ set' : '❌ not set'}`);
+  console.log(`   Mode: ${dbMode}`);
+  
   try {
     await fs.mkdir(dataDirectory, { recursive: true });
   } catch (error) {
-    // Maaaring read-only ang filesystem (serverless) - huwag itigil ang server.
     console.warn('⚠️ Cannot create data directory (read-only FS?):', error.message);
   }
+  
   let loaded = null;
   let seededFromDisk = false;
+  
   if (dbClient) {
     try {
+      console.log('📡 Connecting to database...');
       await dbEnsureSchema();
+      console.log('✅ Database schema ready');
     } catch (error) {
-      // Hindi maabot ang database - gagamit tayo ng in-memory para hindi mag-crash.
-      console.error(`⚠️ Cannot connect to ${dbMode}:`, error.message);
-      throw error;
+      console.error(`❌ Cannot connect to ${dbMode}:`, error.message);
+      // Don't throw - use in-memory fallback
+      console.warn('⚠️ Using in-memory fallback');
+      fileDatabase = emptyDatabase();
+      return;
     }
+    
     loaded = await dbLoadBlob();
-    // Fallback: kung walang laman ang Postgres pero may data.json pa sa disk
-    // (hal. unang deploy mula sa local), i-seed ito para hindi mawala ang data.
+    console.log(`📦 Loaded from database: ${loaded ? '✅ found' : '❌ empty'}`);
+    
+    // Fallback: kung walang laman ang database pero may data.json pa sa disk
     if (!loaded) {
       try {
-        loaded = JSON.parse(await fs.readFile(dataFile, 'utf8'));
+        const fileContent = await fs.readFile(dataFile, 'utf8');
+        loaded = JSON.parse(fileContent);
         if (loaded) {
           seededFromDisk = true;
-          console.log('📦 Seeded ' + dataFile + ' into PostgreSQL (empty DB detected).');
+          console.log('📦 Seeded ' + dataFile + ' into database (empty DB detected).');
         }
       } catch (error) {
-        if (error.code !== 'ENOENT') throw error;
+        if (error.code !== 'ENOENT') {
+          console.warn('⚠️ Error reading data.json:', error.message);
+        }
         loaded = null;
       }
     }
   } else {
     try {
-      loaded = JSON.parse(await fs.readFile(dataFile, 'utf8'));
+      const fileContent = await fs.readFile(dataFile, 'utf8');
+      loaded = JSON.parse(fileContent);
+      console.log('📦 Loaded from data.json');
     } catch (error) {
-      if (error.code !== 'ENOENT') throw error;
+      if (error.code !== 'ENOENT') {
+        console.warn('⚠️ Error reading data.json:', error.message);
+      }
       loaded = null;
     }
   }
+  
   if (loaded) {
     fileDatabase = loaded;
     for (const key of collections) {
@@ -152,62 +187,68 @@ async function dbInitialize() {
     if (seededFromDisk) {
       try {
         await dbPersist();
+        console.log('✅ Seed data saved to database');
       } catch (error) {
-        console.warn('⚠️ Hindi ma-save ang seed sa database:', error.message);
+        console.warn('⚠️ Failed to save seed to database:', error.message);
       }
     }
   } else {
+    console.log('📝 Creating empty database');
     fileDatabase = emptyDatabase();
     try {
       await dbPersist();
+      console.log('✅ Empty database initialized');
     } catch (error) {
-      // Hindi makapag-save (serverless / read-only FS) - tuloy lang sa memory.
       console.warn('⚠️ Cannot persist initial DB (read-only FS?). Isang DATABASE_URL ang kailangan sa Vercel:', error.message);
     }
   }
-}
-
-function dbPersist() {
-  if (dbClient) {
-    return dbSaveBlob();
-  }
-  const snapshot = JSON.stringify(fileDatabase, null, 2);
-  writeQueue = writeQueue.then(() => fs.writeFile(dataFile, snapshot, 'utf8'));
-  return writeQueue;
+  
+  console.log('✅ Database initialization complete');
 }
 
 async function dbGetCollection(key) {
+  if (!fileDatabase) {
+    console.warn(`⚠️ fileDatabase is null, returning empty array for ${key}`);
+    return [];
+  }
   return fileDatabase[key] || [];
 }
 
 async function dbSetCollection(key, value) {
+  if (!fileDatabase) {
+    console.warn(`⚠️ fileDatabase is null, cannot set ${key}`);
+    return;
+  }
   fileDatabase[key] = value;
   await dbPersist();
 }
 
 async function dbGetMeta(key) {
-  return fileDatabase[key] ?? null;
+  return fileDatabase ? (fileDatabase[key] ?? null) : null;
 }
 
 async function dbSetMeta(key, value) {
+  if (!fileDatabase) return;
   fileDatabase[key] = value;
   await dbPersist();
 }
 
 async function dbIsInitialized() {
-  return Boolean(fileDatabase.initialized);
+  return fileDatabase ? Boolean(fileDatabase.initialized) : false;
 }
 
 async function dbSetInitialized(value) {
+  if (!fileDatabase) return;
   fileDatabase.initialized = Boolean(value);
   await dbPersist();
 }
 
 async function dbGetActivities() {
-  return fileDatabase.activities || [];
+  return fileDatabase ? (fileDatabase.activities || []) : [];
 }
 
 async function dbInsertActivity(entry) {
+  if (!fileDatabase) return;
   fileDatabase.activities = fileDatabase.activities || [];
   fileDatabase.activities.unshift(entry);
   if (fileDatabase.activities.length > 300) {
@@ -324,7 +365,6 @@ const allowedOrigins = [
   'http://localhost:3003',
   'http://localhost:4000',
   process.env.CORS_ORIGIN,
-  // Actual deployed URLs
   'https://gfc-admin-rosy.vercel.app',
   'https://gfc-591v4f663-yans-projects-3c2ad947.vercel.app',
   'https://gfc-n55az5ieq-yans-projects-3c2ad947.vercel.app'
@@ -332,12 +372,10 @@ const allowedOrigins = [
 
 app.use(cors({ 
   origin: function(origin, callback) {
-    // Allow requests with no origin (like mobile apps or curl requests)
     if (!origin) return callback(null, true);
     if (allowedOrigins.indexOf(origin) !== -1) {
       callback(null, true);
     } else {
-      // For production, you might want to be stricter
       callback(null, true);
     }
   },
@@ -358,7 +396,9 @@ app.get('/api/health', async (req, res) => {
     ok: true, 
     service: 'GFC-DATA', 
     storage: dbMode === 'postgres' ? 'postgres' : dbMode === 'turusql' ? 'turusql' : 'json-file-or-memory',
-    initialized: await dbIsInitialized() 
+    initialized: await dbIsInitialized(),
+    dbConnected: !!dbClient,
+    fileDatabaseExists: !!fileDatabase
   }); 
 });
 
@@ -379,8 +419,6 @@ app.get('/api/content', async (req, res) => {
   content.activities = await dbGetActivities();
   res.json(content);
 });
-
-// Login route removed - admin is now open (no authentication) per user request.
 
 // Bootstrap data
 app.post('/api/bootstrap', async (req, res, next) => { 
@@ -407,7 +445,9 @@ app.post('/api/bootstrap', async (req, res, next) => {
 // ============================================
 app.post('/api/uploads/all', async (req, res, next) => {
   try {
+    console.log('📸 All-Photos upload request received');
     const { image, month, year, date } = req.body || {};
+    
     if (!image || typeof image !== 'string') {
       return res.status(400).json({ message: 'Image data is required.' });
     }
@@ -426,6 +466,8 @@ app.post('/api/uploads/all', async (req, res, next) => {
     }
     bucket.photos = Array.isArray(bucket.photos) ? bucket.photos : [];
     bucket.photos.push(image);
+    
+    console.log(`💾 Saving to database: allPhotos (${bucket.photos.length} photos)`);
     await dbSetCollection('allPhotos', list);
     await logActivity({ collection: 'allPhotos', action: 'photo', record: bucket, actor: 'public' });
 
@@ -466,10 +508,10 @@ app.post('/api/uploads', async (req, res, next) => {
       return res.status(400).json({ message: 'Date album not found for this event.' });
     }
 
-    // Store the image directly as base64 in the photos array
     entry.photos = entry.photos || [];
     entry.photos.push(image);
     
+    console.log(`💾 Saving to database: events (${entry.photos.length} photos)`);
     await dbSetCollection('events', events);
     await logActivity({ collection: 'events', action: 'photo', record: event, actor: 'public' });
 
@@ -559,9 +601,6 @@ app.delete('/api/content', async (req, res, next) => {
 
 // ============================================
 // SERVE STATIC FILES (upload page + admin SPA)
-// Same-origin: kapag naka-deploy sa Vercel, ang
-// admin (dist), upload page (public), at API ay
-// lalabas lahat sa isang URL.
 // ============================================
 const distDirectory = path.join(__dirname, 'dist');
 
@@ -573,7 +612,7 @@ app.get('/upload.js', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'upload.js'));
 });
 
-// Admin SPA (dist) + public assets - static muna para malibre ang Vercel statics
+// Admin SPA (dist) + public assets
 app.use(express.static(distDirectory));
 app.use(express.static(path.join(__dirname, 'public')));
 
@@ -594,13 +633,11 @@ app.use((error, req, res, next) => {
 });
 
 // ============================================
-// START SERVER (only when run directly, not on Vercel)
+// START SERVER
 // ============================================
 try {
   await dbInitialize();
 } catch (error) {
-  // Huwag hayaang mag-crash ang function kahit sira/offline ang storage.
-  // Gagamit ng in-memory DB - malalaman sa /api/health at console logs.
   console.error('❌ Database initialization failed. Running with in-memory fallback:', error);
   if (!fileDatabase) fileDatabase = emptyDatabase();
 }
@@ -616,8 +653,10 @@ if (runningDirectly) {
   console.log('  GFC-DATA API Server');
   console.log('========================================');
   console.log(`  Port: ${port}`);
-  console.log(`  Storage: ${dbMode === 'postgres' ? 'PostgreSQL (DATABASE_URL)' : dbMode === 'turusql' ? `Turso/libsql (${DATABASE_URL})` : `JSON file (${dataFile})`}`);
+  console.log(`  Storage: ${dbMode === 'postgres' ? 'PostgreSQL (DATABASE_URL)' : dbMode === 'turusql' ? `Turso/libsql` : `JSON file (${dataFile})`}`);
   console.log(`  CORS allowed origins: ${allowedOrigins.join(', ')}`);
+  console.log(`  Database initialized: ${fileDatabase ? '✅' : '❌'}`);
+  console.log(`  Database connected: ${dbClient ? '✅' : '❌'}`);
   console.log('========================================');
   console.log('  ✅ Server is ready!');
   console.log('========================================');
