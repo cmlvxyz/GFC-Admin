@@ -14,7 +14,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const port = Number(process.env.PORT || 4000);
 const dataDirectory = path.join(__dirname, 'data');
 const dataFile = path.join(dataDirectory, 'data.json');
-const collections = ['events', 'sermons', 'prayers', 'attendees', 'members', 'announcements', 'testimonials'];
+const collections = ['events', 'sermons', 'prayers', 'attendees', 'members', 'announcements', 'testimonials', 'allPhotos'];
 
 const emptyDatabase = () => ({ 
   version: 1, 
@@ -26,7 +26,8 @@ const emptyDatabase = () => ({
   members: [], 
   announcements: [], 
   testimonials: [], 
-  activities: [] 
+  activities: [],
+  allPhotos: [] 
 });
 
 // ============================================
@@ -395,6 +396,41 @@ app.post('/api/bootstrap', async (req, res, next) => {
   } catch (error) { 
     next(error); 
   } 
+});
+
+// ============================================
+// ALL-PHOTOS UPLOAD (public, no event - month/year/date)
+// ============================================
+app.post('/api/uploads/all', async (req, res, next) => {
+  try {
+    const { image, month, year, date } = req.body || {};
+    if (!image || typeof image !== 'string') {
+      return res.status(400).json({ message: 'Image data is required.' });
+    }
+    const m = parseInt(month, 10);
+    const y = parseInt(year, 10);
+    if (Number.isNaN(m) || m < 0 || m > 11 || Number.isNaN(y) || String(y).length !== 4) {
+      return res.status(400).json({ message: 'Valid month and year are required.' });
+    }
+    const label = String(date || '').trim() || `${m + 1}/${y}`;
+
+    const list = await dbGetCollection('allPhotos');
+    let bucket = list.find(a => String(a.month) === String(m) && String(a.year) === String(y) && String(a.date || '').trim() === label);
+    if (!bucket) {
+      bucket = { month: m, year: y, date: label, photos: [] };
+      list.push(bucket);
+    }
+    bucket.photos = Array.isArray(bucket.photos) ? bucket.photos : [];
+    bucket.photos.push(image);
+    await dbSetCollection('allPhotos', list);
+    await logActivity({ collection: 'allPhotos', action: 'photo', record: bucket, actor: 'public' });
+
+    console.log(`✅ Photo uploaded to All Photos ${m + 1}/${y} "${label}" (${bucket.photos.length} photos)`);
+    res.status(201).json({ success: true, message: 'Photo uploaded successfully!', photoCount: bucket.photos.length });
+  } catch (error) {
+    console.error('All-photos upload error:', error);
+    next(error);
+  }
 });
 
 // ============================================

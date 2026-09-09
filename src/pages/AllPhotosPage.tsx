@@ -103,7 +103,7 @@ export const AllPhotosPage: React.FC<AllPhotosPageProps> = ({ events }) => {
   }, [qrContainerEl]);
 
   const grouped = useMemo(() => {
-    const filtered = selectedMonth === '' ? allPhotos : allPhotos.filter(p => p.month === selectedMonth);
+    const filtered = selectedMonth === '' ? [] : allPhotos.filter(p => p.month === selectedMonth);
     const order: { key: string; label: string; year: number; month: number }[] = [];
     const byKey = new Map<string, PhotoItem[]>();
     for (const p of filtered) {
@@ -166,7 +166,7 @@ export const AllPhotosPage: React.FC<AllPhotosPageProps> = ({ events }) => {
                     onChange={(e) => setSelectedMonth(e.target.value === '' ? '' : parseInt(e.target.value))}
                     className="w-full px-4 py-2.5 rounded-xl border border-gray-200 dark:border-white/10 bg-gray-50 dark:bg-black/30 text-black dark:text-white text-sm focus:border-indigo-400 dark:focus:border-indigo-400/50 focus:outline-hidden focus:ring-2 focus:ring-indigo-400/20 transition-all"
                   >
-                    <option value="">-- All months --</option>
+                    <option value="">-- Pumili ng month --</option>
                     {MONTH_NAMES.map((name, idx) => (
                       <option key={name} value={idx}>{name}</option>
                     ))}
@@ -217,7 +217,9 @@ export const AllPhotosPage: React.FC<AllPhotosPageProps> = ({ events }) => {
                 <Images className="w-10 h-10 text-gray-300 dark:text-gray-600 mx-auto mb-2" />
                 <p className="text-sm text-gray-500 dark:text-[#A1A1A1]">
                   {allPhotos.length === 0
-                    ? 'Wala pang nai-upload na photos sa anumang event.'
+                  ? 'Wala pang nai-upload na photos sa anumang event.'
+                  : selectedMonth === ''
+                    ? 'Wala pang napiling month o year. Pumili ng month o year para makita ang mga photos.'
                     : 'Walang nakitang photos para sa napiling month.'}
                 </p>
               </div>
@@ -302,9 +304,6 @@ export const AllPhotosPage: React.FC<AllPhotosPageProps> = ({ events }) => {
               <h3 className="text-xl font-serif text-indigo-500 dark:text-indigo-400">
                 📆 Photos of {yearModal}
               </h3>
-              <p className="text-xs text-gray-500 dark:text-[#A1A1A1]">
-                Pumili ng buwan para makita ang mga photos ng buwang iyon.
-              </p>
             </div>
 
             {(() => {
