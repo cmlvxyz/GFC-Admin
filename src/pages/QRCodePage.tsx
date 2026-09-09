@@ -387,21 +387,10 @@ export const QRCodePage: React.FC<QRCodePageProps> = ({ events, onUpdateEvent, o
                 >
                   {getUploadUrl(selectedEventId, selectedDateIndex)}
                 </a>
-                <div className="text-[10px] text-gray-400 dark:text-gray-500 mt-1">
-                  📸 I-scan ang QR o i-click ang link para mag-upload ng photos (may logo ng GFC sa gitna)
-                </div>
-                <div className="text-[10px] text-amber-500 dark:text-amber-400 mt-1 text-center leading-snug">
-                  Para ma-scan sa phone (same WiFi), buksan ang admin gamit LAN IP:
-                  <br />
-                  <span className="font-mono">{`${GFC_BASE}`}</span>
-                </div>
               </>
             ) : (
               <div className="text-center py-6">
                 <QrCode className="w-12 h-12 text-gray-300 dark:text-gray-600 mx-auto mb-2" />
-                <p className="text-sm text-gray-500 dark:text-[#A1A1A1]">
-                  Pumili ng event at date para makita ang QR code
-                </p>
               </div>
             )}
           </div>
