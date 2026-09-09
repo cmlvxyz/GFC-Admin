@@ -273,10 +273,6 @@ export const QRCodePage: React.FC<QRCodePageProps> = ({ events, onUpdateEvent, o
             <QrCode className="w-5 h-5 text-indigo-500" />
             <span>Event QR Code Generator</span>
           </h3>
-          <p className="text-sm text-gray-500 dark:text-[#A1A1A1] leading-relaxed">
-            I-scan ng church members ang QR code gamit ang kanilang phone para makapag-upload ng photos
-            sa event gallery. Makikita ang mga na-upload na photos sa website ng church.
-          </p>
           <div className="mt-3 inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-indigo-50 dark:bg-indigo-950/40 border border-indigo-200 dark:border-indigo-800/40 text-xs font-mono font-bold text-indigo-600 dark:text-indigo-400">
             Upload page: {GFC_BASE}
           </div>
@@ -287,12 +283,6 @@ export const QRCodePage: React.FC<QRCodePageProps> = ({ events, onUpdateEvent, o
 
         <div className="flex flex-col items-center justify-center gap-3 py-20 text-center">
           <AlertCircle className="w-10 h-10 text-red-400" />
-          <p className="text-sm text-red-500 dark:text-red-400 font-medium">
-            Hindi ma-load ang events data. Mukhang hindi tumatakbo ang backend API.
-          </p>
-          <p className="text-xs text-gray-400 dark:text-gray-500 max-w-md">
-            Siguraduhing tumatakbo ang server (npm run server) sa port 4000, tapos i-reload ang page.
-          </p>
           {onReload && (
             <button
               onClick={onReload}
@@ -315,10 +305,6 @@ export const QRCodePage: React.FC<QRCodePageProps> = ({ events, onUpdateEvent, o
           <QrCode className="w-5 h-5 text-indigo-500" />
           <span>Event QR Code Generator</span>
         </h3>
-        <p className="text-sm text-gray-500 dark:text-[#A1A1A1] leading-relaxed">
-          Pumili ng event, tapos pumili ng date. May lalabas na QR code para sa napiling date.
-          I-scan ito para makapag-upload ng photos. Pwede ring mag-upload ng photos dito sa admin.
-        </p>
         <div className="mt-3 inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-indigo-50 dark:bg-indigo-950/40 border border-indigo-200 dark:border-indigo-800/40 text-xs font-mono font-bold text-indigo-600 dark:text-indigo-400">
           Upload page: {GFC_BASE}
         </div>
@@ -379,11 +365,6 @@ export const QRCodePage: React.FC<QRCodePageProps> = ({ events, onUpdateEvent, o
                   )}
 
                   <div>
-                    {!hasDates && (
-                      <p className="text-xs text-gray-500 dark:text-[#A1A1A1] mb-2">
-                        Walang date album pa ang event na ito. Magdagdag ng date para makapag-generate ng QR code.
-                      </p>
-                    )}
                     <label className="block text-xs font-bold text-gray-700 dark:text-[#A1A1A1] uppercase tracking-wider mb-2">
                       Add Date Album
                     </label>
@@ -448,7 +429,7 @@ export const QRCodePage: React.FC<QRCodePageProps> = ({ events, onUpdateEvent, o
                 <a
                   href={getUploadUrl(selectedEventId, selectedDateIndex)}
                   target="_blank"
-                  rel="noopener noreferrer"
+                  rel=""
                   className="mt-2 text-[11px] font-mono text-indigo-500 dark:text-indigo-400 underline break-all text-center block hover:text-indigo-600 dark:hover:text-indigo-300"
                 >
                   {getUploadUrl(selectedEventId, selectedDateIndex)}
