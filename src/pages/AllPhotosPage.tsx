@@ -184,38 +184,6 @@ export const AllPhotosPage: React.FC<AllPhotosPageProps> = ({
     setIsDeleting(true);
 
     try {
-      if (photo.source === 'allPhotos' && photo.albumIndex !== undefined && photo.photoIndex !== undefined) {
-        // Delete from All Photos album
-        const response = await fetch(`${API_URL}/api/allPhotos/delete`, {
-          method: 'DELETE',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            albumIndex: photo.albumIndex,
-            photoIndex: photo.photoIndex
-          })
-        });
-
-        if (!response.ok) {
-          throw new Error('Failed to delete photo from All Photos');
-        }
-      } else if (photo.source === 'event' && photo.eventId !== undefined && photo.dateEntryIndex !== undefined) {
-        // Delete from Event
-        const response = await fetch(`${API_URL}/api/events/photo/delete`, {
-          method: 'DELETE',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            eventId: photo.eventId,
-            dateEntryIndex: photo.dateEntryIndex,
-            photoUrl: photo.url
-          })
-        });
-
-        if (!response.ok) {
-          throw new Error('Failed to delete photo from Event');
-        }
-      } else {
-        throw new Error('Unable to identify photo source for deletion');
-      }
 
       setSelectedPhoto(null);
 
