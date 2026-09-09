@@ -14,13 +14,19 @@ interface QRCodePageProps {
 
 export const QRCodePage: React.FC<QRCodePageProps> = ({ events, onUpdateEvent, onReload }) => {
   // Base URL ng GFC upload page (configurable via VITE_GFC_URL).
-  // Kung walang value: gamitin ang LAN IP na pinag-bubuksan ng admin (para ma-scan sa phone on same WiFi).
+  // Kapag naka-deploy (Vercel): same-origin (admin + API + upload page ay nasa iisang URL).
+  // Kapag local: `http://<host>:4000` para ma-scan sa phone gamit LAN IP.
   const GFC_BASE = (() => {
     const fromEnv = (import.meta.env.VITE_GFC_URL as string | undefined)?.trim();
     if (fromEnv) return fromEnv;
     const host = typeof window !== 'undefined' ? window.location.hostname : '';
-    if (host && host !== 'localhost' && host !== '127.0.0.1') return `http://${host}:4000`;
-    return 'https://gfc-fxw4g8shx-yans-projects-3c2ad947.vercel.app';
+    const isLocalhost = !host || host === 'localhost' || host === '127.0.0.1';
+    const isLanIp = /^\d{1,3}(\.\d{1,3}){3}$/.test(host);
+    if (isLocalhost || isLanIp) {
+      return host ? `http://${host}:4000` : 'http://localhost:4000';
+    }
+    // Deployed (e.g. Vercel) - huwag magdagdag ng port, gamitin ang current origin.
+    return typeof window !== 'undefined' ? window.location.origin : 'https://gfc-admin-rosy.vercel.app';
   })();
 
   const getUploadUrl = (eventId: string, dateIndex: number) =>
@@ -92,33 +98,57 @@ export const QRCodePage: React.FC<QRCodePageProps> = ({ events, onUpdateEvent, o
     return event.dateEntries[selectedDateIndex];
   };
 
+  // Resize image para hindi lumagpas sa Vercel serverless body limit (4.5MB)
+  const resizeImage = (file: File): Promise<string> =>
+    new Promise((resolve, reject) => {
+      const img = new window.Image();
+      const reader = new FileReader();
+      reader.onload = () => {
+        img.onload = () => {
+          const MAX = 1600;
+          const scale = Math.min(1, MAX / Math.max(img.width, img.height));
+          const w = Math.round(img.width * scale);
+          const h = Math.round(img.height * scale);
+          const canvas = document.createElement('canvas');
+          canvas.width = w;
+          canvas.height = h;
+          const ctx = canvas.getContext('2d');
+          if (!ctx) return reject(new Error('Canvas not supported'));
+          ctx.fillStyle = '#ffffff';
+          ctx.fillRect(0, 0, w, h);
+          ctx.drawImage(img, 0, 0, w, h);
+          resolve(canvas.toDataURL('image/jpeg', 0.85));
+        };
+        img.onerror = reject;
+        img.src = reader.result as string;
+      };
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
+
   // Handle photo upload
-  const handlePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (!files) return;
 
-    const newPreviews: string[] = [];
-    const newUrls: string[] = [];
-    let processed = 0;
-
-    Array.from(files).forEach((file, index) => {
-      const reader = new FileReader();
-      reader.onload = (event) => {
-        const base64String = event.target?.result as string;
-        newPreviews[index] = base64String;
-        newUrls[index] = base64String;
-        processed++;
-        
-        if (processed === files.length) {
-          setUploadedPhotoPreviews(prev => [...prev, ...newPreviews]);
-          setUploadedPhotos(prev => [...prev, ...newUrls]);
-          setUploadStatus('idle');
-          setErrorMessage('');
+    const urls: string[] = [];
+    for (const file of Array.from(files)) {
+      if (file && file.type && file.type.indexOf('image') === 0) {
+        try {
+          urls.push(await resizeImage(file));
+        } catch {
+          /* skip unreadable image */
         }
-      };
-      reader.readAsDataURL(file);
-    });
-    
+      }
+    }
+
+    if (urls.length > 0) {
+      setUploadedPhotoPreviews(prev => [...prev, ...urls]);
+      setUploadedPhotos(prev => [...prev, ...urls]);
+      setUploadStatus('idle');
+      setErrorMessage('');
+    }
+
     if (photoFileInputRef.current) {
       photoFileInputRef.current.value = '';
     }

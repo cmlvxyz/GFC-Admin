@@ -7,6 +7,8 @@
     "server": "node server.js",
     "server:dev": "node --watch server.js",
     "dev": "node dev.js",
+    "start": "node server.js",
+    "seed": "node scripts/seed-postgres.js",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview --host=0.0.0.0 --open",
     "lint": "tsc --noEmit"

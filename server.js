@@ -66,11 +66,37 @@ function dbSaveBlob() {
 }
 
 async function dbInitialize() {
-  await fs.mkdir(dataDirectory, { recursive: true });
+  try {
+    await fs.mkdir(dataDirectory, { recursive: true });
+  } catch (error) {
+    // Maaaring read-only ang filesystem (serverless) - huwag itigil ang server.
+    console.warn('⚠️ Cannot create data directory (read-only FS?):', error.message);
+  }
   let loaded = null;
+  let seededFromDisk = false;
   if (pgPool) {
-    await dbEnsureSchema();
+    try {
+      await dbEnsureSchema();
+    } catch (error) {
+      // Hindi maabot ang Postgres - gagamit tayo ng in-memory para hindi mag-crash.
+      console.error('⚠️ Cannot connect to PostgreSQL:', error.message);
+      throw error;
+    }
     loaded = await dbLoadBlob();
+    // Fallback: kung walang laman ang Postgres pero may data.json pa sa disk
+    // (hal. unang deploy mula sa local), i-seed ito para hindi mawala ang data.
+    if (!loaded) {
+      try {
+        loaded = JSON.parse(await fs.readFile(dataFile, 'utf8'));
+        if (loaded) {
+          seededFromDisk = true;
+          console.log('📦 Seeded ' + dataFile + ' into PostgreSQL (empty DB detected).');
+        }
+      } catch (error) {
+        if (error.code !== 'ENOENT') throw error;
+        loaded = null;
+      }
+    }
   } else {
     try {
       loaded = JSON.parse(await fs.readFile(dataFile, 'utf8'));
@@ -85,9 +111,21 @@ async function dbInitialize() {
       if (!Array.isArray(fileDatabase[key])) fileDatabase[key] = [];
     }
     if (!Array.isArray(fileDatabase.activities)) fileDatabase.activities = [];
+    if (seededFromDisk) {
+      try {
+        await dbPersist();
+      } catch (error) {
+        console.warn('⚠️ Hindi ma-save ang seed sa PostgreSQL:', error.message);
+      }
+    }
   } else {
     fileDatabase = emptyDatabase();
-    await dbPersist();
+    try {
+      await dbPersist();
+    } catch (error) {
+      // Hindi makapag-save (serverless / read-only FS) - tuloy lang sa memory.
+      console.warn('⚠️ Cannot persist initial DB (read-only FS?). Isang DATABASE_URL ang kailangan sa Vercel:', error.message);
+    }
   }
 }
 
@@ -244,10 +282,10 @@ const allowedOrigins = [
   'http://localhost:3003',
   'http://localhost:4000',
   process.env.CORS_ORIGIN,
-  // Add your Vercel URL here
+  // Actual deployed URLs
+  'https://gfc-admin-rosy.vercel.app',
   'https://gfc-591v4f663-yans-projects-3c2ad947.vercel.app',
-  'https://gfc-n55az5ieq-yans-projects-3c2ad947.vercel.app',
-  'https://gfc-xxxxxxxxx.vercel.app' // Replace with your actual URL
+  'https://gfc-n55az5ieq-yans-projects-3c2ad947.vercel.app'
 ].filter(Boolean);
 
 app.use(cors({ 
@@ -274,7 +312,12 @@ app.use(express.json({ limit: '12mb' }));
 
 // Health check
 app.get('/api/health', async (req, res) => { 
-  res.json({ ok: true, service: 'GFC-DATA', initialized: await dbIsInitialized() }); 
+  res.json({ 
+    ok: true, 
+    service: 'GFC-DATA', 
+    storage: pgPool ? 'postgres' : 'json-file-or-memory',
+    initialized: await dbIsInitialized() 
+  }); 
 });
 
 // Get config - for QR code generation
@@ -438,13 +481,32 @@ app.delete('/api/content', async (req, res, next) => {
 });
 
 // ============================================
-// SERVE STATIC FILES (upload page)
+// SERVE STATIC FILES (upload page + admin SPA)
+// Same-origin: kapag naka-deploy sa Vercel, ang
+// admin (dist), upload page (public), at API ay
+// lalabas lahat sa isang URL.
 // ============================================
-app.use('/upload', express.static('public', { index: 'upload.html' }));
-app.use('/assets', express.static('public', { index: 'upload.html' }));
-// Redirect / para sa upload page din (gawing convenient kung walang event/date)
-app.get('/', (req, res) => res.sendFile(path.join(__dirname, 'public', 'upload.html')));
-app.use(express.static('public'));
+const distDirectory = path.join(__dirname, 'dist');
+
+// Upload page (QR code destination)
+app.get(['/upload', '/upload/', '/upload.html'], (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'upload.html'));
+});
+app.get('/upload.js', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'upload.js'));
+});
+
+// Admin SPA (dist) + public assets - static muna para malibre ang Vercel statics
+app.use(express.static(distDirectory));
+app.use(express.static(path.join(__dirname, 'public')));
+
+// Root / fallback: admin SPA kung may build; upload page kung wala (local dev)
+app.get(['/', '/index.html'], (req, res) => {
+  const spaIndex = path.join(distDirectory, 'index.html');
+  res.sendFile(spaIndex, (err) => {
+    if (err) res.sendFile(path.join(__dirname, 'public', 'upload.html'));
+  });
+});
 
 // ============================================
 // ERROR HANDLER
@@ -457,7 +519,14 @@ app.use((error, req, res, next) => {
 // ============================================
 // START SERVER (only when run directly, not on Vercel)
 // ============================================
-await dbInitialize();
+try {
+  await dbInitialize();
+} catch (error) {
+  // Huwag hayaang mag-crash ang function kahit sira/offline ang storage.
+  // Gagamit ng in-memory DB - malalaman sa /api/health at console logs.
+  console.error('❌ Database initialization failed. Running with in-memory fallback:', error);
+  if (!fileDatabase) fileDatabase = emptyDatabase();
+}
 
 export { app };
 export default app;

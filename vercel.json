@@ -1,0 +1,13 @@
+{
+  "functions": {
+    "api/index.js": {
+      "memory": 1024,
+      "includeFiles": "public/**"
+    }
+  },
+  "rewrites": [
+    { "source": "/api/(.*)", "destination": "/api/index.js" },
+    { "source": "/upload", "destination": "/api/index.js" },
+    { "source": "/upload/", "destination": "/api/index.js" }
+  ]
+}
