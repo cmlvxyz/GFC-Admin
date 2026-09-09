@@ -148,11 +148,6 @@ export const AllPhotosPage: React.FC<AllPhotosPageProps> = ({ events, allPhotos 
           <Images className="w-5 h-5 text-indigo-500" />
           <span>All Photos</span>
         </h3>
-        <p className="text-sm text-gray-500 dark:text-[#A1A1A1] leading-relaxed">
-          Hanapin ang mga nai-upload na photos sa lahat ng events. Pumili ng <strong>month</strong> para makita
-          ang mga photos ng buwang iyon, o pumili ng <strong>year</strong> para makita ang breakdown ng mga buwan.
-          Pwede ring i-scan ang QR code para mag-upload ng bagong photos.
-        </p>
         <div className="mt-3 inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-indigo-50 dark:bg-indigo-950/40 border border-indigo-200 dark:border-indigo-800/40 text-xs font-mono font-bold text-indigo-600 dark:text-indigo-400">
           Upload page: {GFC_BASE}/upload
         </div>
@@ -175,7 +170,7 @@ export const AllPhotosPage: React.FC<AllPhotosPageProps> = ({ events, allPhotos 
                     onChange={(e) => setSelectedMonth(e.target.value === '' ? '' : parseInt(e.target.value))}
                     className="w-full px-4 py-2.5 rounded-xl border border-gray-200 dark:border-white/10 bg-gray-50 dark:bg-black/30 text-black dark:text-white text-sm focus:border-indigo-400 dark:focus:border-indigo-400/50 focus:outline-hidden focus:ring-2 focus:ring-indigo-400/20 transition-all"
                   >
-                    <option value="">-- Pumili ng month --</option>
+                    <option value="">Select Month</option>
                     {MONTH_NAMES.map((name, idx) => (
                       <option key={name} value={idx}>{name}</option>
                     ))}
@@ -197,15 +192,12 @@ export const AllPhotosPage: React.FC<AllPhotosPageProps> = ({ events, allPhotos 
                     }}
                     className="w-full px-4 py-2.5 rounded-xl border border-gray-200 dark:border-white/10 bg-gray-50 dark:bg-black/30 text-black dark:text-white text-sm focus:border-indigo-400 dark:focus:border-indigo-400/50 focus:outline-hidden focus:ring-2 focus:ring-indigo-400/20 transition-all"
                   >
-                    <option value="">-- Pumili ng year --</option>
+                    <option value="">Select Year</option>
                     {YEAR_RANGE.map(year => (
                       <option key={year} value={year}>{year}</option>
                     ))}
                   </select>
                 </div>
-                <p className="mt-1.5 text-[11px] text-gray-400 dark:text-gray-500">
-                  Magbubukas ng breakdown ng mga buwan para sa taong ito.
-                </p>
               </div>
             </div>
 
@@ -224,13 +216,6 @@ export const AllPhotosPage: React.FC<AllPhotosPageProps> = ({ events, allPhotos 
             {grouped.length === 0 ? (
               <div className="bg-white dark:bg-[#14141f]/80 backdrop-blur-sm p-10 rounded-2xl border border-gray-200 dark:border-white/5 shadow-sm text-center">
                 <Images className="w-10 h-10 text-gray-300 dark:text-gray-600 mx-auto mb-2" />
-                <p className="text-sm text-gray-500 dark:text-[#A1A1A1]">
-                  {allPhotosList.length === 0
-                  ? 'Wala pang nai-upload na photos sa anumang event.'
-                  : selectedMonth === ''
-                    ? 'Wala pang napiling month o year. Pumili ng month o year para makita ang mga photos.'
-                    : 'Walang nakitang photos para sa napiling month.'}
-                </p>
               </div>
             ) : (
               grouped.map(group => (
@@ -276,10 +261,6 @@ export const AllPhotosPage: React.FC<AllPhotosPageProps> = ({ events, allPhotos 
           <div className="flex justify-center bg-gray-50 dark:bg-black/30 rounded-xl border border-gray-200 dark:border-white/10 p-4">
             <div ref={(el) => setQrContainerEl(el)} className="bg-white rounded-lg shadow-md" />
           </div>
-          <p className="mt-3 text-xs text-gray-500 dark:text-[#A1A1A1] leading-relaxed">
-            I-scan ito para makapag-upload ng photos. Tatanungin ang scrapper kung saang event at date
-            siya mag-uupload.
-          </p>
           <a
             href={`${GFC_BASE}/upload`}
             target="_blank"
@@ -311,7 +292,7 @@ export const AllPhotosPage: React.FC<AllPhotosPageProps> = ({ events, allPhotos 
 
             <div className="space-y-1">
               <h3 className="text-xl font-serif text-indigo-500 dark:text-indigo-400">
-                📆 Photos of {yearModal}
+                Photos of {yearModal}
               </h3>
             </div>
 
