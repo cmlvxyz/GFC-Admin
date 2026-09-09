@@ -34,6 +34,23 @@ const GFC_BASE = (() => {
   return typeof window !== 'undefined' ? window.location.origin : 'https://gfc-admin-rosy.vercel.app';
 })();
 
+const SITE_BASE = (() => {
+  const fromEnv = (import.meta.env.VITE_SITE_URL as string | undefined)?.trim();
+  if (fromEnv) return fromEnv;
+  const host = typeof window !== 'undefined' ? window.location.hostname : '';
+  const isLocalhost = !host || host === 'localhost' || host === '127.0.0.1';
+  const isLanIp = /^\d{1,3}(\.\d{1,3}){3}$/.test(host);
+  if (isLocalhost || isLanIp) {
+    return host ? `http://${host}:3002` : 'http://localhost:3002';
+  }
+  return 'https://gfc-3uhmkt62h-yans-projects-3c2ad947.vercel.app';
+})();
+
+const resolvePhotoUrl = (u: string): string => {
+  if (u.startsWith('data:') || /^https?:\/\//i.test(u)) return u;
+  return `${SITE_BASE}${u.startsWith('/') ? '' : '/'}${u}`;
+};
+
 const CURRENT_YEAR = new Date().getFullYear();
 
 const parseEntryDate = (value: string): { month: number; year: number } | null => {
@@ -55,7 +72,7 @@ export const AllPhotosPage: React.FC<AllPhotosPageProps> = ({ events }) => {
         const month = parsed ? parsed.month : -1;
         const year = parsed ? parsed.year : -1;
         for (const url of entry.photos || []) {
-          list.push({ url, month, year, eventTitle: ev.title, date: entry.date });
+          list.push({ url: resolvePhotoUrl(url), month, year, eventTitle: ev.title, date: entry.date });
         }
       }
     }
