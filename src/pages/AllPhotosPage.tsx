@@ -90,8 +90,9 @@ export const AllPhotosPage: React.FC<AllPhotosPageProps> = ({
     const list: PhotoItem[] = [];
     
     // Photos from events
-    for (const ev of events) {
-      for (let entryIndex = 0; entryIndex < (ev.dateEntries || []).length; entryIndex++) {
+     for (const ev of events) {
+      if (!ev.dateEntries || ev.dateEntries.length === 0) continue;
+      for (let entryIndex = 0; entryIndex < ev.dateEntries.length; entryIndex++) {
         const entry = ev.dateEntries[entryIndex];
         const parsed = parseEntryDate(entry.date);
         const month = parsed ? parsed.month : -1;

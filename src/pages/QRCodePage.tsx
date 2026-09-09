@@ -21,7 +21,6 @@ export const QRCodePage: React.FC<QRCodePageProps> = ({
   allPhotos = [],
   onAllPhotosUpdated 
 }) => {
-  // Base URL ng GFC upload page (configurable via VITE_GFC_URL).
   const GFC_BASE = (() => {
     const fromEnv = (import.meta.env.VITE_GFC_URL as string | undefined)?.trim();
     if (fromEnv) return fromEnv;
@@ -37,7 +36,6 @@ export const QRCodePage: React.FC<QRCodePageProps> = ({
   const getUploadUrl = (eventId: string, dateIndex: number) =>
     `${GFC_BASE}/upload?event=${encodeURIComponent(eventId)}&date=${dateIndex}`;
 
-  // States
   const [selectedEventId, setSelectedEventId] = useState<string>('');
   const [uploadedPhotos, setUploadedPhotos] = useState<string[]>([]);
   const [uploadedPhotoPreviews, setUploadedPhotoPreviews] = useState<string[]>([]);
@@ -48,11 +46,11 @@ export const QRCodePage: React.FC<QRCodePageProps> = ({
   const [newDateInput, setNewDateInput] = useState('');
   const [addDateError, setAddDateError] = useState('');
   const [addingDate, setAddingDate] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
   const photoFileInputRef = useRef<HTMLInputElement>(null);
   const [qrContainerEl, setQrContainerEl] = useState<HTMLDivElement | null>(null);
   const qrStylingRef = useRef<QRCodeStyling | null>(null);
 
-  // Helper: Check if a photo already exists in All Photos
   const isPhotoInAllPhotos = (photoData: string): boolean => {
     for (const album of allPhotos) {
       if (album.photos && album.photos.some((p: string) => p === photoData)) {
@@ -62,7 +60,6 @@ export const QRCodePage: React.FC<QRCodePageProps> = ({
     return false;
   };
 
-  // Helper: Get the month/year where this photo exists in All Photos
   const getPhotoAllPhotosLocation = (photoData: string): string | null => {
     for (const album of allPhotos) {
       if (album.photos && album.photos.some((p: string) => p === photoData)) {
@@ -73,7 +70,6 @@ export const QRCodePage: React.FC<QRCodePageProps> = ({
     return null;
   };
 
-  // Auto-select a sensible event on load so a QR code always shows when possible
   useEffect(() => {
     if (!selectedEventId && events.length > 0) {
       const firstWithAlbum = events.find(e => Array.isArray(e.dateEntries) && e.dateEntries.length > 0);
@@ -82,7 +78,6 @@ export const QRCodePage: React.FC<QRCodePageProps> = ({
     }
   }, [events, selectedEventId]);
 
-  // Build the branded QR
   useEffect(() => {
     if (!qrContainerEl) return;
     qrContainerEl.innerHTML = '';
@@ -105,7 +100,6 @@ export const QRCodePage: React.FC<QRCodePageProps> = ({
     };
   }, [qrContainerEl]);
 
-  // Update the QR kapag may binago sa event/date
   useEffect(() => {
     if (!qrStylingRef.current || !selectedEventId) return;
     qrStylingRef.current.update({ data: getUploadUrl(selectedEventId, selectedDateIndex) });
@@ -120,14 +114,15 @@ export const QRCodePage: React.FC<QRCodePageProps> = ({
     return event.dateEntries[selectedDateIndex];
   };
 
-  // Resize image
+  // OPTIMIZED: Faster image resize with lower quality and smaller size
   const resizeImage = (file: File): Promise<string> =>
     new Promise((resolve, reject) => {
       const img = new window.Image();
       const reader = new FileReader();
       reader.onload = () => {
         img.onload = () => {
-          const MAX = 1600;
+          // Reduced max size from 1600 to 1200 for faster upload
+          const MAX = 1200;
           const scale = Math.min(1, MAX / Math.max(img.width, img.height));
           const w = Math.round(img.width * scale);
           const h = Math.round(img.height * scale);
@@ -139,7 +134,8 @@ export const QRCodePage: React.FC<QRCodePageProps> = ({
           ctx.fillStyle = '#ffffff';
           ctx.fillRect(0, 0, w, h);
           ctx.drawImage(img, 0, 0, w, h);
-          resolve(canvas.toDataURL('image/jpeg', 0.85));
+          // Reduced quality from 0.85 to 0.75 for smaller file size
+          resolve(canvas.toDataURL('image/jpeg', 0.75));
         };
         img.onerror = reject;
         img.src = reader.result as string;
@@ -148,17 +144,24 @@ export const QRCodePage: React.FC<QRCodePageProps> = ({
       reader.readAsDataURL(file);
     });
 
-  // Handle photo upload - with duplicate detection
   const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (!files) return;
 
+    setUploadStatus('loading');
+    setUploadProgress(0);
+
     const urls: string[] = [];
+    const totalFiles = files.length;
+    let processed = 0;
+
     for (const file of Array.from(files)) {
       if (file && file.type && file.type.indexOf('image') === 0) {
         try {
           const imageData = await resizeImage(file);
           urls.push(imageData);
+          processed++;
+          setUploadProgress(Math.round((processed / totalFiles) * 100));
         } catch {
           /* skip unreadable image */
         }
@@ -170,6 +173,8 @@ export const QRCodePage: React.FC<QRCodePageProps> = ({
       setUploadedPhotos(prev => [...prev, ...urls]);
       setUploadStatus('idle');
       setErrorMessage('');
+    } else {
+      setUploadStatus('idle');
     }
 
     if (photoFileInputRef.current) {
@@ -182,7 +187,7 @@ export const QRCodePage: React.FC<QRCodePageProps> = ({
     setUploadedPhotos(prev => prev.filter((_, i) => i !== index));
   };
 
-  // Save photos to event AND All Photos
+  // OPTIMIZED: Parallel uploads using Promise.all
   const handleSavePhotosToEvent = async () => {
     if (!selectedEventId) {
       setErrorMessage('Please select an event first.');
@@ -196,6 +201,7 @@ export const QRCodePage: React.FC<QRCodePageProps> = ({
 
     setIsUploading(true);
     setUploadStatus('loading');
+    setUploadProgress(0);
     setErrorMessage('');
 
     try {
@@ -209,7 +215,6 @@ export const QRCodePage: React.FC<QRCodePageProps> = ({
       const targetIndex = selectedDateIndex >= 0 && selectedDateIndex < event.dateEntries.length ? selectedDateIndex : 0;
       const currentPhotos = event.dateEntries[targetIndex]?.photos || [];
       
-      // Combine existing photos with new ones (avoid duplicates within event)
       const existingPhotoSet = new Set(currentPhotos);
       const newPhotos = uploadedPhotos.filter((p: string) => !existingPhotoSet.has(p));
       const updatedPhotos = [...currentPhotos, ...newPhotos];
@@ -229,41 +234,50 @@ export const QRCodePage: React.FC<QRCodePageProps> = ({
       await apiUpdateRecord('events', event.id, { dateEntries: updatedEntries });
       if (onUpdateEvent) onUpdateEvent(updatedEvent);
 
-      // ALSO SAVE TO ALL PHOTOS
+      // OPTIMIZED: Parallel upload to All Photos
       const now = new Date();
       const currentMonth = now.getMonth();
       const currentYear = now.getFullYear();
       const dateLabel = event.dateEntries[targetIndex]?.date || `${currentMonth + 1}/${currentYear}`;
 
-      // Save each new photo to All Photos
-      for (const photoData of newPhotos) {
-        try {
-          const response = await fetch(`${GFC_BASE}/api/uploads/all`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              image: photoData,
-              month: currentMonth,
-              year: currentYear,
-              date: dateLabel
-            })
-          });
+      // Upload all photos to All Photos in parallel
+      const uploadPromises = newPhotos.map((photoData, index) => {
+        return fetch(`${GFC_BASE}/api/uploads/all`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            image: photoData,
+            month: currentMonth,
+            year: currentYear,
+            date: dateLabel
+          })
+        }).then(response => {
+          setUploadProgress(Math.round(((index + 1) / newPhotos.length) * 100));
           if (!response.ok) {
-            console.warn('Failed to save photo to All Photos:', await response.text());
+            console.warn('Failed to save photo to All Photos:', response.status);
           }
-        } catch (err) {
+          return response;
+        }).catch(err => {
           console.warn('Error saving photo to All Photos:', err);
-        }
-      }
+        });
+      });
 
-      // Notify parent to refresh All Photos
+      await Promise.all(uploadPromises);
+
       if (onAllPhotosUpdated) {
         onAllPhotosUpdated();
       }
 
       setUploadStatus('success');
+      setUploadProgress(100);
       setUploadedPhotos([]);
       setUploadedPhotoPreviews([]);
+      
+      // Auto-hide success after 3 seconds
+      setTimeout(() => {
+        setUploadStatus('idle');
+        setUploadProgress(0);
+      }, 3000);
     } catch (error) {
       setUploadStatus('error');
       setErrorMessage('Error uploading photos. Please try again.');
@@ -312,12 +326,12 @@ export const QRCodePage: React.FC<QRCodePageProps> = ({
     setUploadedPhotoPreviews([]);
     setUploadStatus('idle');
     setErrorMessage('');
+    setUploadProgress(0);
     if (photoFileInputRef.current) {
       photoFileInputRef.current.value = '';
     }
   };
 
-  // Check if there are events at all
   if (events.length === 0) {
     return (
       <div className="space-y-6">
@@ -352,7 +366,6 @@ export const QRCodePage: React.FC<QRCodePageProps> = ({
 
   return (
     <div className="space-y-6">
-      {/* Header */}
       <div className="bg-white dark:bg-[#14141f]/80 backdrop-blur-sm p-6 rounded-2xl border border-gray-200 dark:border-white/5 shadow-sm">
         <h3 className="text-sm font-bold text-black dark:text-white mb-2 flex items-center gap-2">
           <QrCode className="w-5 h-5 text-indigo-500" />
@@ -363,10 +376,8 @@ export const QRCodePage: React.FC<QRCodePageProps> = ({
         </div>
       </div>
 
-      {/* Selection Section */}
       <div className="bg-white dark:bg-[#14141f]/80 backdrop-blur-sm p-6 rounded-2xl border border-gray-200 dark:border-white/5 shadow-sm">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          {/* Left: Event Selection */}
           <div className="space-y-4">
             <div>
               <label className="block text-xs font-bold text-gray-700 dark:text-[#A1A1A1] uppercase tracking-wider mb-2">
@@ -468,7 +479,6 @@ export const QRCodePage: React.FC<QRCodePageProps> = ({
             )}
           </div>
 
-          {/* Right: QR Code Display */}
           <div className="flex flex-col items-center justify-center p-4 bg-gray-50 dark:bg-black/30 rounded-xl border border-gray-200 dark:border-white/10">
             {selectedEventId && getSelectedDateEntry() ? (
               <>
@@ -497,14 +507,50 @@ export const QRCodePage: React.FC<QRCodePageProps> = ({
         </div>
       </div>
 
-      {/* Upload Section */}
       {selectedEventId && getSelectedDateEntry() && (
         <div className="bg-white dark:bg-[#14141f]/80 backdrop-blur-sm p-6 rounded-2xl border border-gray-200 dark:border-white/5 shadow-sm">
           <h4 className="text-sm font-bold text-black dark:text-white mb-4 flex items-center gap-2">
             <Upload className="w-4 h-4 text-indigo-500" />
             Upload Photos to Event
           </h4>
-          {/* Photo Preview Grid with Duplicate Detection */}
+
+          <div className="flex flex-wrap items-center gap-3">
+            <label className="cursor-pointer inline-flex items-center gap-2 px-4 py-2.5 bg-indigo-500 hover:bg-indigo-600 text-white rounded-xl text-xs font-bold transition-all shadow-md">
+              <Image className="w-4 h-4" />
+              Select Photos
+              <input
+                ref={photoFileInputRef}
+                type="file"
+                accept="image/*"
+                multiple
+                onChange={handlePhotoUpload}
+                className="hidden"
+              />
+            </label>
+            <button
+              onClick={handleResetUpload}
+              className="px-4 py-2.5 bg-gray-100 dark:bg-white/5 hover:bg-gray-200 dark:hover:bg-white/10 text-gray-700 dark:text-[#A1A1A1] rounded-xl text-xs font-bold transition-all border border-gray-200 dark:border-white/10"
+            >
+              Clear All
+            </button>
+          </div>
+
+          {/* Progress Bar */}
+          {uploadStatus === 'loading' && uploadProgress > 0 && (
+            <div className="mt-4">
+              <div className="flex items-center justify-between text-xs text-gray-500 dark:text-gray-400 mb-1">
+                <span>Processing...</span>
+                <span>{uploadProgress}%</span>
+              </div>
+              <div className="w-full h-2 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
+                <div 
+                  className="h-full bg-indigo-500 transition-all duration-300 rounded-full"
+                  style={{ width: `${uploadProgress}%` }}
+                />
+              </div>
+            </div>
+          )}
+
           {uploadedPhotoPreviews.length > 0 && (
             <div className="mt-4">
               <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-3">
@@ -519,20 +565,17 @@ export const QRCodePage: React.FC<QRCodePageProps> = ({
                           alt={`Upload ${index + 1}`}
                           className="w-full h-full object-cover"
                         />
-                        {/* Duplicate indicator */}
                         {isDuplicate && (
                           <div className="absolute top-0 right-0 m-1 bg-red-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full flex items-center gap-1 shadow-lg">
                             <span className="w-1.5 h-1.5 bg-white rounded-full animate-pulse" />
                             In All Photos
                           </div>
                         )}
-                        {/* Location tooltip */}
                         {isDuplicate && location && (
                           <div className="absolute bottom-0 left-0 right-0 bg-black/70 text-white text-[9px] px-1.5 py-0.5 truncate">
                             📍 {location}
                           </div>
                         )}
-                        {/* Remove button */}
                         <button
                           onClick={() => handleRemoveUploadedPhoto(index)}
                           className="absolute top-1 right-1 p-1 bg-black/60 hover:bg-red-500 text-white rounded-full opacity-0 group-hover:opacity-100 transition-all"
@@ -562,7 +605,6 @@ export const QRCodePage: React.FC<QRCodePageProps> = ({
             </div>
           )}
 
-          {/* Upload Button */}
           <div className="mt-4 flex flex-wrap gap-3">
             <button
               onClick={handleSavePhotosToEvent}
