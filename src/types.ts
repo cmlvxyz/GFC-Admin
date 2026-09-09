@@ -94,6 +94,13 @@ export interface Activity {
   createdAt: string;
 }
 
+export interface AllPhotoAlbum {
+  month: number;
+  year: number;
+  date: string;
+  photos: string[];
+}
+
 export interface RemoteContent {
   initialized: boolean;
   events: ChurchEvent[];
@@ -103,6 +110,7 @@ export interface RemoteContent {
   members: Member[];
   announcements: Announcement[];
   testimonials: Testimonial[];
+  allPhotos: AllPhotoAlbum[];
 }
 
 export type RecordMap = {
@@ -113,6 +121,7 @@ export type RecordMap = {
   members: Member[];
   announcements: Announcement[];
   testimonials: Testimonial[];
+  allPhotos: AllPhotoAlbum[];
 };
 
 export type Collection = keyof RecordMap;

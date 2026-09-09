@@ -2,6 +2,12 @@
   var params = new URLSearchParams(location.search);
   var eventId = (params.get('event') || '').trim();
   var dateIndex = parseInt(params.get('date') || '0', 10) || 0;
+  var isAllPhotosMode = !eventId;
+
+  var MONTH_NAMES = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+  var YEAR_RANGE = [];
+  var currentYear = new Date().getFullYear();
+  for (var y = 2021; y <= 2030; y++) YEAR_RANGE.push(y);
 
   var viewLoading = document.getElementById('viewLoading');
   var viewError = document.getElementById('viewError');
@@ -22,15 +28,17 @@
   var uploadMoreBtn = document.getElementById('uploadMoreBtn');
 
   var viewPicker = document.getElementById('viewPicker');
-  var pickerEvent = document.getElementById('pickerEvent');
-  var pickerDate = document.getElementById('pickerDate');
-  var pickerDateWrap = document.getElementById('pickerDateWrap');
+  var pickerMonth = document.getElementById('pickerMonth');
+  var pickerYear = document.getElementById('pickerYear');
+  var pickerLabel = document.getElementById('pickerLabel');
   var pickerGo = document.getElementById('pickerGo');
   var pickerStatus = document.getElementById('pickerStatus');
 
   var photos = [];
   var uploading = false;
-  var eventsCache = [];
+  var allMonth = '';
+  var allYear = '';
+  var allDate = '';
 
   function show(view) {
     viewLoading.classList.add('hidden');
@@ -83,7 +91,7 @@
       var rm = document.createElement('button');
       rm.className = 'rm';
       rm.type = 'button';
-      rm.textContent = '✕';
+      rm.textContent = '\u2715';
       rm.onclick = function () {
         photos.splice(index, 1);
         renderPreviews();
@@ -129,10 +137,16 @@
       var photo = photos[i];
       setStatus('Uploading ' + (i + 1) + ' of ' + total + '...');
       try {
-        var res = await fetch('/api/uploads', {
+        var body;
+        if (isAllPhotosMode) {
+          body = { image: photo.url, month: allMonth, year: allYear, date: allDate };
+        } else {
+          body = { image: photo.url, eventId: eventId, dateIndex: dateIndex };
+        }
+        var res = await fetch('/api/uploads' + (isAllPhotosMode ? '/all' : ''), {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ image: photo.url, eventId: eventId, dateIndex: dateIndex })
+          body: JSON.stringify(body)
         });
         var data = await res.json();
         if (!res.ok) throw new Error(data.message || 'Upload failed');
@@ -168,83 +182,34 @@
   uploadBtn.addEventListener('click', uploadAll);
   uploadMoreBtn.addEventListener('click', function () { photos = []; renderPreviews(); show(viewUpload); setStatus(''); });
 
-  function setPickerStatus(text, type) {
-    pickerStatus.textContent = text || '';
-    pickerStatus.className = 'status' + (type ? ' ' + type : '');
-  }
-
-  function populateEventOptions() {
-    var withAlbums = eventsCache.filter(function (e) {
-      return Array.isArray(e.dateEntries) && e.dateEntries.length > 0;
-    });
-    pickerEvent.innerHTML = '<option value="">-- Pumili ng event --</option>' +
-      withAlbums.map(function (e, i) { return '<option value="' + i + '">' + e.title + '</option>'; }).join('');
-    pickerDate.innerHTML = '<option value="">-- Pumili ng date --</option>';
-    pickerDate.disabled = true;
-    pickerDateWrap.style.opacity = '0.45';
-    pickerDateWrap.style.pointerEvents = 'none';
-    pickerGo.disabled = true;
-    return withAlbums;
-  }
-
-  function showPicker() {
+  function showAllPhotosPicker() {
     show(viewPicker);
-    setPickerStatus('');
-    fetch('/api/content')
-      .then(function (res) { if (!res.ok) throw new Error('HTTP ' + res.status); return res.json(); })
-      .then(function (data) {
-        eventsCache = (data.events || []).filter(function (e) {
-          return Array.isArray(e.dateEntries) && e.dateEntries.length > 0;
-        });
-        if (eventsCache.length === 0) {
-          setPickerStatus('Wala pang event na may date album. Magdagdag muna ng date sa admin.', 'err');
-          return;
-        }
-        populateEventOptions();
-        pickerEvent.focus();
-      })
-      .catch(function () {
-        setPickerStatus('Hindi makakonekta sa server. Pakisiguraduhing tumatakbo ang backend.', 'err');
-      });
+    pickerStatus.textContent = '';
+    pickerStatus.className = 'status';
+
+    pickerMonth.innerHTML = '<option value="">-- Pumili ng month --</option>' +
+      MONTH_NAMES.map(function (m, i) { return '<option value="' + i + '">' + m + '</option>'; }).join('');
+    pickerYear.innerHTML = '<option value="">-- Pumili ng year --</option>' +
+      YEAR_RANGE.map(function (y) { return '<option value="' + y + '"' + (y === currentYear ? ' selected' : '') + '>' + y + '</option>'; }).join('');
+    pickerLabel.value = '';
+    pickerMonth.focus();
   }
-
-  pickerEvent.addEventListener('change', function () {
-    var idx = parseInt(pickerEvent.value, 10);
-    var ev = eventsCache[idx];
-    if (!ev) {
-      pickerDate.innerHTML = '<option value="">-- Pumili ng date --</option>';
-      pickerDate.disabled = true;
-      pickerDateWrap.style.opacity = '0.45';
-      pickerDateWrap.style.pointerEvents = 'none';
-      pickerGo.disabled = true;
-      return;
-    }
-    pickerDate.innerHTML = '<option value="">-- Pumili ng date --</option>' +
-      ev.dateEntries.map(function (entry, di) {
-        return '<option value="' + di + '">' + (entry.date || ('Album ' + (di + 1))) + '</option>';
-      }).join('');
-    pickerDate.disabled = false;
-    pickerDateWrap.style.opacity = '1';
-    pickerDateWrap.style.pointerEvents = 'auto';
-    pickerGo.disabled = true;
-    setPickerStatus('');
-  });
-
-  pickerDate.addEventListener('change', function () {
-    pickerGo.disabled = !(pickerEvent.value !== '' && pickerDate.value !== '');
-    setPickerStatus('');
-  });
 
   pickerGo.addEventListener('click', function () {
-    var idx = parseInt(pickerEvent.value, 10);
-    var di = parseInt(pickerDate.value, 10);
-    var ev = eventsCache[idx];
-    if (!ev || isNaN(di)) return;
-    eventId = ev.id;
-    dateIndex = di;
-    document.title = 'Photo Upload | ' + ev.title;
-    eventTitle.textContent = ev.title;
-    eventDate.textContent = (ev.dateEntries[di] && ev.dateEntries[di].date) || ev.date || '';
+    var m = pickerMonth.value;
+    var y = pickerYear.value;
+    if (m === '' || y === '') {
+      pickerStatus.textContent = 'Pumili ng month at year.';
+      pickerStatus.className = 'status err';
+      return;
+    }
+    allMonth = parseInt(m, 10);
+    allYear = parseInt(y, 10);
+    allDate = (pickerLabel.value || '').trim() || MONTH_NAMES[allMonth] + ' ' + allYear;
+
+    eventTitle.textContent = MONTH_NAMES[allMonth] + ' ' + allYear;
+    eventDate.textContent = allDate;
+    document.title = 'Photo Upload | ' + allDate;
     show(viewUpload);
   });
 
@@ -263,7 +228,9 @@
       show(viewUpload);
     } catch (err) {
       if (err && err.message === 'not found') {
-        showPicker();
+        errorTitle.textContent = 'Hindi mahanap ang event';
+        errorText.innerHTML = 'Mukhang hindi balido ang QR code na ito.<br/>Subukan muli o i-contact ang church admin.';
+        show(viewError);
       } else {
         errorTitle.textContent = 'Cannot connect to server';
         errorText.innerHTML = 'Hindi makakonekta sa GFC server. Pakisiguraduhing tumatakbo ang backend (npm run server).<br/>Pindutin ang Retry para subukan muli.';
@@ -273,11 +240,17 @@
   }
 
   retryBtn.addEventListener('click', function () {
-    show(viewLoading);
-    loadEvent();
+    if (isAllPhotosMode) {
+      showAllPhotosPicker();
+    } else {
+      show(viewLoading);
+      loadEvent();
+    }
   });
 
-  if (!eventId) {
-    showPicker();
-  } else { loadEvent(); }
+  if (isAllPhotosMode) {
+    showAllPhotosPicker();
+  } else {
+    loadEvent();
+  }
 })();

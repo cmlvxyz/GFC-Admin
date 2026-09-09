@@ -234,7 +234,8 @@ const icons = {
   testimonials: '🗣️', 
   admin: '🔐', 
   system: '⚙️', 
-  uploads: '📸' 
+  uploads: '📸',
+  allPhotos: '🖼️' 
 };
 
 const activityMessages = {
@@ -277,6 +278,9 @@ const activityMessages = {
     created: (l) => `New testimonial from "${l}" was added`, 
     updated: (l) => `Testimonial from "${l}" was updated`, 
     deleted: (l) => `Testimonial from "${l}" was deleted` 
+  },
+  allPhotos: { 
+    photo: () => 'New photo was uploaded to All Photos' 
   }
 };
 

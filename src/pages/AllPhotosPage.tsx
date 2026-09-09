@@ -1,12 +1,13 @@
 // GFC-ADMIN/src/pages/AllPhotosPage.tsx
 
 import React, { useEffect, useMemo, useState } from 'react';
-import { ChurchEvent } from '../types';
+import { ChurchEvent, AllPhotoAlbum } from '../types';
 import { QrCode, X, CalendarDays, Images } from 'lucide-react';
 import QRCodeStyling from 'qr-code-styling';
 
 interface AllPhotosPageProps {
   events: ChurchEvent[];
+  allPhotos?: AllPhotoAlbum[];
 }
 
 interface PhotoItem {
@@ -63,8 +64,8 @@ const parseEntryDate = (value: string): { month: number; year: number } | null =
 
 const YEAR_RANGE = Array.from({ length: 10 }, (_, i) => 2021 + i);
 
-export const AllPhotosPage: React.FC<AllPhotosPageProps> = ({ events }) => {
-  const allPhotos = useMemo<PhotoItem[]>(() => {
+export const AllPhotosPage: React.FC<AllPhotosPageProps> = ({ events, allPhotos = [] }) => {
+  const allPhotosList = useMemo<PhotoItem[]>(() => {
     const list: PhotoItem[] = [];
     for (const ev of events) {
       for (const entry of ev.dateEntries || []) {
@@ -76,8 +77,16 @@ export const AllPhotosPage: React.FC<AllPhotosPageProps> = ({ events }) => {
         }
       }
     }
+    for (const album of allPhotos) {
+      if (!Array.isArray(album?.photos)) continue;
+      const month = typeof album.month === 'number' ? album.month : -1;
+      const year = typeof album.year === 'number' ? album.year : -1;
+      for (const url of album.photos) {
+        list.push({ url: resolvePhotoUrl(url), month, year, eventTitle: 'All Photos', date: album.date || '' });
+      }
+    }
     return list;
-  }, [events]);
+  }, [events, allPhotos]);
 
   const [selectedMonth, setSelectedMonth] = useState<number | ''>('');
   const [yearModal, setYearModal] = useState<number | null>(null);
@@ -103,7 +112,7 @@ export const AllPhotosPage: React.FC<AllPhotosPageProps> = ({ events }) => {
   }, [qrContainerEl]);
 
   const grouped = useMemo(() => {
-    const filtered = selectedMonth === '' ? [] : allPhotos.filter(p => p.month === selectedMonth);
+    const filtered = selectedMonth === '' ? [] : allPhotosList.filter(p => p.month === selectedMonth);
     const order: { key: string; label: string; year: number; month: number }[] = [];
     const byKey = new Map<string, PhotoItem[]>();
     for (const p of filtered) {
@@ -121,11 +130,11 @@ export const AllPhotosPage: React.FC<AllPhotosPageProps> = ({ events }) => {
     }
     order.sort((a, b) => b.year - a.year || b.month - a.month);
     return order.map(o => ({ label: o.label, photos: byKey.get(o.key)! }));
-  }, [allPhotos, selectedMonth]);
+  }, [allPhotosList, selectedMonth]);
 
   const monthCountsForYear = (year: number): number[] => {
     const counts = new Array(12).fill(0);
-    for (const p of allPhotos) {
+    for (const p of allPhotosList) {
       if (p.year === year && p.year !== -1) counts[p.month] += 1;
     }
     return counts;
@@ -204,7 +213,7 @@ export const AllPhotosPage: React.FC<AllPhotosPageProps> = ({ events }) => {
               <span>📸</span>
               <span>
                 {selectedMonth === ''
-                  ? `${allPhotos.length} total photos`
+                  ? `${allPhotosList.length} total photos`
                   : `${grouped.reduce((sum, g) => sum + g.photos.length, 0)} photos — ${MONTH_NAMES[selectedMonth]}`}
               </span>
             </div>
@@ -216,7 +225,7 @@ export const AllPhotosPage: React.FC<AllPhotosPageProps> = ({ events }) => {
               <div className="bg-white dark:bg-[#14141f]/80 backdrop-blur-sm p-10 rounded-2xl border border-gray-200 dark:border-white/5 shadow-sm text-center">
                 <Images className="w-10 h-10 text-gray-300 dark:text-gray-600 mx-auto mb-2" />
                 <p className="text-sm text-gray-500 dark:text-[#A1A1A1]">
-                  {allPhotos.length === 0
+                  {allPhotosList.length === 0
                   ? 'Wala pang nai-upload na photos sa anumang event.'
                   : selectedMonth === ''
                     ? 'Wala pang napiling month o year. Pumili ng month o year para makita ang mga photos.'

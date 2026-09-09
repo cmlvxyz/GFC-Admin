@@ -44,7 +44,8 @@ export default function App() {
     attendees: [],
     members: [],
     announcements: [],
-    testimonials: []
+    testimonials: [],
+    allPhotos: []
   });
 
   const showToast = useCallback((message: string, type: ToastType = 'success') => {
@@ -66,9 +67,9 @@ export default function App() {
   const loadAll = useCallback(async () => {
     setLoading(true);
     try {
-      const [events, sermons, prayers, attendees, members, announcements, testimonials] = await Promise.all([
+      const [events, sermons, prayers, attendees, members, announcements, testimonials, allPhotos] = await Promise.all([
         listCollection('events'), listCollection('sermons'), listCollection('prayers'), listCollection('attendees'),
-        listCollection('members'), listCollection('announcements'), listCollection('testimonials')
+        listCollection('members'), listCollection('announcements'), listCollection('testimonials'), listCollection('allPhotos')
       ]);
       setData({
         events: events.events,
@@ -77,7 +78,8 @@ export default function App() {
         attendees: attendees.attendees,
         members: members.members,
         announcements: announcements.announcements,
-        testimonials: testimonials.testimonials
+        testimonials: testimonials.testimonials,
+        allPhotos: allPhotos.allPhotos
       });
       setDataLoadedOnce(true);
     } catch (error) {
@@ -166,7 +168,7 @@ export default function App() {
         try {
           await resetRemoteData();
           await clearActivities();
-          setData({ events: [], sermons: [], prayers: [], attendees: [], members: [], announcements: [], testimonials: [] });
+          setData({ events: [], sermons: [], prayers: [], attendees: [], members: [], announcements: [], testimonials: [], allPhotos: [] });
           setActivities([]);
           showToast('💾 All data was reset.', 'success');
         } catch (error) {
@@ -262,7 +264,7 @@ export default function App() {
     }
 
     if (page === 'photos') {
-      return <AllPhotosPage events={data.events} />;
+      return <AllPhotosPage events={data.events} allPhotos={data.allPhotos} />;
     }
 
     if (page === 'settings') {

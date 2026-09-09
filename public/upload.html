@@ -96,20 +96,26 @@
       <div class="brand">
         <img src="/image.png" alt="Gospel Fellowship Church" />
         <h1>Gospel Fellowship Church</h1>
-        <p>Pumili kung saang event ka mag-u-upload</p>
+        <p>Ilagay ang date ng photo bago mag-upload</p>
       </div>
-      <div style="text-align:center;"><span class="chip">🗂️ Photo Upload</span></div>
+      <div style="text-align:center;"><span class="chip">📸 All Photos Upload</span></div>
       <div style="display:flex; flex-direction:column; gap:14px;">
-        <div>
-          <label style="font-size:12px; font-weight:800; color:var(--indigo-700); margin-bottom:6px; display:block;">Event</label>
-          <select id="pickerEvent" style="width:100%; padding:13px; border-radius:14px; border:1px solid #c7caff; font-size:14px; font-weight:600; color:var(--ink); background:#fafbff;"></select>
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
+          <div>
+            <label style="font-size:12px; font-weight:800; color:var(--indigo-700); margin-bottom:6px; display:block;">Month</label>
+            <select id="pickerMonth" style="width:100%; padding:13px; border-radius:14px; border:1px solid #c7caff; font-size:14px; font-weight:600; color:var(--ink); background:#fafbff;"></select>
+          </div>
+          <div>
+            <label style="font-size:12px; font-weight:800; color:var(--indigo-700); margin-bottom:6px; display:block;">Year</label>
+            <select id="pickerYear" style="width:100%; padding:13px; border-radius:14px; border:1px solid #c7caff; font-size:14px; font-weight:600; color:var(--ink); background:#fafbff;"></select>
+          </div>
         </div>
-        <div id="pickerDateWrap" style="opacity:.45; pointer-events:none; transition:opacity .2s;">
-          <label style="font-size:12px; font-weight:800; color:var(--indigo-700); margin-bottom:6px; display:block;">Date</label>
-          <select id="pickerDate" style="width:100%; padding:13px; border-radius:14px; border:1px solid #c7caff; font-size:14px; font-weight:600; color:var(--ink); background:#fafbff;" disabled></select>
+        <div>
+          <label style="font-size:12px; font-weight:800; color:var(--indigo-700); margin-bottom:6px; display:block;">Date label <span style="font-weight:500; color:var(--muted);">(optional — e.g. "June 10", "Sunday Service")</span></label>
+          <input id="pickerLabel" type="text" placeholder="June 10" style="width:100%; padding:13px; border-radius:14px; border:1px solid #c7caff; font-size:14px; font-weight:600; color:var(--ink); background:#fafbff;" />
         </div>
       </div>
-      <button class="btn" id="pickerGo" disabled>Continue to Upload ➜</button>
+      <button class="btn" id="pickerGo">Continue to Upload ➜</button>
       <div class="status" id="pickerStatus"></div>
     </div>
   </div>
