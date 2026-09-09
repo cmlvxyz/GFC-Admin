@@ -224,7 +224,6 @@ export const AllPhotosPage: React.FC<AllPhotosPageProps> = ({
       }
     } catch (error) {
       console.error('Error deleting photo:', error);
-      alert('Failed to delete photo. Please try again.');
     } finally {
       setIsDeleting(false);
     }
