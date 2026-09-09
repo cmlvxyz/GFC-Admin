@@ -302,9 +302,15 @@ export default function App() {
         />
       );
     }
-
+    
     if (page === 'photos') {
-      return <AllPhotosPage events={data.events} allPhotos={data.allPhotos} />;
+      return (
+        <AllPhotosPage 
+          events={data.events} 
+          allPhotos={data.allPhotos}
+          onAllPhotosUpdated={refreshAllPhotos}  // <-- IDAGDAG ITO!
+        />
+      );
     }
 
     if (page === 'settings') {
@@ -494,17 +500,6 @@ export default function App() {
               </div>
             </div>
           </div>
-
-          {loading ? (
-            <div className="flex items-center justify-center py-24 text-gray-400 dark:text-gray-500 text-sm">
-              <div className="text-center space-y-3">
-                <div className="w-12 h-12 border-4 border-indigo-300 dark:border-indigo-800 border-t-indigo-500 rounded-full animate-spin mx-auto" />
-                <p>Loading GFC-ADMIN system...</p>
-              </div>
-            </div>
-          ) : (
-            renderPage()
-          )}
         </main>
       </div>
     </div>

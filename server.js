@@ -32,9 +32,6 @@ const emptyDatabase = () => ({
 
 // ============================================
 // STORAGE LAYER
-// Mode A: Turso (libsql) kapag DATABASE_URL ay nagsisimula sa libsql:// / wss:// / file:
-// Mode B: PostgreSQL (JSONB) kapag may DATABASE_URL (postgres://).
-// Mode C: JSON file (data/data.json) - fallback para sa local dev.
 // ============================================
 let fileDatabase = null;
 let writeQueue = Promise.resolve();
@@ -43,7 +40,7 @@ const DATABASE_URL = (process.env.DATABASE_URL || '').trim();
 const IS_LIBSQL = /^(libsql:\/\/|wss:\/\/|ws:\/\/|file:)/.test(DATABASE_URL);
 
 let dbClient = null;
-let dbMode = 'none'; // 'postgres' | 'turusql' | 'none'
+let dbMode = 'none';
 
 if (IS_LIBSQL) {
   const { createClient } = await import('@libsql/client');
@@ -103,12 +100,10 @@ function dbSaveBlob() {
   return Promise.resolve();
 }
 
-// CRITICAL FIX: Ensure dbPersist always returns a Promise and handles errors
 function dbPersist() {
   if (dbClient) {
     return dbSaveBlob().catch(err => {
       console.error('❌ Failed to save to database:', err.message);
-      // Don't throw - we want to keep the app running even if save fails
       return Promise.resolve();
     });
   }
@@ -140,7 +135,6 @@ async function dbInitialize() {
       console.log('✅ Database schema ready');
     } catch (error) {
       console.error(`❌ Cannot connect to ${dbMode}:`, error.message);
-      // Don't throw - use in-memory fallback
       console.warn('⚠️ Using in-memory fallback');
       fileDatabase = emptyDatabase();
       return;
@@ -149,7 +143,6 @@ async function dbInitialize() {
     loaded = await dbLoadBlob();
     console.log(`📦 Loaded from database: ${loaded ? '✅ found' : '❌ empty'}`);
     
-    // Fallback: kung walang laman ang database pero may data.json pa sa disk
     if (!loaded) {
       try {
         const fileContent = await fs.readFile(dataFile, 'utf8');
@@ -321,7 +314,8 @@ const activityMessages = {
     deleted: (l) => `Testimonial from "${l}" was deleted` 
   },
   allPhotos: { 
-    photo: () => 'New photo was uploaded to All Photos' 
+    photo: () => 'New photo was uploaded to All Photos',
+    delete: () => 'Photo was deleted from All Photos'
   }
 };
 
@@ -358,7 +352,7 @@ function validCollection(req, res, next) {
 const app = express();
 
 // ============================================
-// CORS - Allow Vercel production domain
+// CORS
 // ============================================
 const allowedOrigins = [
   'http://localhost:3002',
@@ -402,7 +396,7 @@ app.get('/api/health', async (req, res) => {
   }); 
 });
 
-// Get config - for QR code generation
+// Get config
 app.get('/api/config', (req, res) => {
   const gfcUrl = process.env.VITE_GFC_URL || 'http://localhost:3002';
   res.json({ 
@@ -444,7 +438,6 @@ app.post('/api/bootstrap', async (req, res, next) => {
 // ACTIVITY STREAM (SSE)
 // ============================================
 app.get('/api/activities/stream', async (req, res) => {
-  // Set headers for SSE
   res.writeHead(200, {
     'Content-Type': 'text/event-stream',
     'Cache-Control': 'no-cache',
@@ -453,24 +446,20 @@ app.get('/api/activities/stream', async (req, res) => {
     'Access-Control-Allow-Credentials': 'true'
   });
 
-  // Send initial connection message
   res.write(`data: ${JSON.stringify({ type: 'connected', message: 'SSE connected' })}\n\n`);
 
   let lastActivityId = null;
   let closed = false;
 
-  // Get initial activities
   const initialActivities = await dbGetActivities();
   if (initialActivities.length > 0) {
     lastActivityId = initialActivities[0].id;
-    // Send initial activities
     for (const activity of initialActivities.slice(0, 10)) {
       if (closed) break;
       res.write(`data: ${JSON.stringify({ type: 'activity', data: activity })}\n\n`);
     }
   }
 
-  // Poll for new activities every 2 seconds
   const pollInterval = setInterval(async () => {
     if (closed) {
       clearInterval(pollInterval);
@@ -481,27 +470,22 @@ app.get('/api/activities/stream', async (req, res) => {
       const activities = await dbGetActivities();
       if (activities.length === 0) return;
 
-      // Find new activities since last check
       let newActivities = [];
       if (lastActivityId) {
         const lastIndex = activities.findIndex(a => a.id === lastActivityId);
         if (lastIndex > 0) {
           newActivities = activities.slice(0, lastIndex);
         } else if (lastIndex === -1) {
-          // Last ID not found, send all recent
           newActivities = activities.slice(0, 5);
         }
       } else if (activities.length > 0) {
-        // First time, send latest
         newActivities = activities.slice(0, 1);
       }
 
-      // Update lastActivityId to the most recent
       if (activities.length > 0) {
         lastActivityId = activities[0].id;
       }
 
-      // Send new activities in chronological order (oldest first)
       for (const activity of newActivities.reverse()) {
         if (closed) break;
         res.write(`data: ${JSON.stringify({ type: 'activity', data: activity })}\n\n`);
@@ -511,14 +495,12 @@ app.get('/api/activities/stream', async (req, res) => {
     }
   }, 2000);
 
-  // Clean up on client disconnect
   req.on('close', () => {
     closed = true;
     clearInterval(pollInterval);
     res.end();
   });
 
-  // Keep the connection alive
   const keepAlive = setInterval(() => {
     if (closed) {
       clearInterval(keepAlive);
@@ -527,14 +509,13 @@ app.get('/api/activities/stream', async (req, res) => {
     res.write(`: keepalive\n\n`);
   }, 15000);
 
-  // Clean up keepAlive on close
   req.on('close', () => {
     clearInterval(keepAlive);
   });
 });
 
 // ============================================
-// ALL-PHOTOS UPLOAD (public, no event - month/year/date)
+// ALL-PHOTOS UPLOAD
 // ============================================
 app.post('/api/uploads/all', async (req, res, next) => {
   try {
@@ -568,6 +549,58 @@ app.post('/api/uploads/all', async (req, res, next) => {
     res.status(201).json({ success: true, message: 'Photo uploaded successfully!', photoCount: bucket.photos.length });
   } catch (error) {
     console.error('All-photos upload error:', error);
+    next(error);
+  }
+});
+
+// ============================================
+// DELETE PHOTO FROM ALL PHOTOS - PERMANENT DELETE
+// ============================================
+app.delete('/api/allPhotos/delete', async (req, res, next) => {
+  try {
+    const { albumIndex, photoIndex } = req.body;
+    
+    console.log(`🗑️ Delete request: albumIndex=${albumIndex}, photoIndex=${photoIndex}`);
+    
+    if (albumIndex === undefined || photoIndex === undefined) {
+      return res.status(400).json({ message: 'Album index and photo index are required.' });
+    }
+
+    const list = await dbGetCollection('allPhotos');
+    
+    if (albumIndex < 0 || albumIndex >= list.length) {
+      return res.status(404).json({ message: 'Album not found.' });
+    }
+
+    const album = list[albumIndex];
+    if (!album.photos || photoIndex < 0 || photoIndex >= album.photos.length) {
+      return res.status(404).json({ message: 'Photo not found.' });
+    }
+
+    // Remove the photo permanently
+    const deletedPhoto = album.photos[photoIndex];
+    album.photos.splice(photoIndex, 1);
+    console.log(`🗑️ Removed photo from album (${album.photos.length} photos remaining)`);
+    
+    // If album is empty, remove it entirely
+    if (album.photos.length === 0) {
+      list.splice(albumIndex, 1);
+      console.log(`🗑️ Album was empty, removed entirely`);
+    }
+
+    await dbSetCollection('allPhotos', list);
+    await logActivity({ 
+      collection: 'allPhotos', 
+      action: 'delete', 
+      record: { albumIndex, photoIndex },
+      actor: 'admin',
+      message: 'Photo deleted from All Photos'
+    });
+
+    console.log(`✅ Photo deleted permanently`);
+    res.status(200).json({ success: true, message: 'Photo deleted successfully.' });
+  } catch (error) {
+    console.error('Delete photo error:', error);
     next(error);
   }
 });
@@ -693,11 +726,10 @@ app.delete('/api/content', async (req, res, next) => {
 });
 
 // ============================================
-// SERVE STATIC FILES (upload page + admin SPA)
+// SERVE STATIC FILES
 // ============================================
 const distDirectory = path.join(__dirname, 'dist');
 
-// Upload page (QR code destination)
 app.get(['/upload', '/upload/', '/upload.html'], (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'upload.html'));
 });
@@ -705,11 +737,9 @@ app.get('/upload.js', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'upload.js'));
 });
 
-// Admin SPA (dist) + public assets
 app.use(express.static(distDirectory));
 app.use(express.static(path.join(__dirname, 'public')));
 
-// Root / fallback: admin SPA kung may build; upload page kung wala (local dev)
 app.get(['/', '/index.html'], (req, res) => {
   const spaIndex = path.join(distDirectory, 'index.html');
   res.sendFile(spaIndex, (err) => {
@@ -746,7 +776,7 @@ if (runningDirectly) {
   console.log('  GFC-DATA API Server');
   console.log('========================================');
   console.log(`  Port: ${port}`);
-  console.log(`  Storage: ${dbMode === 'postgres' ? 'PostgreSQL (DATABASE_URL)' : dbMode === 'turusql' ? `Turso/libsql` : `JSON file (${dataFile})`}`);
+  console.log(`  Storage: ${dbMode === 'postgres' ? 'PostgreSQL (DATABASE_URL)' : dbMode === 'turusql' ? 'Turso/libsql' : `JSON file (${dataFile})`}`);
   console.log(`  CORS allowed origins: ${allowedOrigins.join(', ')}`);
   console.log(`  Database initialized: ${fileDatabase ? '✅' : '❌'}`);
   console.log(`  Database connected: ${dbClient ? '✅' : '❌'}`);

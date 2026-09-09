@@ -20,7 +20,6 @@ interface PhotoItem {
   date: string;
   albumIndex?: number;
   photoIndex?: number;
-  isCover?: boolean;
 }
 
 const MONTH_NAMES = [
@@ -173,63 +172,64 @@ export const AllPhotosPage: React.FC<AllPhotosPageProps> = ({
     setExpandedMonth(expandedMonth === key ? null : key);
   };
 
-  // Delete a photo from All Photos
-  const deletePhoto = async (photo: PhotoItem) => {
-    if (photo.albumIndex !== undefined && photo.photoIndex !== undefined) {
-      if (!confirm('Are you sure you want to delete this photo permanently?')) {
-        return;
+  // Delete a photo from All Photos - Instant delete, no confirmation, auto-refresh via callback
+  const deletePhoto = async (photo: PhotoItem, e: React.MouseEvent) => {
+    e.stopPropagation(); // Prevent triggering parent click
+    
+    if (photo.albumIndex === undefined || photo.photoIndex === undefined) {
+      console.warn('Cannot delete: missing album or photo index');
+      return;
+    }
+
+    setIsDeleting(true);
+    try {
+      // Get current allPhotos data
+      const response = await fetch(`${API_URL}/api/allPhotos`);
+      if (!response.ok) {
+        throw new Error('Failed to fetch All Photos data');
       }
+      const data = await response.json();
+      const currentAlbums = data.allPhotos || [];
 
-      setIsDeleting(true);
-      try {
-        // Get current allPhotos data
-        const response = await fetch(`${API_URL}/api/allPhotos`);
-        if (!response.ok) {
-          throw new Error('Failed to fetch All Photos data');
-        }
-        const data = await response.json();
-        const currentAlbums = data.allPhotos || [];
+      // Find the album and remove the photo
+      const albumIndex = photo.albumIndex;
+      if (albumIndex !== undefined && currentAlbums[albumIndex]) {
+        const album = currentAlbums[albumIndex];
+        const photoIndex = photo.photoIndex;
+        if (photoIndex !== undefined && album.photos && album.photos[photoIndex]) {
+          // Remove the photo from the album
+          album.photos.splice(photoIndex, 1);
+          
+          // If album is empty, remove it entirely
+          if (album.photos.length === 0) {
+            currentAlbums.splice(albumIndex, 1);
+          }
 
-        // Find the album and remove the photo
-        const albumIndex = photo.albumIndex;
-        if (albumIndex !== undefined && currentAlbums[albumIndex]) {
-          const album = currentAlbums[albumIndex];
-          const photoIndex = photo.photoIndex;
-          if (photoIndex !== undefined && album.photos && album.photos[photoIndex]) {
-            // Remove the photo from the album
-            album.photos.splice(photoIndex, 1);
-            
-            // If album is empty, remove it entirely
-            if (album.photos.length === 0) {
-              currentAlbums.splice(albumIndex, 1);
-            }
+          // Save back to server
+          const updateResponse = await fetch(`${API_URL}/api/allPhotos`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(currentAlbums)
+          });
 
-            // Save back to server
-            const updateResponse = await fetch(`${API_URL}/api/allPhotos`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify(currentAlbums)
-            });
+          if (!updateResponse.ok) {
+            throw new Error('Failed to delete photo');
+          }
 
-            if (!updateResponse.ok) {
-              throw new Error('Failed to delete photo');
-            }
+          // Close lightbox if open
+          setSelectedPhoto(null);
 
-            // Notify parent to refresh
-            if (onAllPhotosUpdated) {
-              onAllPhotosUpdated();
-            }
-
-            // Close lightbox if open
-            setSelectedPhoto(null);
+          // Trigger parent refresh - this will update the UI automatically
+          if (onAllPhotosUpdated) {
+            onAllPhotosUpdated();
           }
         }
-      } catch (error) {
-        console.error('Error deleting photo:', error);
-        alert('Failed to delete photo. Please try again.');
-      } finally {
-        setIsDeleting(false);
       }
+    } catch (error) {
+      console.error('Error deleting photo:', error);
+      alert('Failed to delete photo. Please try again.');
+    } finally {
+      setIsDeleting(false);
     }
   };
 
@@ -363,7 +363,6 @@ export const AllPhotosPage: React.FC<AllPhotosPageProps> = ({
               grouped.map(group => {
                 const isExpanded = expandedMonth === group.key;
                 const photoCount = group.photos.length;
-                // Get all photos for the grid (all photos including the first one)
                 const allPhotosInGroup = group.photos;
 
                 return (
@@ -391,7 +390,7 @@ export const AllPhotosPage: React.FC<AllPhotosPageProps> = ({
                       </div>
                     </div>
 
-                    {/* Thumbnail Grid - Always visible, same size whether expanded or not */}
+                    {/* Thumbnail Grid */}
                     <div className="p-3 pt-0">
                       {isExpanded ? (
                         // Expanded: Show ALL photos in 4-column grid
@@ -418,10 +417,7 @@ export const AllPhotosPage: React.FC<AllPhotosPageProps> = ({
                               {/* Delete button - only for All Photos album items */}
                               {photo.albumIndex !== undefined && photo.photoIndex !== undefined && (
                                 <button
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    void deletePhoto(photo);
-                                  }}
+                                  onClick={(e) => deletePhoto(photo, e)}
                                   disabled={isDeleting}
                                   className="absolute top-1 right-1 p-1.5 bg-red-500 hover:bg-red-600 text-white rounded-full opacity-0 group-hover:opacity-100 transition-all shadow-lg disabled:opacity-50"
                                   title="Delete photo permanently"
@@ -433,7 +429,7 @@ export const AllPhotosPage: React.FC<AllPhotosPageProps> = ({
                           ))}
                         </div>
                       ) : (
-                        // Collapsed: Show only the first photo as thumbnail (small)
+                        // Collapsed: Show only the first photo as thumbnail
                         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
                           {allPhotosInGroup.slice(0, 1).map((photo, idx) => (
                             <div
@@ -456,7 +452,6 @@ export const AllPhotosPage: React.FC<AllPhotosPageProps> = ({
                               </div>
                             </div>
                           ))}
-                          {/* Show empty placeholder if no photos (should not happen) */}
                           {allPhotosInGroup.length === 0 && (
                             <div className="aspect-square rounded-lg bg-gray-100 dark:bg-black/20 flex items-center justify-center text-gray-400 text-xs">
                               No photos
