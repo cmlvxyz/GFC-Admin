@@ -83,7 +83,7 @@ export default function App() {
       });
       setDataLoadedOnce(true);
     } catch (error) {
-      console.error(error);
+      console.error('Failed to load data:', error);
     } finally {
       setLoading(false);
     }
@@ -150,12 +150,10 @@ export default function App() {
       if (!disposed) {
         setActivities(prev => prev.some(a => a.id === activity.id) ? prev : [activity, ...prev].slice(0, 300));
 
-        // Targeted refresh for All Photos uploads
         if (activity.type === 'allPhotos' && activity.action === 'photo') {
           void refreshAllPhotos();
         }
 
-        // Targeted refresh for Event photo uploads
         if (activity.type === 'events' && activity.action === 'photo') {
           void refreshEvents();
           void refreshAllPhotos();
@@ -302,13 +300,13 @@ export default function App() {
         />
       );
     }
-    
+
     if (page === 'photos') {
       return (
         <AllPhotosPage 
           events={data.events} 
           allPhotos={data.allPhotos}
-          onAllPhotosUpdated={refreshAllPhotos}  // <-- IDAGDAG ITO!
+          onAllPhotosUpdated={refreshAllPhotos}
         />
       );
     }
@@ -500,6 +498,17 @@ export default function App() {
               </div>
             </div>
           </div>
+
+          {loading ? (
+            <div className="flex items-center justify-center py-24 text-gray-400 dark:text-gray-500 text-sm">
+              <div className="text-center space-y-3">
+                <div className="w-12 h-12 border-4 border-indigo-300 dark:border-indigo-800 border-t-indigo-500 rounded-full animate-spin mx-auto" />
+                <p>Loading GFC-ADMIN system...</p>
+              </div>
+            </div>
+          ) : (
+            renderPage()
+          )}
         </main>
       </div>
     </div>
