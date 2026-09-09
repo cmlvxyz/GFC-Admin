@@ -184,14 +184,54 @@ export const AllPhotosPage: React.FC<AllPhotosPageProps> = ({
     setIsDeleting(true);
 
     try {
+      // Check if it's from All Photos album
+      if (photo.source === 'allPhotos' && photo.albumIndex !== undefined && photo.photoIndex !== undefined) {
+        // Delete from All Photos album
+        const response = await fetch(`${API_URL}/api/allPhotos/delete`, {
+          method: 'DELETE',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            albumIndex: photo.albumIndex,
+            photoIndex: photo.photoIndex
+          })
+        });
 
+        if (!response.ok) {
+          const errorData = await response.json();
+          throw new Error(errorData.message || 'Failed to delete photo from All Photos');
+        }
+      } 
+      // Check if it's from Event
+      else if (photo.source === 'event' && photo.eventId !== undefined && photo.dateEntryIndex !== undefined) {
+        // Delete from Event
+        const response = await fetch(`${API_URL}/api/events/photo/delete`, {
+          method: 'DELETE',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            eventId: photo.eventId,
+            dateEntryIndex: photo.dateEntryIndex,
+            photoUrl: photo.url
+          })
+        });
+
+        if (!response.ok) {
+          const errorData = await response.json();
+          throw new Error(errorData.message || 'Failed to delete photo from Event');
+        }
+      } else {
+        throw new Error('Unable to identify photo source for deletion');
+      }
+
+      // Close lightbox if open
       setSelectedPhoto(null);
 
+      // Refresh the UI
       if (onAllPhotosUpdated) {
         onAllPhotosUpdated();
       }
     } catch (error) {
       console.error('Error deleting photo:', error);
+      // Silent fail - no alert popup
     } finally {
       setIsDeleting(false);
     }

@@ -217,7 +217,7 @@
     autoHideTimer = setTimeout(function() {
       autoHideTimer = null;
       resetAndGoBack();
-    }, 3000);
+    }, 1000);
   }
 
   // 🔥 NEW: Reset and go back to upload form
