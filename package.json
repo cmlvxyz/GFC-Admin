@@ -8,12 +8,13 @@
     "server:dev": "node --watch server.js",
     "dev": "node dev.js",
     "start": "node server.js",
-    "seed": "node scripts/seed-postgres.js",
+    "seed": "node scripts/seed-db.js",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview --host=0.0.0.0 --open",
     "lint": "tsc --noEmit"
   },
   "dependencies": {
+    "@libsql/client": "^0.18.0",
     "@tailwindcss/vite": "^4.1.14",
     "@vitejs/plugin-react": "^5.0.4",
     "cloudinary": "^2.11.0",

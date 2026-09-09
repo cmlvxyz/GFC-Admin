@@ -31,38 +31,75 @@ const emptyDatabase = () => ({
 
 // ============================================
 // STORAGE LAYER
-// Mode A: PostgreSQL (JSONB) kapag may DATABASE_URL (para sa Vercel).
-// Mode B: JSON file (data/data.json) - fallback para sa local dev.
+// Mode A: Turso (libsql) kapag DATABASE_URL ay nagsisimula sa libsql:// / wss:// / file:
+// Mode B: PostgreSQL (JSONB) kapag may DATABASE_URL (postgres://).
+// Mode C: JSON file (data/data.json) - fallback para sa local dev.
 // ============================================
 let fileDatabase = null;
 let writeQueue = Promise.resolve();
 const DATABASE_URL = (process.env.DATABASE_URL || '').trim();
 
-const pgPool = DATABASE_URL
-  ? new pg.Pool({ connectionString: DATABASE_URL, ssl: { rejectUnauthorized: false } })
-  : null;
+const IS_LIBSQL = /^(libsql:\/\/|wss:\/\/|ws:\/\/|file:)/.test(DATABASE_URL);
+
+let dbClient = null;
+let dbMode = 'none'; // 'postgres' | 'turusql' | 'none'
+
+if (IS_LIBSQL) {
+  const { createClient } = await import('@libsql/client');
+  dbClient = createClient({ url: DATABASE_URL, authToken: process.env.TURSO_AUTH_TOKEN || undefined });
+  dbMode = 'turusql';
+} else if (DATABASE_URL) {
+  dbClient = new pg.Pool({ connectionString: DATABASE_URL, ssl: { rejectUnauthorized: false } });
+  dbMode = 'postgres';
+}
 
 async function dbEnsureSchema() {
-  await pgPool.query(`
-    CREATE TABLE IF NOT EXISTS gfc_store (
-      key   text PRIMARY KEY,
-      value jsonb NOT NULL
-    )
-  `);
+  if (dbMode === 'postgres') {
+    await dbClient.query(`
+      CREATE TABLE IF NOT EXISTS gfc_store (
+        key   text PRIMARY KEY,
+        value jsonb NOT NULL
+      )
+    `);
+  } else if (dbMode === 'turusql') {
+    await dbClient.execute(`
+      CREATE TABLE IF NOT EXISTS gfc_store (
+        key   TEXT PRIMARY KEY,
+        value TEXT NOT NULL
+      )
+    `);
+  }
 }
 
 async function dbLoadBlob() {
-  const { rows } = await pgPool.query(`SELECT value FROM gfc_store WHERE key = 'db'`);
-  return rows.length ? rows[0].value : null;
+  if (dbMode === 'postgres') {
+    const { rows } = await dbClient.query(`SELECT value FROM gfc_store WHERE key = 'db'`);
+    return rows.length ? rows[0].value : null;
+  }
+  if (dbMode === 'turusql') {
+    const res = await dbClient.execute({ sql: `SELECT value FROM gfc_store WHERE key = ?`, args: ['db'] });
+    return res.rows.length ? JSON.parse(res.rows[0].value) : null;
+  }
+  return null;
 }
 
 function dbSaveBlob() {
   const snapshot = JSON.stringify(fileDatabase);
-  return pgPool.query(
-    `INSERT INTO gfc_store (key, value) VALUES ('db', $1::jsonb)
-     ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value`,
-    [snapshot]
-  );
+  if (dbMode === 'postgres') {
+    return dbClient.query(
+      `INSERT INTO gfc_store (key, value) VALUES ('db', $1::jsonb)
+       ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value`,
+      [snapshot]
+    );
+  }
+  if (dbMode === 'turusql') {
+    return dbClient.execute({
+      sql: `INSERT INTO gfc_store (key, value) VALUES (?, ?)
+            ON CONFLICT (key) DO UPDATE SET value = excluded.value`,
+      args: ['db', snapshot],
+    });
+  }
+  return Promise.resolve();
 }
 
 async function dbInitialize() {
@@ -74,12 +111,12 @@ async function dbInitialize() {
   }
   let loaded = null;
   let seededFromDisk = false;
-  if (pgPool) {
+  if (dbClient) {
     try {
       await dbEnsureSchema();
     } catch (error) {
-      // Hindi maabot ang Postgres - gagamit tayo ng in-memory para hindi mag-crash.
-      console.error('⚠️ Cannot connect to PostgreSQL:', error.message);
+      // Hindi maabot ang database - gagamit tayo ng in-memory para hindi mag-crash.
+      console.error(`⚠️ Cannot connect to ${dbMode}:`, error.message);
       throw error;
     }
     loaded = await dbLoadBlob();
@@ -115,7 +152,7 @@ async function dbInitialize() {
       try {
         await dbPersist();
       } catch (error) {
-        console.warn('⚠️ Hindi ma-save ang seed sa PostgreSQL:', error.message);
+        console.warn('⚠️ Hindi ma-save ang seed sa database:', error.message);
       }
     }
   } else {
@@ -130,7 +167,7 @@ async function dbInitialize() {
 }
 
 function dbPersist() {
-  if (pgPool) {
+  if (dbClient) {
     return dbSaveBlob();
   }
   const snapshot = JSON.stringify(fileDatabase, null, 2);
@@ -315,7 +352,7 @@ app.get('/api/health', async (req, res) => {
   res.json({ 
     ok: true, 
     service: 'GFC-DATA', 
-    storage: pgPool ? 'postgres' : 'json-file-or-memory',
+    storage: dbMode === 'postgres' ? 'postgres' : dbMode === 'turusql' ? 'turusql' : 'json-file-or-memory',
     initialized: await dbIsInitialized() 
   }); 
 });
@@ -539,7 +576,7 @@ if (runningDirectly) {
   console.log('  GFC-DATA API Server');
   console.log('========================================');
   console.log(`  Port: ${port}`);
-  console.log(`  Storage: ${pgPool ? 'PostgreSQL (DATABASE_URL)' : `JSON file (${dataFile})`}`);
+  console.log(`  Storage: ${dbMode === 'postgres' ? 'PostgreSQL (DATABASE_URL)' : dbMode === 'turusql' ? `Turso/libsql (${DATABASE_URL})` : `JSON file (${dataFile})`}`);
   console.log(`  CORS allowed origins: ${allowedOrigins.join(', ')}`);
   console.log('========================================');
   console.log('  ✅ Server is ready!');
