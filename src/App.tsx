@@ -65,38 +65,55 @@ export default function App() {
   // ============ LOAD DATA ============
   const [dataLoadedOnce, setDataLoadedOnce] = useState(false);
   const loadAll = useCallback(async () => {
-    setLoading(true);
     try {
       const [events, sermons, prayers, attendees, members, announcements, testimonials, allPhotos] = await Promise.all([
         listCollection('events'), listCollection('sermons'), listCollection('prayers'), listCollection('attendees'),
         listCollection('members'), listCollection('announcements'), listCollection('testimonials'), listCollection('allPhotos')
       ]);
       setData({
-        events: events.events,
-        sermons: sermons.sermons,
-        prayers: prayers.prayers,
-        attendees: attendees.attendees,
-        members: members.members,
-        announcements: announcements.announcements,
-        testimonials: testimonials.testimonials,
-        allPhotos: allPhotos.allPhotos
+        events: events.events || [],
+        sermons: sermons.sermons || [],
+        prayers: prayers.prayers || [],
+        attendees: attendees.attendees || [],
+        members: members.members || [],
+        announcements: announcements.announcements || [],
+        testimonials: testimonials.testimonials || [],
+        allPhotos: allPhotos.allPhotos || []
       });
       setDataLoadedOnce(true);
     } catch (error) {
       console.error('Failed to load data:', error);
+      // If error, still show empty data
+      setData({
+        events: [],
+        sermons: [],
+        prayers: [],
+        attendees: [],
+        members: [],
+        announcements: [],
+        testimonials: [],
+        allPhotos: []
+      });
+      setDataLoadedOnce(true);
     } finally {
       setLoading(false);
     }
   }, []);
 
   useEffect(() => {
+    // Start loading immediately
+    setLoading(true);
     void loadAll();
   }, [loadAll]);
 
-  // Auto-retry kapag hindi pa gumagana ang backend
+  // Auto-retry only if data never loaded successfully
   useEffect(() => {
     if (dataLoadedOnce) return;
-    const t = setInterval(() => { void loadAll(); }, 15000);
+    const t = setInterval(() => { 
+      if (!dataLoadedOnce) {
+        void loadAll(); 
+      }
+    }, 5000);
     return () => clearInterval(t);
   }, [dataLoadedOnce, loadAll]);
 
@@ -106,7 +123,7 @@ export default function App() {
       const result = await listCollection('allPhotos');
       setData(prev => ({
         ...prev,
-        allPhotos: result.allPhotos
+        allPhotos: result.allPhotos || []
       }));
     } catch (error) {
       console.error('Failed to refresh All Photos:', error);
@@ -118,7 +135,7 @@ export default function App() {
       const result = await listCollection('events');
       setData(prev => ({
         ...prev,
-        events: result.events
+        events: result.events || []
       }));
     } catch (error) {
       console.error('Failed to refresh Events:', error);
@@ -142,7 +159,7 @@ export default function App() {
     let closeStream: (() => void) | undefined;
     const refresh = () => {
       getActivities()
-        .then(res => { if (!disposed) { setActivitiesMerged(res.activities); setActivitiesLoading(false); } })
+        .then(res => { if (!disposed) { setActivitiesMerged(res.activities || []); setActivitiesLoading(false); } })
         .catch(() => { if (!disposed) setActivitiesLoading(false); });
     };
     refresh();
@@ -435,7 +452,8 @@ export default function App() {
     { id: 'settings', icon: <Settings className="w-5 h-5" />, label: 'Settings', badge: null }
   ], [data]);
 
-  // ============ MAIN LAYOUT ============
+  // Sa App.tsx - hanapin ang return statement
+
   return (
     <div className={isDark ? 'dark' : ''}>
       <div className="min-h-screen bg-gradient-to-br from-indigo-50/30 via-white to-purple-50/30 dark:bg-[#0a0a14] dark:from-[#0a0a14] dark:via-[#0f0f1a] dark:to-[#0a0a14] flex h-screen overflow-hidden">
@@ -499,16 +517,8 @@ export default function App() {
             </div>
           </div>
 
-          {loading ? (
-            <div className="flex items-center justify-center py-24 text-gray-400 dark:text-gray-500 text-sm">
-              <div className="text-center space-y-3">
-                <div className="w-12 h-12 border-4 border-indigo-300 dark:border-indigo-800 border-t-indigo-500 rounded-full animate-spin mx-auto" />
-                <p>Loading GFC-ADMIN system...</p>
-              </div>
-            </div>
-          ) : (
-            renderPage()
-          )}
+          {/* REMOVED: loading condition - always render page */}
+          {renderPage()}
         </main>
       </div>
     </div>

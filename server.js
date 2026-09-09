@@ -553,54 +553,56 @@ app.post('/api/uploads/all', async (req, res, next) => {
   }
 });
 
-// ============================================
-// DELETE PHOTO FROM ALL PHOTOS - PERMANENT DELETE
-// ============================================
-app.delete('/api/allPhotos/delete', async (req, res, next) => {
+// DELETE PHOTO FROM EVENT
+app.delete('/api/events/photo/delete', async (req, res, next) => {
   try {
-    const { albumIndex, photoIndex } = req.body;
+    const { eventId, dateEntryIndex, photoUrl } = req.body;
     
-    console.log(`🗑️ Delete request: albumIndex=${albumIndex}, photoIndex=${photoIndex}`);
-    
-    if (albumIndex === undefined || photoIndex === undefined) {
-      return res.status(400).json({ message: 'Album index and photo index are required.' });
+    if (!eventId || dateEntryIndex === undefined || !photoUrl) {
+      return res.status(400).json({ message: 'Event ID, date entry index, and photo URL are required.' });
     }
 
-    const list = await dbGetCollection('allPhotos');
+    const events = await dbGetCollection('events');
+    const eventIndex = events.findIndex(e => String(e.id) === String(eventId));
     
-    if (albumIndex < 0 || albumIndex >= list.length) {
-      return res.status(404).json({ message: 'Album not found.' });
+    if (eventIndex === -1) {
+      return res.status(404).json({ message: 'Event not found.' });
     }
 
-    const album = list[albumIndex];
-    if (!album.photos || photoIndex < 0 || photoIndex >= album.photos.length) {
-      return res.status(404).json({ message: 'Photo not found.' });
-    }
-
-    // Remove the photo permanently
-    const deletedPhoto = album.photos[photoIndex];
-    album.photos.splice(photoIndex, 1);
-    console.log(`🗑️ Removed photo from album (${album.photos.length} photos remaining)`);
+    const event = events[eventIndex];
+    const entries = Array.isArray(event.dateEntries) ? event.dateEntries : [];
     
-    // If album is empty, remove it entirely
-    if (album.photos.length === 0) {
-      list.splice(albumIndex, 1);
-      console.log(`🗑️ Album was empty, removed entirely`);
+    if (dateEntryIndex < 0 || dateEntryIndex >= entries.length) {
+      return res.status(404).json({ message: 'Date entry not found.' });
     }
 
-    await dbSetCollection('allPhotos', list);
+    const entry = entries[dateEntryIndex];
+    const photoIndex = entry.photos ? entry.photos.findIndex(p => p === photoUrl) : -1;
+    
+    if (photoIndex === -1) {
+      return res.status(404).json({ message: 'Photo not found in this date entry.' });
+    }
+
+    // Remove the photo
+    entry.photos.splice(photoIndex, 1);
+    
+    // If date entry has no photos, remove it
+    if (entry.photos.length === 0) {
+      entries.splice(dateEntryIndex, 1);
+    }
+
+    await dbSetCollection('events', events);
     await logActivity({ 
-      collection: 'allPhotos', 
+      collection: 'events', 
       action: 'delete', 
-      record: { albumIndex, photoIndex },
+      record: { eventId, dateEntryIndex, photoIndex },
       actor: 'admin',
-      message: 'Photo deleted from All Photos'
+      message: `Photo deleted from event "${event.title}"`
     });
 
-    console.log(`✅ Photo deleted permanently`);
     res.status(200).json({ success: true, message: 'Photo deleted successfully.' });
   } catch (error) {
-    console.error('Delete photo error:', error);
+    console.error('Delete event photo error:', error);
     next(error);
   }
 });

@@ -20,6 +20,10 @@ interface PhotoItem {
   date: string;
   albumIndex?: number;
   photoIndex?: number;
+  // For event photos - we need to identify which event and date entry
+  eventId?: string;
+  dateEntryIndex?: number;
+  source: 'event' | 'allPhotos';
 }
 
 const MONTH_NAMES = [
@@ -85,8 +89,10 @@ export const AllPhotosPage: React.FC<AllPhotosPageProps> = ({
   const allPhotosList = useMemo<PhotoItem[]>(() => {
     const list: PhotoItem[] = [];
     
+    // Photos from events
     for (const ev of events) {
-      for (const entry of ev.dateEntries || []) {
+      for (let entryIndex = 0; entryIndex < (ev.dateEntries || []).length; entryIndex++) {
+        const entry = ev.dateEntries[entryIndex];
         const parsed = parseEntryDate(entry.date);
         const month = parsed ? parsed.month : -1;
         const year = parsed ? parsed.year : -1;
@@ -96,12 +102,16 @@ export const AllPhotosPage: React.FC<AllPhotosPageProps> = ({
             month, 
             year, 
             eventTitle: ev.title, 
-            date: entry.date 
+            date: entry.date,
+            eventId: ev.id,
+            dateEntryIndex: entryIndex,
+            source: 'event'
           });
         }
       }
     }
     
+    // Photos from All Photos album
     for (let albumIndex = 0; albumIndex < allPhotos.length; albumIndex++) {
       const album = allPhotos[albumIndex];
       if (!Array.isArray(album?.photos)) continue;
@@ -116,7 +126,8 @@ export const AllPhotosPage: React.FC<AllPhotosPageProps> = ({
           eventTitle: 'All Photos', 
           date: album.date || '',
           albumIndex,
-          photoIndex
+          photoIndex,
+          source: 'allPhotos'
         });
       }
     }
@@ -165,29 +176,44 @@ export const AllPhotosPage: React.FC<AllPhotosPageProps> = ({
     setExpandedMonth(expandedMonth === key ? null : key);
   };
 
-  // DELETE FUNCTION - NO CONFIRMATION, INSTANT DELETE
+  // DELETE PHOTO - works for both All Photos and Event photos
   const deletePhoto = async (photo: PhotoItem, e: React.MouseEvent) => {
     e.stopPropagation();
     
-    if (photo.albumIndex === undefined || photo.photoIndex === undefined) {
-      console.warn('Cannot delete: missing album or photo index');
-      return;
-    }
-
     setIsDeleting(true);
 
     try {
-      const response = await fetch(`${API_URL}/api/allPhotos/delete`, {
-        method: 'DELETE',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          albumIndex: photo.albumIndex,
-          photoIndex: photo.photoIndex
-        })
-      });
+      if (photo.source === 'allPhotos' && photo.albumIndex !== undefined && photo.photoIndex !== undefined) {
+        // Delete from All Photos album
+        const response = await fetch(`${API_URL}/api/allPhotos/delete`, {
+          method: 'DELETE',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            albumIndex: photo.albumIndex,
+            photoIndex: photo.photoIndex
+          })
+        });
 
-      if (!response.ok) {
-        throw new Error('Failed to delete photo');
+        if (!response.ok) {
+          throw new Error('Failed to delete photo from All Photos');
+        }
+      } else if (photo.source === 'event' && photo.eventId !== undefined && photo.dateEntryIndex !== undefined) {
+        // Delete from Event
+        const response = await fetch(`${API_URL}/api/events/photo/delete`, {
+          method: 'DELETE',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            eventId: photo.eventId,
+            dateEntryIndex: photo.dateEntryIndex,
+            photoUrl: photo.url
+          })
+        });
+
+        if (!response.ok) {
+          throw new Error('Failed to delete photo from Event');
+        }
+      } else {
+        throw new Error('Unable to identify photo source for deletion');
       }
 
       setSelectedPhoto(null);
@@ -382,17 +408,15 @@ export const AllPhotosPage: React.FC<AllPhotosPageProps> = ({
                               <div className="absolute bottom-0 left-0 right-0 px-2 py-1 bg-black/50 text-white text-[9px] font-semibold truncate opacity-0 group-hover:opacity-100 transition-opacity">
                                 {photo.eventTitle} • {photo.date}
                               </div>
-                              {/* Delete button - NO CONFIRMATION, instant delete */}
-                              {photo.albumIndex !== undefined && photo.photoIndex !== undefined && (
-                                <button
-                                  onClick={(e) => deletePhoto(photo, e)}
-                                  disabled={isDeleting}
-                                  className="absolute top-1 right-1 p-1.5 bg-red-500 hover:bg-red-600 text-white rounded-full opacity-0 group-hover:opacity-100 transition-all shadow-lg disabled:opacity-50"
-                                  title="Delete photo permanently"
-                                >
-                                  <Trash2 className="w-3.5 h-3.5" />
-                                </button>
-                              )}
+                              {/* DELETE BUTTON - Available for ALL photos (both All Photos and Events) */}
+                              <button
+                                onClick={(e) => deletePhoto(photo, e)}
+                                disabled={isDeleting}
+                                className="absolute top-1 right-1 p-1.5 bg-red-500 hover:bg-red-600 text-white rounded-full opacity-0 group-hover:opacity-100 transition-all shadow-lg disabled:opacity-50"
+                                title="Delete photo permanently"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
                             </div>
                           ))}
                         </div>
