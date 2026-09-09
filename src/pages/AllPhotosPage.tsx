@@ -1,0 +1,355 @@
+// GFC-ADMIN/src/pages/AllPhotosPage.tsx
+
+import React, { useEffect, useMemo, useState } from 'react';
+import { ChurchEvent } from '../types';
+import { QrCode, X, CalendarDays, Images } from 'lucide-react';
+import QRCodeStyling from 'qr-code-styling';
+
+interface AllPhotosPageProps {
+  events: ChurchEvent[];
+}
+
+interface PhotoItem {
+  url: string;
+  month: number;
+  year: number;
+  eventTitle: string;
+  date: string;
+}
+
+const MONTH_NAMES = [
+  'January', 'February', 'March', 'April', 'May', 'June',
+  'July', 'August', 'September', 'October', 'November', 'December'
+];
+
+const GFC_BASE = (() => {
+  const fromEnv = (import.meta.env.VITE_GFC_URL as string | undefined)?.trim();
+  if (fromEnv) return fromEnv;
+  const host = typeof window !== 'undefined' ? window.location.hostname : '';
+  const isLocalhost = !host || host === 'localhost' || host === '127.0.0.1';
+  const isLanIp = /^\d{1,3}(\.\d{1,3}){3}$/.test(host);
+  if (isLocalhost || isLanIp) {
+    return host ? `http://${host}:4000` : 'http://localhost:4000';
+  }
+  return typeof window !== 'undefined' ? window.location.origin : 'https://gfc-admin-rosy.vercel.app';
+})();
+
+const parseEntryDate = (value: string): { month: number; year: number } | null => {
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return null;
+  return { month: d.getMonth(), year: d.getFullYear() };
+};
+
+export const AllPhotosPage: React.FC<AllPhotosPageProps> = ({ events }) => {
+  const allPhotos = useMemo<PhotoItem[]>(() => {
+    const list: PhotoItem[] = [];
+    for (const ev of events) {
+      for (const entry of ev.dateEntries || []) {
+        const parsed = parseEntryDate(entry.date);
+        if (!parsed) continue;
+        for (const url of entry.photos || []) {
+          list.push({ url, month: parsed.month, year: parsed.year, eventTitle: ev.title, date: entry.date });
+        }
+      }
+    }
+    return list;
+  }, [events]);
+
+  const years = useMemo(
+    () => Array.from(new Set(allPhotos.map(p => p.year))).sort((a, b) => b - a),
+    [allPhotos]
+  );
+
+  const [selectedMonth, setSelectedMonth] = useState<number | ''>('');
+  const [yearModal, setYearModal] = useState<number | null>(null);
+  const [selectedPhoto, setSelectedPhoto] = useState<string | null>(null);
+  const [qrContainerEl, setQrContainerEl] = useState<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (!qrContainerEl) return;
+    qrContainerEl.innerHTML = '';
+    const qr = new QRCodeStyling({
+      width: 240,
+      height: 240,
+      margin: 0,
+      data: `${GFC_BASE}/upload`,
+      image: '/image-circle.png',
+      imageOptions: { imageSize: 0.4, margin: 8, crossOrigin: 'anonymous' },
+      qrOptions: { errorCorrectionLevel: 'H', typeNumber: 0 },
+      dotsOptions: { color: '#1a1a2e', type: 'rounded' },
+      cornersSquareOptions: { color: '#1a1a2e', type: 'extra-rounded' },
+      backgroundOptions: { color: '#ffffff', round: 8 },
+    });
+    qr.append(qrContainerEl);
+  }, [qrContainerEl]);
+
+  const grouped = useMemo(() => {
+    const filtered = selectedMonth === '' ? allPhotos : allPhotos.filter(p => p.month === selectedMonth);
+    const order: { key: string; label: string }[] = [];
+    const byKey = new Map<string, PhotoItem[]>();
+    for (const p of filtered) {
+      const key = `${p.year}-${p.month}`;
+      if (!byKey.has(key)) {
+        byKey.set(key, []);
+        order.push({ key, label: `${MONTH_NAMES[p.month]} ${p.year}` });
+      }
+      byKey.get(key)!.push(p);
+    }
+    order.sort((a, b) => {
+      const [ya, ma] = a.key.split('-').map(Number);
+      const [yb, mb] = b.key.split('-').map(Number);
+      return yb - ya || mb - ma;
+    });
+    return order.map(o => ({ label: o.label, photos: byKey.get(o.key)! }));
+  }, [allPhotos, selectedMonth]);
+
+  const monthCountsForYear = (year: number): number[] => {
+    const counts = new Array(12).fill(0);
+    for (const p of allPhotos) {
+      if (p.year === year) counts[p.month] += 1;
+    }
+    return counts;
+  };
+
+  return (
+    <div className="space-y-6">
+      {/* Header */}
+      <div className="bg-white dark:bg-[#14141f]/80 backdrop-blur-sm p-6 rounded-2xl border border-gray-200 dark:border-white/5 shadow-sm">
+        <h3 className="text-sm font-bold text-black dark:text-white mb-2 flex items-center gap-2">
+          <Images className="w-5 h-5 text-indigo-500" />
+          <span>All Photos</span>
+        </h3>
+        <p className="text-sm text-gray-500 dark:text-[#A1A1A1] leading-relaxed">
+          Hanapin ang mga nai-upload na photos sa lahat ng events. Pumili ng <strong>month</strong> para makita
+          ang mga photos ng buwang iyon, o pumili ng <strong>year</strong> para makita ang breakdown ng mga buwan.
+          Pwede ring i-scan ang QR code para mag-upload ng bagong photos.
+        </p>
+        <div className="mt-3 inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-indigo-50 dark:bg-indigo-950/40 border border-indigo-200 dark:border-indigo-800/40 text-xs font-mono font-bold text-indigo-600 dark:text-indigo-400">
+          Upload page: {GFC_BASE}/upload
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-[1fr_320px] gap-6 items-start">
+        {/* Main: Controls + Gallery */}
+        <div className="space-y-6">
+          {/* Controls */}
+          <div className="bg-white dark:bg-[#14141f]/80 backdrop-blur-sm p-6 rounded-2xl border border-gray-200 dark:border-white/5 shadow-sm">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-xs font-bold text-gray-700 dark:text-[#A1A1A1] uppercase tracking-wider mb-2">
+                  Select Month
+                </label>
+                <div className="flex items-center gap-2">
+                  <CalendarDays className="w-4 h-4 text-indigo-400 flex-shrink-0" />
+                  <select
+                    value={selectedMonth}
+                    onChange={(e) => setSelectedMonth(e.target.value === '' ? '' : parseInt(e.target.value))}
+                    className="w-full px-4 py-2.5 rounded-xl border border-gray-200 dark:border-white/10 bg-gray-50 dark:bg-black/30 text-black dark:text-white text-sm focus:border-indigo-400 dark:focus:border-indigo-400/50 focus:outline-hidden focus:ring-2 focus:ring-indigo-400/20 transition-all"
+                  >
+                    <option value="">-- All months --</option>
+                    {MONTH_NAMES.map((name, idx) => (
+                      <option key={name} value={idx}>{name}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-gray-700 dark:text-[#A1A1A1] uppercase tracking-wider mb-2">
+                  Select Year
+                </label>
+                <div className="flex items-center gap-2">
+                  <CalendarDays className="w-4 h-4 text-indigo-400 flex-shrink-0" />
+                  <select
+                    value=""
+                    onChange={(e) => {
+                      const year = parseInt(e.target.value);
+                      if (!Number.isNaN(year)) setYearModal(year);
+                    }}
+                    className="w-full px-4 py-2.5 rounded-xl border border-gray-200 dark:border-white/10 bg-gray-50 dark:bg-black/30 text-black dark:text-white text-sm focus:border-indigo-400 dark:focus:border-indigo-400/50 focus:outline-hidden focus:ring-2 focus:ring-indigo-400/20 transition-all"
+                  >
+                    <option value="">-- Pumili ng year --</option>
+                    {years.map(year => (
+                      <option key={year} value={year}>{year}</option>
+                    ))}
+                  </select>
+                </div>
+                <p className="mt-1.5 text-[11px] text-gray-400 dark:text-gray-500">
+                  Magbubukas ng breakdown ng mga buwan para sa taong ito.
+                </p>
+              </div>
+            </div>
+
+            <div className="mt-4 flex items-center gap-2 text-xs font-bold text-indigo-500 dark:text-indigo-400">
+              <span>📸</span>
+              <span>
+                {selectedMonth === ''
+                  ? `${allPhotos.length} total photos`
+                  : `${grouped.reduce((sum, g) => sum + g.photos.length, 0)} photos — ${MONTH_NAMES[selectedMonth]}`}
+              </span>
+            </div>
+          </div>
+
+          {/* Gallery */}
+          <div className="space-y-6">
+            {grouped.length === 0 ? (
+              <div className="bg-white dark:bg-[#14141f]/80 backdrop-blur-sm p-10 rounded-2xl border border-gray-200 dark:border-white/5 shadow-sm text-center">
+                <Images className="w-10 h-10 text-gray-300 dark:text-gray-600 mx-auto mb-2" />
+                <p className="text-sm text-gray-500 dark:text-[#A1A1A1]">
+                  {allPhotos.length === 0
+                    ? 'Wala pang nai-upload na photos sa anumang event.'
+                    : 'Walang nakitang photos para sa napiling month.'}
+                </p>
+              </div>
+            ) : (
+              grouped.map(group => (
+                <div key={group.label} className="bg-white dark:bg-[#14141f]/80 backdrop-blur-sm p-6 rounded-2xl border border-gray-200 dark:border-white/5 shadow-sm">
+                  <div className="flex items-center justify-between mb-4">
+                    <h4 className="text-sm font-bold text-black dark:text-white">{group.label}</h4>
+                    <span className="text-xs font-bold text-indigo-500 dark:text-indigo-400">
+                      {group.photos.length} photo{group.photos.length !== 1 ? 's' : ''}
+                    </span>
+                  </div>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-4 gap-3">
+                    {group.photos.map((photo, idx) => (
+                      <div
+                        key={idx}
+                        className="group relative rounded-xl overflow-hidden shadow-md hover:shadow-xl transition-all aspect-[4/3] cursor-pointer hover:scale-[1.02]"
+                        title={`${photo.eventTitle} — ${photo.date}`}
+                        onClick={() => setSelectedPhoto(photo.url)}
+                      >
+                        <img
+                          src={photo.url}
+                          alt={`${photo.eventTitle} - ${photo.date}`}
+                          loading="lazy"
+                          className="w-full h-full object-cover transition-transform hover:scale-110 duration-500"
+                        />
+                        <div className="absolute bottom-0 left-0 right-0 px-2 py-1 bg-black/50 text-white text-[10px] font-semibold truncate opacity-0 group-hover:opacity-100 transition-opacity">
+                          {photo.eventTitle} • {photo.date}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+
+        {/* QR Card */}
+        <div className="bg-white dark:bg-[#14141f]/80 backdrop-blur-sm p-6 rounded-2xl border border-gray-200 dark:border-white/5 shadow-sm lg:sticky lg:top-4">
+          <div className="flex items-center gap-2 mb-3">
+            <QrCode className="w-5 h-5 text-indigo-500" />
+            <span className="text-sm font-bold text-black dark:text-white">Upload QR Code</span>
+          </div>
+          <div className="flex justify-center bg-gray-50 dark:bg-black/30 rounded-xl border border-gray-200 dark:border-white/10 p-4">
+            <div ref={(el) => setQrContainerEl(el)} className="bg-white rounded-lg shadow-md" />
+          </div>
+          <p className="mt-3 text-xs text-gray-500 dark:text-[#A1A1A1] leading-relaxed">
+            I-scan ito para makapag-upload ng photos. Tatanungin ang scrapper kung saang event at date
+            siya mag-uupload.
+          </p>
+          <a
+            href={`${GFC_BASE}/upload`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="mt-2 text-[11px] font-mono text-indigo-500 dark:text-indigo-400 underline break-all text-center block hover:text-indigo-600 dark:hover:text-indigo-300"
+          >
+            {GFC_BASE}/upload
+          </a>
+        </div>
+      </div>
+
+      {/* Year Modal */}
+      {yearModal !== null && (
+        <div
+          className="fixed inset-0 z-[60] bg-black/70 dark:bg-black/90 backdrop-blur-md flex items-center justify-center p-4"
+          onClick={() => setYearModal(null)}
+        >
+          <div
+            className="bg-white dark:bg-[#1A1A1A] border border-gray-200 dark:border-white/10 text-black dark:text-[#F5F5F5] rounded-3xl max-w-lg w-full p-6 space-y-4 shadow-2xl relative"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <button
+              onClick={() => setYearModal(null)}
+              className="absolute top-4 right-4 p-2 text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-white rounded-full bg-gray-100 dark:bg-white/5"
+              aria-label="Close"
+            >
+              <X className="w-5 h-5" />
+            </button>
+
+            <div className="space-y-1">
+              <h3 className="text-xl font-serif text-indigo-500 dark:text-indigo-400">
+                📆 Photos of {yearModal}
+              </h3>
+              <p className="text-xs text-gray-500 dark:text-[#A1A1A1]">
+                Pumili ng buwan para makita ang mga photos ng buwang iyon.
+              </p>
+            </div>
+
+            {(() => {
+              const counts = monthCountsForYear(yearModal);
+              return (
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                  {MONTH_NAMES.map((name, month) => {
+                    const count = counts[month];
+                    const has = count > 0;
+                    return (
+                      <button
+                        key={name}
+                        disabled={!has}
+                        onClick={() => {
+                          setSelectedMonth(month);
+                          setYearModal(null);
+                        }}
+                        className={`px-3 py-3 rounded-xl border text-sm font-bold transition-all ${
+                          has
+                            ? 'bg-indigo-50 dark:bg-indigo-950/40 border-indigo-200 dark:border-indigo-800/40 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-100 dark:hover:bg-indigo-900/50 hover:scale-[1.03] cursor-pointer'
+                            : 'bg-gray-50 dark:bg-black/20 border-gray-200 dark:border-white/5 text-gray-400 dark:text-gray-600 cursor-not-allowed'
+                        }`}
+                      >
+                        <div>{name}</div>
+                        <div className="text-[10px] mt-0.5">
+                          {has ? `${count} photo${count !== 1 ? 's' : ''}` : 'No photos'}
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              );
+            })()}
+
+            <div className="text-center">
+              <button
+                onClick={() => setYearModal(null)}
+                className="px-8 py-3 bg-indigo-500 hover:bg-indigo-600 dark:bg-indigo-400 dark:hover:brightness-110 text-white font-bold rounded-full text-sm transition-all hover:shadow-lg hover:-translate-y-0.5"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Lightbox */}
+      {selectedPhoto && (
+        <div
+          className="fixed inset-0 z-[100] bg-black/90 flex items-center justify-center p-4 cursor-pointer"
+          onClick={() => setSelectedPhoto(null)}
+        >
+          <img src={selectedPhoto} alt="Full size" className="max-w-full max-h-full object-contain" />
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              setSelectedPhoto(null);
+            }}
+            className="absolute top-4 right-4 text-white p-2 hover:bg-white/10 rounded-full transition-all"
+            aria-label="Close"
+          >
+            <X className="w-8 h-8" />
+          </button>
+        </div>
+      )}
+    </div>
+  );
+};

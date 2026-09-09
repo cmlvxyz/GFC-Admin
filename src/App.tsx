@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState, useCallback } from 'react';
-import { Bell, Menu, ArrowLeft, LayoutDashboard, Calendar as CalendarIcon, Video, Megaphone, Heart, Users, MessageSquare, Settings, Shield, Trash2, X, QrCode } from 'lucide-react';
+import { Bell, Menu, ArrowLeft, LayoutDashboard, Calendar as CalendarIcon, Video, Megaphone, Heart, Users, MessageSquare, Settings, Shield, Trash2, X, QrCode, Images } from 'lucide-react';
 import type { Activity, ChurchEvent, Collection, RecordMap } from './types';
 import { API_URL, clearActivities, createRecord, deleteRecord as apiDeleteRecord, getActivities, getActivityStream, listCollection, resetRemoteData, updateRecord as apiUpdateRecord } from './api';
 import { Sidebar } from './components/Sidebar';
@@ -8,12 +8,14 @@ import { ConfirmDialog, ConfirmState } from './components/ConfirmDialog';
 import { ManagePage } from './components/ManagePage';
 import { DashboardPage } from './pages/DashboardPage';
 import { QRCodePage } from './pages/QRCodePage';
+import { AllPhotosPage } from './pages/AllPhotosPage';
 import { collections, todayDisplay } from './config';
 
 const pageTitles: Record<string, { title: string; icon: string }> = {
   dashboard: { title: 'Dashboard', icon: '📊' },
   events: { title: 'Events', icon: '📅' },
   qrcodes: { title: 'QR Codes', icon: '🔳' },
+  photos: { title: 'All Photos', icon: '🖼️' },
   sermons: { title: 'Sermons', icon: '🎬' },
   announcements: { title: 'Announcements', icon: '📢' },
   prayers: { title: 'Prayer Requests', icon: '🙏' },
@@ -259,6 +261,10 @@ export default function App() {
       );
     }
 
+    if (page === 'photos') {
+      return <AllPhotosPage events={data.events} />;
+    }
+
     if (page === 'settings') {
       return (
         <div className="space-y-6">
@@ -373,6 +379,7 @@ export default function App() {
     { id: 'dashboard', icon: <LayoutDashboard className="w-5 h-5" />, label: 'Dashboard', badge: null },
     { id: 'events', icon: <CalendarIcon className="w-5 h-5" />, label: 'Events', badge: data.events.length },
     { id: 'qrcodes', icon: <QrCode className="w-5 h-5" />, label: 'QR Codes', badge: null },
+    { id: 'photos', icon: <Images className="w-5 h-5" />, label: 'All Photos', badge: null },
     { id: 'sermons', icon: <Video className="w-5 h-5" />, label: 'Sermons', badge: data.sermons.length },
     { id: 'announcements', icon: <Megaphone className="w-5 h-5" />, label: 'Announcements', badge: data.announcements.length },
     { id: 'prayers', icon: <Heart className="w-5 h-5" />, label: 'Prayer Requests', badge: data.prayers.length },

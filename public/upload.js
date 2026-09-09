@@ -21,14 +21,23 @@
   var successText = document.getElementById('successText');
   var uploadMoreBtn = document.getElementById('uploadMoreBtn');
 
+  var viewPicker = document.getElementById('viewPicker');
+  var pickerEvent = document.getElementById('pickerEvent');
+  var pickerDate = document.getElementById('pickerDate');
+  var pickerDateWrap = document.getElementById('pickerDateWrap');
+  var pickerGo = document.getElementById('pickerGo');
+  var pickerStatus = document.getElementById('pickerStatus');
+
   var photos = [];
   var uploading = false;
+  var eventsCache = [];
 
   function show(view) {
     viewLoading.classList.add('hidden');
     viewError.classList.add('hidden');
     viewUpload.classList.add('hidden');
     viewSuccess.classList.add('hidden');
+    viewPicker.classList.add('hidden');
     view.classList.remove('hidden');
   }
 
@@ -159,6 +168,86 @@
   uploadBtn.addEventListener('click', uploadAll);
   uploadMoreBtn.addEventListener('click', function () { photos = []; renderPreviews(); show(viewUpload); setStatus(''); });
 
+  function setPickerStatus(text, type) {
+    pickerStatus.textContent = text || '';
+    pickerStatus.className = 'status' + (type ? ' ' + type : '');
+  }
+
+  function populateEventOptions() {
+    var withAlbums = eventsCache.filter(function (e) {
+      return Array.isArray(e.dateEntries) && e.dateEntries.length > 0;
+    });
+    pickerEvent.innerHTML = '<option value="">-- Pumili ng event --</option>' +
+      withAlbums.map(function (e, i) { return '<option value="' + i + '">' + e.title + '</option>'; }).join('');
+    pickerDate.innerHTML = '<option value="">-- Pumili ng date --</option>';
+    pickerDate.disabled = true;
+    pickerDateWrap.style.opacity = '0.45';
+    pickerDateWrap.style.pointerEvents = 'none';
+    pickerGo.disabled = true;
+    return withAlbums;
+  }
+
+  function showPicker() {
+    show(viewPicker);
+    setPickerStatus('');
+    fetch('/api/content')
+      .then(function (res) { if (!res.ok) throw new Error('HTTP ' + res.status); return res.json(); })
+      .then(function (data) {
+        eventsCache = (data.events || []).filter(function (e) {
+          return Array.isArray(e.dateEntries) && e.dateEntries.length > 0;
+        });
+        if (eventsCache.length === 0) {
+          setPickerStatus('Wala pang event na may date album. Magdagdag muna ng date sa admin.', 'err');
+          return;
+        }
+        populateEventOptions();
+        pickerEvent.focus();
+      })
+      .catch(function () {
+        setPickerStatus('Hindi makakonekta sa server. Pakisiguraduhing tumatakbo ang backend.', 'err');
+      });
+  }
+
+  pickerEvent.addEventListener('change', function () {
+    var idx = parseInt(pickerEvent.value, 10);
+    var ev = eventsCache[idx];
+    if (!ev) {
+      pickerDate.innerHTML = '<option value="">-- Pumili ng date --</option>';
+      pickerDate.disabled = true;
+      pickerDateWrap.style.opacity = '0.45';
+      pickerDateWrap.style.pointerEvents = 'none';
+      pickerGo.disabled = true;
+      return;
+    }
+    pickerDate.innerHTML = '<option value="">-- Pumili ng date --</option>' +
+      ev.dateEntries.map(function (entry, di) {
+        return '<option value="' + di + '">' + (entry.date || ('Album ' + (di + 1))) + '</option>';
+      }).join('');
+    pickerDate.disabled = false;
+    pickerDateWrap.style.opacity = '1';
+    pickerDateWrap.style.pointerEvents = 'auto';
+    pickerGo.disabled = true;
+    setPickerStatus('');
+  });
+
+  pickerDate.addEventListener('change', function () {
+    pickerGo.disabled = !(pickerEvent.value !== '' && pickerDate.value !== '');
+    setPickerStatus('');
+  });
+
+  pickerGo.addEventListener('click', function () {
+    var idx = parseInt(pickerEvent.value, 10);
+    var di = parseInt(pickerDate.value, 10);
+    var ev = eventsCache[idx];
+    if (!ev || isNaN(di)) return;
+    eventId = ev.id;
+    dateIndex = di;
+    document.title = 'Photo Upload | ' + ev.title;
+    eventTitle.textContent = ev.title;
+    eventDate.textContent = (ev.dateEntries[di] && ev.dateEntries[di].date) || ev.date || '';
+    show(viewUpload);
+  });
+
   async function loadEvent() {
     try {
       var res = await fetch('/api/content');
@@ -174,13 +263,12 @@
       show(viewUpload);
     } catch (err) {
       if (err && err.message === 'not found') {
-        errorTitle.textContent = 'Hindi mahanap ang event';
-        errorText.innerHTML = 'Mukhang hindi balido ang QR code na ito.<br/>Subukan muli o i-contact ang church admin.';
+        showPicker();
       } else {
         errorTitle.textContent = 'Cannot connect to server';
         errorText.innerHTML = 'Hindi makakonekta sa GFC server. Pakisiguraduhing tumatakbo ang backend (npm run server).<br/>Pindutin ang Retry para subukan muli.';
+        show(viewError);
       }
-      show(viewError);
     }
   }
 
@@ -190,8 +278,6 @@
   });
 
   if (!eventId) {
-    errorTitle.textContent = 'Hindi mahanap ang event';
-    errorText.innerHTML = 'Walang event sa QR code na ito.<br/>Subukan muli o i-contact ang church admin.';
-    show(viewError);
+    showPicker();
   } else { loadEvent(); }
 })();
