@@ -40,6 +40,8 @@ const parseEntryDate = (value: string): { month: number; year: number } | null =
   return { month: d.getMonth(), year: d.getFullYear() };
 };
 
+const YEAR_RANGE = Array.from({ length: 10 }, (_, i) => 2021 + i);
+
 export const AllPhotosPage: React.FC<AllPhotosPageProps> = ({ events }) => {
   const allPhotos = useMemo<PhotoItem[]>(() => {
     const list: PhotoItem[] = [];
@@ -54,11 +56,6 @@ export const AllPhotosPage: React.FC<AllPhotosPageProps> = ({ events }) => {
     }
     return list;
   }, [events]);
-
-  const years = useMemo(
-    () => Array.from(new Set(allPhotos.map(p => p.year))).sort((a, b) => b - a),
-    [allPhotos]
-  );
 
   const [selectedMonth, setSelectedMonth] = useState<number | ''>('');
   const [yearModal, setYearModal] = useState<number | null>(null);
@@ -169,7 +166,7 @@ export const AllPhotosPage: React.FC<AllPhotosPageProps> = ({ events }) => {
                     className="w-full px-4 py-2.5 rounded-xl border border-gray-200 dark:border-white/10 bg-gray-50 dark:bg-black/30 text-black dark:text-white text-sm focus:border-indigo-400 dark:focus:border-indigo-400/50 focus:outline-hidden focus:ring-2 focus:ring-indigo-400/20 transition-all"
                   >
                     <option value="">-- Pumili ng year --</option>
-                    {years.map(year => (
+                    {YEAR_RANGE.map(year => (
                       <option key={year} value={year}>{year}</option>
                     ))}
                   </select>
