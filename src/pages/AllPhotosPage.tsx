@@ -111,10 +111,16 @@ export const AllPhotosPage: React.FC<AllPhotosPageProps> = ({ events, allPhotos 
     qr.append(qrContainerEl);
   }, [qrContainerEl]);
 
+  // Show ALL photos when no month is selected
   const grouped = useMemo(() => {
-    const filtered = selectedMonth === '' ? [] : allPhotosList.filter(p => p.month === selectedMonth);
+    // If no month selected, show all photos grouped by month/year
+    const filtered = selectedMonth === '' 
+      ? allPhotosList 
+      : allPhotosList.filter(p => p.month === selectedMonth);
+    
     const order: { key: string; label: string; year: number; month: number }[] = [];
     const byKey = new Map<string, PhotoItem[]>();
+    
     for (const p of filtered) {
       const key = `${p.year}-${p.month}`;
       if (!byKey.has(key)) {
@@ -128,6 +134,8 @@ export const AllPhotosPage: React.FC<AllPhotosPageProps> = ({ events, allPhotos 
       }
       byKey.get(key)!.push(p);
     }
+    
+    // Sort by year (descending) then month (descending)
     order.sort((a, b) => b.year - a.year || b.month - a.month);
     return order.map(o => ({ label: o.label, photos: byKey.get(o.key)! }));
   }, [allPhotosList, selectedMonth]);
@@ -139,6 +147,9 @@ export const AllPhotosPage: React.FC<AllPhotosPageProps> = ({ events, allPhotos 
     }
     return counts;
   };
+
+  // Get total count of photos
+  const totalPhotos = allPhotosList.length;
 
   return (
     <div className="space-y-6">
@@ -170,10 +181,15 @@ export const AllPhotosPage: React.FC<AllPhotosPageProps> = ({ events, allPhotos 
                     onChange={(e) => setSelectedMonth(e.target.value === '' ? '' : parseInt(e.target.value))}
                     className="w-full px-4 py-2.5 rounded-xl border border-gray-200 dark:border-white/10 bg-gray-50 dark:bg-black/30 text-black dark:text-white text-sm focus:border-indigo-400 dark:focus:border-indigo-400/50 focus:outline-hidden focus:ring-2 focus:ring-indigo-400/20 transition-all"
                   >
-                    <option value="">Select Month</option>
-                    {MONTH_NAMES.map((name, idx) => (
-                      <option key={name} value={idx}>{name}</option>
-                    ))}
+                    <option value="">All Months ({totalPhotos} photos)</option>
+                    {MONTH_NAMES.map((name, idx) => {
+                      const count = allPhotosList.filter(p => p.month === idx).length;
+                      return (
+                        <option key={name} value={idx}>
+                          {name} ({count} photos)
+                        </option>
+                      );
+                    })}
                   </select>
                 </div>
               </div>
@@ -193,9 +209,14 @@ export const AllPhotosPage: React.FC<AllPhotosPageProps> = ({ events, allPhotos 
                     className="w-full px-4 py-2.5 rounded-xl border border-gray-200 dark:border-white/10 bg-gray-50 dark:bg-black/30 text-black dark:text-white text-sm focus:border-indigo-400 dark:focus:border-indigo-400/50 focus:outline-hidden focus:ring-2 focus:ring-indigo-400/20 transition-all"
                   >
                     <option value="">Select Year</option>
-                    {YEAR_RANGE.map(year => (
-                      <option key={year} value={year}>{year}</option>
-                    ))}
+                    {YEAR_RANGE.map(year => {
+                      const count = allPhotosList.filter(p => p.year === year).length;
+                      return (
+                        <option key={year} value={year}>
+                          {year} ({count} photos)
+                        </option>
+                      );
+                    })}
                   </select>
                 </div>
               </div>
@@ -205,7 +226,7 @@ export const AllPhotosPage: React.FC<AllPhotosPageProps> = ({ events, allPhotos 
               <span>📸</span>
               <span>
                 {selectedMonth === ''
-                  ? `${allPhotosList.length} total photos`
+                  ? `${totalPhotos} total photos`
                   : `${grouped.reduce((sum, g) => sum + g.photos.length, 0)} photos — ${MONTH_NAMES[selectedMonth]}`}
               </span>
             </div>
@@ -216,6 +237,11 @@ export const AllPhotosPage: React.FC<AllPhotosPageProps> = ({ events, allPhotos 
             {grouped.length === 0 ? (
               <div className="bg-white dark:bg-[#14141f]/80 backdrop-blur-sm p-10 rounded-2xl border border-gray-200 dark:border-white/5 shadow-sm text-center">
                 <Images className="w-10 h-10 text-gray-300 dark:text-gray-600 mx-auto mb-2" />
+                <p className="text-gray-500 dark:text-gray-400">
+                  {selectedMonth === '' 
+                    ? 'No photos found. Upload some photos using the QR code.' 
+                    : `No photos found for ${MONTH_NAMES[selectedMonth]}.`}
+                </p>
               </div>
             ) : (
               grouped.map(group => (
@@ -239,6 +265,10 @@ export const AllPhotosPage: React.FC<AllPhotosPageProps> = ({ events, allPhotos 
                           alt={`${photo.eventTitle} - ${photo.date}`}
                           loading="lazy"
                           className="w-full h-full object-cover transition-transform hover:scale-110 duration-500"
+                          onError={(e) => {
+                            // Handle broken images
+                            (e.target as HTMLImageElement).src = 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="100" height="100" viewBox="0 0 100 100"%3E%3Crect fill="%23ddd" width="100" height="100"/%3E%3Ctext x="50" y="50" text-anchor="middle" dy=".3em" font-family="sans-serif" font-size="12" fill="%23999"%3ENo image%3C/text%3E%3C/svg%3E';
+                          }}
                         />
                         <div className="absolute bottom-0 left-0 right-0 px-2 py-1 bg-black/50 text-white text-[10px] font-semibold truncate opacity-0 group-hover:opacity-100 transition-opacity">
                           {photo.eventTitle} • {photo.date}

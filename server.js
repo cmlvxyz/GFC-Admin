@@ -441,6 +441,99 @@ app.post('/api/bootstrap', async (req, res, next) => {
 });
 
 // ============================================
+// ACTIVITY STREAM (SSE)
+// ============================================
+app.get('/api/activities/stream', async (req, res) => {
+  // Set headers for SSE
+  res.writeHead(200, {
+    'Content-Type': 'text/event-stream',
+    'Cache-Control': 'no-cache',
+    'Connection': 'keep-alive',
+    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Credentials': 'true'
+  });
+
+  // Send initial connection message
+  res.write(`data: ${JSON.stringify({ type: 'connected', message: 'SSE connected' })}\n\n`);
+
+  let lastActivityId = null;
+  let closed = false;
+
+  // Get initial activities
+  const initialActivities = await dbGetActivities();
+  if (initialActivities.length > 0) {
+    lastActivityId = initialActivities[0].id;
+    // Send initial activities
+    for (const activity of initialActivities.slice(0, 10)) {
+      if (closed) break;
+      res.write(`data: ${JSON.stringify({ type: 'activity', data: activity })}\n\n`);
+    }
+  }
+
+  // Poll for new activities every 2 seconds
+  const pollInterval = setInterval(async () => {
+    if (closed) {
+      clearInterval(pollInterval);
+      return;
+    }
+
+    try {
+      const activities = await dbGetActivities();
+      if (activities.length === 0) return;
+
+      // Find new activities since last check
+      let newActivities = [];
+      if (lastActivityId) {
+        const lastIndex = activities.findIndex(a => a.id === lastActivityId);
+        if (lastIndex > 0) {
+          newActivities = activities.slice(0, lastIndex);
+        } else if (lastIndex === -1) {
+          // Last ID not found, send all recent
+          newActivities = activities.slice(0, 5);
+        }
+      } else if (activities.length > 0) {
+        // First time, send latest
+        newActivities = activities.slice(0, 1);
+      }
+
+      // Update lastActivityId to the most recent
+      if (activities.length > 0) {
+        lastActivityId = activities[0].id;
+      }
+
+      // Send new activities in chronological order (oldest first)
+      for (const activity of newActivities.reverse()) {
+        if (closed) break;
+        res.write(`data: ${JSON.stringify({ type: 'activity', data: activity })}\n\n`);
+      }
+    } catch (error) {
+      console.error('SSE poll error:', error);
+    }
+  }, 2000);
+
+  // Clean up on client disconnect
+  req.on('close', () => {
+    closed = true;
+    clearInterval(pollInterval);
+    res.end();
+  });
+
+  // Keep the connection alive
+  const keepAlive = setInterval(() => {
+    if (closed) {
+      clearInterval(keepAlive);
+      return;
+    }
+    res.write(`: keepalive\n\n`);
+  }, 15000);
+
+  // Clean up keepAlive on close
+  req.on('close', () => {
+    clearInterval(keepAlive);
+  });
+});
+
+// ============================================
 // ALL-PHOTOS UPLOAD (public, no event - month/year/date)
 // ============================================
 app.post('/api/uploads/all', async (req, res, next) => {

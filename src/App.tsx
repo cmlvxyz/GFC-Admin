@@ -28,7 +28,7 @@ const pageTitles: Record<string, { title: string; icon: string }> = {
 export default function App() {
   const [loading, setLoading] = useState(true);
   const [page, setPage] = useState('dashboard');
-  const [isDark, setIsDark] = useState(true);
+  const [isDark, setIsDark] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [currentTime, setCurrentTime] = useState('');
   const [activities, setActivities] = useState<Activity[]>([]);
@@ -100,6 +100,31 @@ export default function App() {
     return () => clearInterval(t);
   }, [dataLoadedOnce, loadAll]);
 
+  // ============ TARGETED REFRESH FUNCTIONS ============
+  const refreshAllPhotos = useCallback(async () => {
+    try {
+      const result = await listCollection('allPhotos');
+      setData(prev => ({
+        ...prev,
+        allPhotos: result.allPhotos
+      }));
+    } catch (error) {
+      console.error('Failed to refresh All Photos:', error);
+    }
+  }, []);
+
+  const refreshEvents = useCallback(async () => {
+    try {
+      const result = await listCollection('events');
+      setData(prev => ({
+        ...prev,
+        events: result.events
+      }));
+    } catch (error) {
+      console.error('Failed to refresh Events:', error);
+    }
+  }, []);
+
   // ============ ACTIVITIES (SSE + polling) ============
   const setActivitiesMerged = useCallback((incoming: Activity[]) => {
     setActivities(prev => {
@@ -122,11 +147,25 @@ export default function App() {
     };
     refresh();
     void getActivityStream(activity => {
-      if (!disposed) setActivities(prev => prev.some(a => a.id === activity.id) ? prev : [activity, ...prev].slice(0, 300));
+      if (!disposed) {
+        setActivities(prev => prev.some(a => a.id === activity.id) ? prev : [activity, ...prev].slice(0, 300));
+
+        // Targeted refresh for All Photos uploads
+        if (activity.type === 'allPhotos' && activity.action === 'photo') {
+          void refreshAllPhotos();
+        }
+
+        // Targeted refresh for Event photo uploads
+        // Event photos also appear in All Photos, so refresh both
+        if (activity.type === 'events' && activity.action === 'photo') {
+          void refreshEvents();
+          void refreshAllPhotos();
+        }
+      }
     }).then(close => { if (disposed) close(); else closeStream = close; });
     const poll = setInterval(refresh, 10000);
     return () => { disposed = true; closeStream?.(); clearInterval(poll); };
-  }, [setActivitiesMerged]);
+  }, [setActivitiesMerged, refreshAllPhotos, refreshEvents]);
 
   // ============ CRUD ============
   const handleCreate = async (collection: Collection, record: unknown) => {
