@@ -89,6 +89,7 @@ export const AllPhotosPage: React.FC<AllPhotosPageProps> = ({ events, allPhotos 
   }, [events, allPhotos]);
 
   const [selectedMonth, setSelectedMonth] = useState<number | ''>('');
+  const [selectedYear, setSelectedYear] = useState<number | ''>('');
   const [yearModal, setYearModal] = useState<number | null>(null);
   const [selectedPhoto, setSelectedPhoto] = useState<string | null>(null);
   const [qrContainerEl, setQrContainerEl] = useState<HTMLDivElement | null>(null);
@@ -118,10 +119,15 @@ export const AllPhotosPage: React.FC<AllPhotosPageProps> = ({ events, allPhotos 
       ? allPhotosList 
       : allPhotosList.filter(p => p.month === selectedMonth);
     
+    // Further filter by year if selected
+    const yearFiltered = selectedYear === ''
+      ? filtered
+      : filtered.filter(p => p.year === selectedYear);
+    
     const order: { key: string; label: string; year: number; month: number }[] = [];
     const byKey = new Map<string, PhotoItem[]>();
     
-    for (const p of filtered) {
+    for (const p of yearFiltered) {
       const key = `${p.year}-${p.month}`;
       if (!byKey.has(key)) {
         byKey.set(key, []);
@@ -138,7 +144,7 @@ export const AllPhotosPage: React.FC<AllPhotosPageProps> = ({ events, allPhotos 
     // Sort by year (descending) then month (descending)
     order.sort((a, b) => b.year - a.year || b.month - a.month);
     return order.map(o => ({ label: o.label, photos: byKey.get(o.key)! }));
-  }, [allPhotosList, selectedMonth]);
+  }, [allPhotosList, selectedMonth, selectedYear]);
 
   const monthCountsForYear = (year: number): number[] => {
     const counts = new Array(12).fill(0);
@@ -201,14 +207,14 @@ export const AllPhotosPage: React.FC<AllPhotosPageProps> = ({ events, allPhotos 
                 <div className="flex items-center gap-2">
                   <CalendarDays className="w-4 h-4 text-indigo-400 flex-shrink-0" />
                   <select
-                    value=""
+                    value={selectedYear}
                     onChange={(e) => {
-                      const year = parseInt(e.target.value);
-                      if (!Number.isNaN(year)) setYearModal(year);
+                      const year = e.target.value === '' ? '' : parseInt(e.target.value);
+                      setSelectedYear(year);
                     }}
                     className="w-full px-4 py-2.5 rounded-xl border border-gray-200 dark:border-white/10 bg-gray-50 dark:bg-black/30 text-black dark:text-white text-sm focus:border-indigo-400 dark:focus:border-indigo-400/50 focus:outline-hidden focus:ring-2 focus:ring-indigo-400/20 transition-all"
                   >
-                    <option value="">Select Year</option>
+                    <option value="">All Years</option>
                     {YEAR_RANGE.map(year => {
                       const count = allPhotosList.filter(p => p.year === year).length;
                       return (
@@ -225,9 +231,13 @@ export const AllPhotosPage: React.FC<AllPhotosPageProps> = ({ events, allPhotos 
             <div className="mt-4 flex items-center gap-2 text-xs font-bold text-indigo-500 dark:text-indigo-400">
               <span>📸</span>
               <span>
-                {selectedMonth === ''
+                {selectedMonth === '' && selectedYear === ''
                   ? `${totalPhotos} total photos`
-                  : `${grouped.reduce((sum, g) => sum + g.photos.length, 0)} photos — ${MONTH_NAMES[selectedMonth]}`}
+                  : selectedMonth === ''
+                  ? `${allPhotosList.filter(p => p.year === selectedYear).length} photos in ${selectedYear}`
+                  : selectedYear === ''
+                  ? `${grouped.reduce((sum, g) => sum + g.photos.length, 0)} photos — ${MONTH_NAMES[selectedMonth]}`
+                  : `${grouped.reduce((sum, g) => sum + g.photos.length, 0)} photos — ${MONTH_NAMES[selectedMonth]} ${selectedYear}`}
               </span>
             </div>
           </div>
@@ -238,9 +248,9 @@ export const AllPhotosPage: React.FC<AllPhotosPageProps> = ({ events, allPhotos 
               <div className="bg-white dark:bg-[#14141f]/80 backdrop-blur-sm p-10 rounded-2xl border border-gray-200 dark:border-white/5 shadow-sm text-center">
                 <Images className="w-10 h-10 text-gray-300 dark:text-gray-600 mx-auto mb-2" />
                 <p className="text-gray-500 dark:text-gray-400">
-                  {selectedMonth === '' 
+                  {selectedMonth === '' && selectedYear === ''
                     ? 'No photos found. Upload some photos using the QR code.' 
-                    : `No photos found for ${MONTH_NAMES[selectedMonth]}.`}
+                    : `No photos found for the selected filters.`}
                 </p>
               </div>
             ) : (
@@ -266,7 +276,6 @@ export const AllPhotosPage: React.FC<AllPhotosPageProps> = ({ events, allPhotos 
                           loading="lazy"
                           className="w-full h-full object-cover transition-transform hover:scale-110 duration-500"
                           onError={(e) => {
-                            // Handle broken images
                             (e.target as HTMLImageElement).src = 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="100" height="100" viewBox="0 0 100 100"%3E%3Crect fill="%23ddd" width="100" height="100"/%3E%3Ctext x="50" y="50" text-anchor="middle" dy=".3em" font-family="sans-serif" font-size="12" fill="%23999"%3ENo image%3C/text%3E%3C/svg%3E';
                           }}
                         />
@@ -339,6 +348,7 @@ export const AllPhotosPage: React.FC<AllPhotosPageProps> = ({ events, allPhotos 
                         disabled={!has}
                         onClick={() => {
                           setSelectedMonth(month);
+                          setSelectedYear(yearModal);
                           setYearModal(null);
                         }}
                         className={`px-3 py-3 rounded-xl border text-sm font-bold transition-all ${

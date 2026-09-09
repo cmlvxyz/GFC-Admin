@@ -93,7 +93,7 @@ export default function App() {
     void loadAll();
   }, [loadAll]);
 
-  // Auto-retry kapag hindi pa gumagana ang backend (e.g. kaka-start pa lang ng server)
+  // Auto-retry kapag hindi pa gumagana ang backend
   useEffect(() => {
     if (dataLoadedOnce) return;
     const t = setInterval(() => { void loadAll(); }, 15000);
@@ -156,7 +156,6 @@ export default function App() {
         }
 
         // Targeted refresh for Event photo uploads
-        // Event photos also appear in All Photos, so refresh both
         if (activity.type === 'events' && activity.action === 'photo') {
           void refreshEvents();
           void refreshAllPhotos();
@@ -298,6 +297,8 @@ export default function App() {
             }));
           }}
           onReload={() => void loadAll()}
+          allPhotos={data.allPhotos}
+          onAllPhotosUpdated={refreshAllPhotos}
         />
       );
     }

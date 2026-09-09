@@ -1,7 +1,7 @@
 // GFC-ADMIN/src/pages/QRCodePage.tsx
 
 import React, { useEffect, useState, useRef } from 'react';
-import { ChurchEvent, DateEntry } from '../types';
+import { ChurchEvent, DateEntry, AllPhotoAlbum } from '../types';
 import { QrCode, AlertCircle, Upload, Image, X, CheckCircle, Loader2, RefreshCw, CalendarPlus } from 'lucide-react';
 import QRCodeStyling from 'qr-code-styling';
 import { updateRecord as apiUpdateRecord } from '../api';
@@ -10,12 +10,18 @@ interface QRCodePageProps {
   events: ChurchEvent[];
   onUpdateEvent?: (updatedEvent: ChurchEvent) => void;
   onReload?: () => void;
+  allPhotos?: AllPhotoAlbum[];
+  onAllPhotosUpdated?: () => void;
 }
 
-export const QRCodePage: React.FC<QRCodePageProps> = ({ events, onUpdateEvent, onReload }) => {
+export const QRCodePage: React.FC<QRCodePageProps> = ({ 
+  events, 
+  onUpdateEvent, 
+  onReload,
+  allPhotos = [],
+  onAllPhotosUpdated 
+}) => {
   // Base URL ng GFC upload page (configurable via VITE_GFC_URL).
-  // Kapag naka-deploy (Vercel): same-origin (admin + API + upload page ay nasa iisang URL).
-  // Kapag local: `http://<host>:4000` para ma-scan sa phone gamit LAN IP.
   const GFC_BASE = (() => {
     const fromEnv = (import.meta.env.VITE_GFC_URL as string | undefined)?.trim();
     if (fromEnv) return fromEnv;
@@ -25,7 +31,6 @@ export const QRCodePage: React.FC<QRCodePageProps> = ({ events, onUpdateEvent, o
     if (isLocalhost || isLanIp) {
       return host ? `http://${host}:4000` : 'http://localhost:4000';
     }
-    // Deployed (e.g. Vercel) - huwag magdagdag ng port, gamitin ang current origin.
     return typeof window !== 'undefined' ? window.location.origin : 'https://gfc-admin-rosy.vercel.app';
   })();
 
@@ -50,6 +55,28 @@ export const QRCodePage: React.FC<QRCodePageProps> = ({ events, onUpdateEvent, o
   const [qrContainerEl, setQrContainerEl] = useState<HTMLDivElement | null>(null);
   const qrStylingRef = useRef<QRCodeStyling | null>(null);
 
+  // Helper: Check if a photo already exists in All Photos
+  const isPhotoInAllPhotos = (photoData: string): boolean => {
+    // Check if this exact image data already exists in any All Photos album
+    for (const album of allPhotos) {
+      if (album.photos && album.photos.some((p: string) => p === photoData)) {
+        return true;
+      }
+    }
+    return false;
+  };
+
+  // Helper: Get the month/year where this photo exists in All Photos
+  const getPhotoAllPhotosLocation = (photoData: string): string | null => {
+    for (const album of allPhotos) {
+      if (album.photos && album.photos.some((p: string) => p === photoData)) {
+        const monthName = new Date(0, album.month).toLocaleString('default', { month: 'long' });
+        return `${monthName} ${album.year}`;
+      }
+    }
+    return null;
+  };
+
   // Auto-select a sensible event on load so a QR code always shows when possible
   useEffect(() => {
     if (!selectedEventId && events.length > 0) {
@@ -59,7 +86,7 @@ export const QRCodePage: React.FC<QRCodePageProps> = ({ events, onUpdateEvent, o
     }
   }, [events, selectedEventId]);
 
-  // Build the branded QR (may church logo sa gitna) - gumagana ang scan papunta sa upload page
+  // Build the branded QR
   useEffect(() => {
     if (!qrContainerEl) return;
     qrContainerEl.innerHTML = '';
@@ -97,7 +124,7 @@ export const QRCodePage: React.FC<QRCodePageProps> = ({ events, onUpdateEvent, o
     return event.dateEntries[selectedDateIndex];
   };
 
-  // Resize image para hindi lumagpas sa Vercel serverless body limit (4.5MB)
+  // Resize image
   const resizeImage = (file: File): Promise<string> =>
     new Promise((resolve, reject) => {
       const img = new window.Image();
@@ -125,7 +152,7 @@ export const QRCodePage: React.FC<QRCodePageProps> = ({ events, onUpdateEvent, o
       reader.readAsDataURL(file);
     });
 
-  // Handle photo upload
+  // Handle photo upload - with duplicate detection
   const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (!files) return;
@@ -134,7 +161,8 @@ export const QRCodePage: React.FC<QRCodePageProps> = ({ events, onUpdateEvent, o
     for (const file of Array.from(files)) {
       if (file && file.type && file.type.indexOf('image') === 0) {
         try {
-          urls.push(await resizeImage(file));
+          const imageData = await resizeImage(file);
+          urls.push(imageData);
         } catch {
           /* skip unreadable image */
         }
@@ -158,41 +186,7 @@ export const QRCodePage: React.FC<QRCodePageProps> = ({ events, onUpdateEvent, o
     setUploadedPhotos(prev => prev.filter((_, i) => i !== index));
   };
 
-  const handleAddDate = async () => {
-    const event = getSelectedEvent();
-    const value = newDateInput.trim();
-    if (!event) {
-      setAddDateError('Please select an event first.');
-      return;
-    }
-    if (!value) {
-      setAddDateError('Please enter a date first.');
-      return;
-    }
-    const entries = Array.isArray(event.dateEntries) ? event.dateEntries : [];
-    if (entries.some(e => e.date === value)) {
-      setAddDateError(`The date "${value}" already exists in this event.`);
-      return;
-    }
-
-    const updatedEntries = [...entries, { date: value, photos: [] }];
-    const updatedEvent: ChurchEvent = { ...event, dateEntries: updatedEntries };
-
-    setAddingDate(true);
-    setAddDateError('');
-    try {
-      await apiUpdateRecord('events', event.id, { dateEntries: updatedEntries });
-      if (onUpdateEvent) onUpdateEvent(updatedEvent);
-      setNewDateInput('');
-      setSelectedDateIndex(updatedEntries.length - 1);
-    } catch (error) {
-      setAddDateError('Error adding date. Please try again.');
-      setAddingDate(false);
-      return;
-    }
-    setAddingDate(false);
-  };
-
+  // Also save photos to All Photos when saving to event
   const handleSavePhotosToEvent = async () => {
     if (!selectedEventId) {
       setErrorMessage('Please select an event first.');
@@ -216,10 +210,13 @@ export const QRCodePage: React.FC<QRCodePageProps> = ({ events, onUpdateEvent, o
         return;
       }
 
-      // Use the selected date index (default 0)
       const targetIndex = selectedDateIndex >= 0 && selectedDateIndex < event.dateEntries.length ? selectedDateIndex : 0;
       const currentPhotos = event.dateEntries[targetIndex]?.photos || [];
-      const updatedPhotos = [...currentPhotos, ...uploadedPhotos];
+      
+      // Combine existing photos with new ones (avoid duplicates within event)
+      const existingPhotoSet = new Set(currentPhotos);
+      const newPhotos = uploadedPhotos.filter((p: string) => !existingPhotoSet.has(p));
+      const updatedPhotos = [...currentPhotos, ...newPhotos];
       
       const updatedEntries = [...event.dateEntries];
       updatedEntries[targetIndex] = {
@@ -234,8 +231,43 @@ export const QRCodePage: React.FC<QRCodePageProps> = ({ events, onUpdateEvent, o
         dateEntries: updatedEntries
       };
 
+      // Save to events
       await apiUpdateRecord('events', event.id, { dateEntries: updatedEntries });
       if (onUpdateEvent) onUpdateEvent(updatedEvent);
+
+      // ALSO SAVE TO ALL PHOTOS
+      // Get current month/year from the event date
+      const now = new Date();
+      const currentMonth = now.getMonth();
+      const currentYear = now.getFullYear();
+      const dateLabel = event.dateEntries[targetIndex]?.date || `${currentMonth + 1}/${currentYear}`;
+
+      // Save each new photo to All Photos
+      for (const photoData of newPhotos) {
+        try {
+          // Use the existing /api/uploads/all endpoint
+          const response = await fetch(`${GFC_BASE}/api/uploads/all`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              image: photoData,
+              month: currentMonth,
+              year: currentYear,
+              date: dateLabel
+            })
+          });
+          if (!response.ok) {
+            console.warn('Failed to save photo to All Photos:', await response.text());
+          }
+        } catch (err) {
+          console.warn('Error saving photo to All Photos:', err);
+        }
+      }
+
+      // Notify parent to refresh All Photos
+      if (onAllPhotosUpdated) {
+        onAllPhotosUpdated();
+      }
 
       setUploadStatus('success');
       setUploadedPhotos([]);
@@ -249,6 +281,41 @@ export const QRCodePage: React.FC<QRCodePageProps> = ({ events, onUpdateEvent, o
     } finally {
       setIsUploading(false);
     }
+  };
+
+  const handleAddDate = async () => {
+    const event = getSelectedEvent();
+    const value = newDateInput.trim();
+    if (!event) {
+      setAddDateError('Please select an event first.');
+      return;
+    }
+    if (!value) {
+      setAddDateError('Please enter a date first.');
+      return;
+    }
+    const entries = Array.isArray(event.dateEntries) ? event.dateEntries : [];
+    if (entries.some((e: DateEntry) => e.date === value)) {
+      setAddDateError(`The date "${value}" already exists in this event.`);
+      return;
+    }
+
+    const updatedEntries = [...entries, { date: value, photos: [] }];
+    const updatedEvent: ChurchEvent = { ...event, dateEntries: updatedEntries };
+
+    setAddingDate(true);
+    setAddDateError('');
+    try {
+      await apiUpdateRecord('events', event.id, { dateEntries: updatedEntries });
+      if (onUpdateEvent) onUpdateEvent(updatedEvent);
+      setNewDateInput('');
+      setSelectedDateIndex(updatedEntries.length - 1);
+    } catch (error) {
+      setAddDateError('Error adding date. Please try again.');
+      setAddingDate(false);
+      return;
+    }
+    setAddingDate(false);
   };
 
   const handleResetUpload = () => {
@@ -355,7 +422,7 @@ export const QRCodePage: React.FC<QRCodePageProps> = ({ events, onUpdateEvent, o
                         }}
                         className="w-full px-4 py-2.5 rounded-xl border border-gray-200 dark:border-white/10 bg-gray-50 dark:bg-black/30 text-black dark:text-white text-sm focus:border-indigo-400 dark:focus:border-indigo-400/50 focus:outline-hidden focus:ring-2 focus:ring-indigo-400/20 transition-all"
                       >
-                        {selectedEvent.dateEntries?.map((entry, index) => (
+                        {selectedEvent.dateEntries?.map((entry: DateEntry, index: number) => (
                           <option key={index} value={index}>
                             {entry.date}
                           </option>
@@ -415,7 +482,7 @@ export const QRCodePage: React.FC<QRCodePageProps> = ({ events, onUpdateEvent, o
             )}
           </div>
 
-          {/* Right: QR Code Display - GFC QR image */}
+          {/* Right: QR Code Display */}
           <div className="flex flex-col items-center justify-center p-4 bg-gray-50 dark:bg-black/30 rounded-xl border border-gray-200 dark:border-white/10">
             {selectedEventId && getSelectedDateEntry() ? (
               <>
@@ -443,6 +510,157 @@ export const QRCodePage: React.FC<QRCodePageProps> = ({ events, onUpdateEvent, o
           </div>
         </div>
       </div>
+
+      {/* Upload Section */}
+      {selectedEventId && getSelectedDateEntry() && (
+        <div className="bg-white dark:bg-[#14141f]/80 backdrop-blur-sm p-6 rounded-2xl border border-gray-200 dark:border-white/5 shadow-sm">
+          <h4 className="text-sm font-bold text-black dark:text-white mb-4 flex items-center gap-2">
+            <Upload className="w-4 h-4 text-indigo-500" />
+            Upload Photos to Event
+          </h4>
+
+          {/* Photo Upload Input */}
+          <div className="flex flex-wrap items-center gap-3">
+            <label className="cursor-pointer inline-flex items-center gap-2 px-4 py-2.5 bg-indigo-500 hover:bg-indigo-600 text-white rounded-xl text-xs font-bold transition-all shadow-md">
+              <Image className="w-4 h-4" />
+              Select Photos
+              <input
+                ref={photoFileInputRef}
+                type="file"
+                accept="image/*"
+                multiple
+                onChange={handlePhotoUpload}
+                className="hidden"
+              />
+            </label>
+            <button
+              onClick={handleResetUpload}
+              className="px-4 py-2.5 bg-gray-100 dark:bg-white/5 hover:bg-gray-200 dark:hover:bg-white/10 text-gray-700 dark:text-[#A1A1A1] rounded-xl text-xs font-bold transition-all border border-gray-200 dark:border-white/10"
+            >
+              Clear All
+            </button>
+          </div>
+
+          {/* Photo Preview Grid with Duplicate Detection */}
+          {uploadedPhotoPreviews.length > 0 && (
+            <div className="mt-4">
+              <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-3">
+                {uploadedPhotoPreviews.map((preview: string, index: number) => {
+                  const isDuplicate = isPhotoInAllPhotos(preview);
+                  const location = getPhotoAllPhotosLocation(preview);
+                  return (
+                    <div key={index} className="relative group">
+                      <div className="relative rounded-xl overflow-hidden aspect-square bg-gray-100 dark:bg-black/20 border border-gray-200 dark:border-white/10">
+                        <img
+                          src={preview}
+                          alt={`Upload ${index + 1}`}
+                          className="w-full h-full object-cover"
+                        />
+                        {/* Duplicate indicator */}
+                        {isDuplicate && (
+                          <div className="absolute top-0 right-0 m-1 bg-red-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full flex items-center gap-1 shadow-lg">
+                            <span className="w-1.5 h-1.5 bg-white rounded-full animate-pulse" />
+                            In All Photos
+                          </div>
+                        )}
+                        {/* Location tooltip */}
+                        {isDuplicate && location && (
+                          <div className="absolute bottom-0 left-0 right-0 bg-black/70 text-white text-[9px] px-1.5 py-0.5 truncate">
+                            📍 {location}
+                          </div>
+                        )}
+                        {/* Remove button */}
+                        <button
+                          onClick={() => handleRemoveUploadedPhoto(index)}
+                          className="absolute top-1 right-1 p-1 bg-black/60 hover:bg-red-500 text-white rounded-full opacity-0 group-hover:opacity-100 transition-all"
+                          title="Remove photo"
+                        >
+                          <X className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                      <div className="mt-1 text-[9px] text-gray-400 dark:text-gray-500 truncate">
+                        Photo {index + 1}
+                        {isDuplicate && (
+                          <span className="text-red-400 ml-1">(duplicate)</span>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+              <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">
+                {uploadedPhotoPreviews.length} photo{uploadedPhotoPreviews.length > 1 ? 's' : ''} selected
+                {uploadedPhotoPreviews.some((preview: string) => isPhotoInAllPhotos(preview)) && (
+                  <span className="text-red-400 ml-2">
+                    ⚠️ Some photos already exist in All Photos
+                  </span>
+                )}
+              </p>
+            </div>
+          )}
+
+          {/* Verse Inputs */}
+          <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs font-bold text-gray-700 dark:text-[#A1A1A1] uppercase tracking-wider mb-1">
+                Verse (optional)
+              </label>
+              <input
+                type="text"
+                value={photoVerse}
+                onChange={(e) => setPhotoVerse(e.target.value)}
+                placeholder="e.g. Pray without ceasing"
+                className="w-full px-4 py-2 rounded-xl border border-gray-200 dark:border-white/10 bg-gray-50 dark:bg-black/30 text-black dark:text-white text-sm focus:border-indigo-400 dark:focus:border-indigo-400/50 focus:outline-hidden focus:ring-2 focus:ring-indigo-400/20 transition-all"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-bold text-gray-700 dark:text-[#A1A1A1] uppercase tracking-wider mb-1">
+                Verse Reference (optional)
+              </label>
+              <input
+                type="text"
+                value={photoVerseRef}
+                onChange={(e) => setPhotoVerseRef(e.target.value)}
+                placeholder="e.g. 1 Thessalonians 5:17"
+                className="w-full px-4 py-2 rounded-xl border border-gray-200 dark:border-white/10 bg-gray-50 dark:bg-black/30 text-black dark:text-white text-sm focus:border-indigo-400 dark:focus:border-indigo-400/50 focus:outline-hidden focus:ring-2 focus:ring-indigo-400/20 transition-all"
+              />
+            </div>
+          </div>
+
+          {/* Upload Button */}
+          <div className="mt-4 flex flex-wrap gap-3">
+            <button
+              onClick={handleSavePhotosToEvent}
+              disabled={uploadedPhotos.length === 0 || isUploading}
+              className="inline-flex items-center gap-2 px-6 py-2.5 bg-emerald-500 hover:bg-emerald-600 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-xl text-xs font-bold transition-all shadow-md"
+            >
+              {isUploading ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  Uploading...
+                </>
+              ) : (
+                <>
+                  <Upload className="w-4 h-4" />
+                  Save to Event & All Photos
+                </>
+              )}
+            </button>
+            {uploadStatus === 'success' && (
+              <span className="flex items-center gap-1 text-emerald-500 dark:text-emerald-400 text-sm font-bold">
+                <CheckCircle className="w-4 h-4" />
+                Photos saved!
+              </span>
+            )}
+            {errorMessage && (
+              <span className="flex items-center gap-1 text-red-500 dark:text-red-400 text-sm font-bold">
+                <AlertCircle className="w-4 h-4" />
+                {errorMessage}
+              </span>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 };
