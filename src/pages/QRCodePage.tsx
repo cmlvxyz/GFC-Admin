@@ -1,8 +1,8 @@
 // GFC-ADMIN/src/pages/QRCodePage.tsx
 
-import React, { useEffect, useMemo, useState, useRef } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { ChurchEvent, DateEntry } from '../types';
-import { QrCode, AlertCircle, Upload, Image, X, CheckCircle, Loader2, RefreshCw } from 'lucide-react';
+import { QrCode, AlertCircle, Upload, Image, X, CheckCircle, Loader2, RefreshCw, CalendarPlus } from 'lucide-react';
 import QRCodeStyling from 'qr-code-styling';
 import { updateRecord as apiUpdateRecord } from '../api';
 
@@ -43,22 +43,21 @@ export const QRCodePage: React.FC<QRCodePageProps> = ({ events, onUpdateEvent, o
   const [uploadStatus, setUploadStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
   const [errorMessage, setErrorMessage] = useState('');
   const [selectedDateIndex, setSelectedDateIndex] = useState<number>(0);
+  const [newDateInput, setNewDateInput] = useState('');
+  const [addDateError, setAddDateError] = useState('');
+  const [addingDate, setAddingDate] = useState(false);
   const photoFileInputRef = useRef<HTMLInputElement>(null);
   const [qrContainerEl, setQrContainerEl] = useState<HTMLDivElement | null>(null);
   const qrStylingRef = useRef<QRCodeStyling | null>(null);
 
-  const eventsWithAlbums = useMemo(
-    () => events.filter(e => Array.isArray(e.dateEntries) && e.dateEntries.length > 0),
-    [events]
-  );
-
-  // Auto-select the first event-with-album on load so a QR code always shows
+  // Auto-select a sensible event on load so a QR code always shows when possible
   useEffect(() => {
-    if (!selectedEventId && eventsWithAlbums.length > 0) {
-      setSelectedEventId(eventsWithAlbums[0].id);
+    if (!selectedEventId && events.length > 0) {
+      const firstWithAlbum = events.find(e => Array.isArray(e.dateEntries) && e.dateEntries.length > 0);
+      setSelectedEventId((firstWithAlbum || events[0]).id);
       setSelectedDateIndex(0);
     }
-  }, [eventsWithAlbums, selectedEventId]);
+  }, [events, selectedEventId]);
 
   // Build the branded QR (may church logo sa gitna) - gumagana ang scan papunta sa upload page
   useEffect(() => {
@@ -159,6 +158,41 @@ export const QRCodePage: React.FC<QRCodePageProps> = ({ events, onUpdateEvent, o
     setUploadedPhotos(prev => prev.filter((_, i) => i !== index));
   };
 
+  const handleAddDate = async () => {
+    const event = getSelectedEvent();
+    const value = newDateInput.trim();
+    if (!event) {
+      setAddDateError('Please select an event first.');
+      return;
+    }
+    if (!value) {
+      setAddDateError('Please enter a date first.');
+      return;
+    }
+    const entries = Array.isArray(event.dateEntries) ? event.dateEntries : [];
+    if (entries.some(e => e.date === value)) {
+      setAddDateError(`The date "${value}" already exists in this event.`);
+      return;
+    }
+
+    const updatedEntries = [...entries, { date: value, photos: [] }];
+    const updatedEvent: ChurchEvent = { ...event, dateEntries: updatedEntries };
+
+    setAddingDate(true);
+    setAddDateError('');
+    try {
+      await apiUpdateRecord('events', event.id, { dateEntries: updatedEntries });
+      if (onUpdateEvent) onUpdateEvent(updatedEvent);
+      setNewDateInput('');
+      setSelectedDateIndex(updatedEntries.length - 1);
+    } catch (error) {
+      setAddDateError('Error adding date. Please try again.');
+      setAddingDate(false);
+      return;
+    }
+    setAddingDate(false);
+  };
+
   const handleSavePhotosToEvent = async () => {
     if (!selectedEventId) {
       setErrorMessage('Please select an event first.');
@@ -230,8 +264,8 @@ export const QRCodePage: React.FC<QRCodePageProps> = ({ events, onUpdateEvent, o
     }
   };
 
-  // Check if event has no albums
-  if (eventsWithAlbums.length === 0) {
+  // Check if there are events at all
+  if (events.length === 0) {
     return (
       <div className="space-y-6">
         <div className="bg-white dark:bg-[#14141f]/80 backdrop-blur-sm p-6 rounded-2xl border border-gray-200 dark:border-white/5 shadow-sm">
@@ -252,35 +286,21 @@ export const QRCodePage: React.FC<QRCodePageProps> = ({ events, onUpdateEvent, o
         </div>
 
         <div className="flex flex-col items-center justify-center gap-3 py-20 text-center">
-          {events.length === 0 ? (
-            <>
-              <AlertCircle className="w-10 h-10 text-red-400" />
-              <p className="text-sm text-red-500 dark:text-red-400 font-medium">
-                Hindi ma-load ang events data. Mukhang hindi tumatakbo ang backend API.
-              </p>
-              <p className="text-xs text-gray-400 dark:text-gray-500 max-w-md">
-                Siguraduhing tumatakbo ang server (npm run server) sa port 4000, tapos i-reload ang page.
-              </p>
-              {onReload && (
-                <button
-                  onClick={onReload}
-                  className="mt-2 inline-flex items-center gap-2 px-4 py-2.5 bg-indigo-500 hover:bg-indigo-600 text-white rounded-xl text-xs font-bold transition-all"
-                >
-                  <RefreshCw className="w-4 h-4" />
-                  Reload Data
-                </button>
-              )}
-            </>
-          ) : (
-            <>
-              <AlertCircle className="w-10 h-10 text-gray-300 dark:text-gray-600" />
-              <p className="text-sm text-gray-400 dark:text-[#A1A1A1] font-medium">
-                Walang event na may photo album (date entries) pa.
-              </p>
-              <p className="text-xs text-gray-400 dark:text-gray-500 max-w-md">
-                Magdagdag muna ng date album sa isang event, tapos i-generate ang QR code dito.
-              </p>
-            </>
+          <AlertCircle className="w-10 h-10 text-red-400" />
+          <p className="text-sm text-red-500 dark:text-red-400 font-medium">
+            Hindi ma-load ang events data. Mukhang hindi tumatakbo ang backend API.
+          </p>
+          <p className="text-xs text-gray-400 dark:text-gray-500 max-w-md">
+            Siguraduhing tumatakbo ang server (npm run server) sa port 4000, tapos i-reload ang page.
+          </p>
+          {onReload && (
+            <button
+              onClick={onReload}
+              className="mt-2 inline-flex items-center gap-2 px-4 py-2.5 bg-indigo-500 hover:bg-indigo-600 text-white rounded-xl text-xs font-bold transition-all"
+            >
+              <RefreshCw className="w-4 h-4" />
+              Reload Data
+            </button>
           )}
         </div>
       </div>
@@ -323,35 +343,84 @@ export const QRCodePage: React.FC<QRCodePageProps> = ({ events, onUpdateEvent, o
                 className="w-full px-4 py-2.5 rounded-xl border border-gray-200 dark:border-white/10 bg-gray-50 dark:bg-black/30 text-black dark:text-white text-sm focus:border-indigo-400 dark:focus:border-indigo-400/50 focus:outline-hidden focus:ring-2 focus:ring-indigo-400/20 transition-all"
               >
                 <option value="">-- Select an event --</option>
-                {eventsWithAlbums.map(event => (
+                {events.map(event => (
                   <option key={event.id} value={event.id}>
-                    {event.title} ({event.dateEntries?.length || 0} albums)
+                    {event.title}
                   </option>
                 ))}
               </select>
             </div>
 
-            {selectedEventId && getSelectedEvent() && (
-              <div>
-                <label className="block text-xs font-bold text-gray-700 dark:text-[#A1A1A1] uppercase tracking-wider mb-2">
-                  Select Date Album (for upload)
-                </label>
-                <select
-                  value={selectedDateIndex}
-                  onChange={(e) => {
-                    setSelectedDateIndex(parseInt(e.target.value));
-                    handleResetUpload();
-                  }}
-                  className="w-full px-4 py-2.5 rounded-xl border border-gray-200 dark:border-white/10 bg-gray-50 dark:bg-black/30 text-black dark:text-white text-sm focus:border-indigo-400 dark:focus:border-indigo-400/50 focus:outline-hidden focus:ring-2 focus:ring-indigo-400/20 transition-all"
-                >
-                  {getSelectedEvent()?.dateEntries?.map((entry, index) => (
-                    <option key={index} value={index}>
-                      {entry.date} ({entry.photos?.length || 0} photos)
-                    </option>
-                  ))}
-                </select>
-              </div>
-            )}
+            {selectedEventId && getSelectedEvent() && (() => {
+              const selectedEvent = getSelectedEvent()!;
+              const hasDates = Array.isArray(selectedEvent.dateEntries) && selectedEvent.dateEntries.length > 0;
+              return (
+                <>
+                  {hasDates && (
+                    <div>
+                      <label className="block text-xs font-bold text-gray-700 dark:text-[#A1A1A1] uppercase tracking-wider mb-2">
+                        Select Date Album (for upload)
+                      </label>
+                      <select
+                        value={selectedDateIndex}
+                        onChange={(e) => {
+                          setSelectedDateIndex(parseInt(e.target.value));
+                          handleResetUpload();
+                        }}
+                        className="w-full px-4 py-2.5 rounded-xl border border-gray-200 dark:border-white/10 bg-gray-50 dark:bg-black/30 text-black dark:text-white text-sm focus:border-indigo-400 dark:focus:border-indigo-400/50 focus:outline-hidden focus:ring-2 focus:ring-indigo-400/20 transition-all"
+                      >
+                        {selectedEvent.dateEntries?.map((entry, index) => (
+                          <option key={index} value={index}>
+                            {entry.date}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
+
+                  <div>
+                    {!hasDates && (
+                      <p className="text-xs text-gray-500 dark:text-[#A1A1A1] mb-2">
+                        Walang date album pa ang event na ito. Magdagdag ng date para makapag-generate ng QR code.
+                      </p>
+                    )}
+                    <label className="block text-xs font-bold text-gray-700 dark:text-[#A1A1A1] uppercase tracking-wider mb-2">
+                      Add Date Album
+                    </label>
+                    <div className="flex gap-2">
+                      <input
+                        type="text"
+                        value={newDateInput}
+                        onChange={(e) => {
+                          setNewDateInput(e.target.value);
+                          setAddDateError('');
+                        }}
+                        onKeyDown={(e) => { if (e.key === 'Enter') { void handleAddDate(); } }}
+                        placeholder="e.g. August 18, 2026"
+                        className="flex-1 px-4 py-2.5 rounded-xl border border-gray-200 dark:border-white/10 bg-gray-50 dark:bg-black/30 text-black dark:text-white text-sm focus:border-indigo-400 dark:focus:border-indigo-400/50 focus:outline-hidden focus:ring-2 focus:ring-indigo-400/20 transition-all"
+                      />
+                      <button
+                        onClick={() => void handleAddDate()}
+                        disabled={addingDate}
+                        className="inline-flex items-center gap-2 px-4 py-2.5 bg-indigo-500 hover:bg-indigo-600 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-xl text-xs font-bold transition-all"
+                      >
+                        {addingDate ? (
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                        ) : (
+                          <CalendarPlus className="w-4 h-4" />
+                        )}
+                        Add Date
+                      </button>
+                    </div>
+                    {addDateError && (
+                      <p className="mt-2 text-xs text-red-500 dark:text-red-400 flex items-center gap-1">
+                        <AlertCircle className="w-3.5 h-3.5" /> {addDateError}
+                      </p>
+                    )}
+                  </div>
+                </>
+              );
+            })()}
 
             {selectedEventId && getSelectedDateEntry() && (
               <div className="p-4 bg-indigo-50 dark:bg-indigo-950/30 rounded-xl border border-indigo-200 dark:border-indigo-400/30">
@@ -360,9 +429,6 @@ export const QRCodePage: React.FC<QRCodePageProps> = ({ events, onUpdateEvent, o
                   <span className="text-black dark:text-white">{getSelectedEvent()?.title}</span>
                   <span className="text-gray-400">•</span>
                   <span className="text-black dark:text-white">{getSelectedDateEntry()?.date}</span>
-                </div>
-                <div className="text-xs text-gray-500 dark:text-[#A1A1A1] mt-1">
-                  📸 {getSelectedDateEntry()?.photos?.length || 0} photos currently in this album
                 </div>
               </div>
             )}

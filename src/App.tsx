@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import { Bell, Menu, ArrowLeft, LayoutDashboard, Calendar as CalendarIcon, Video, Megaphone, Heart, Users, MessageSquare, Settings, Shield, Trash2, X, QrCode } from 'lucide-react';
-import type { Activity, Collection, RecordMap } from './types';
+import type { Activity, ChurchEvent, Collection, RecordMap } from './types';
 import { API_URL, clearActivities, createRecord, deleteRecord as apiDeleteRecord, getActivities, getActivityStream, listCollection, resetRemoteData, updateRecord as apiUpdateRecord } from './api';
 import { Sidebar } from './components/Sidebar';
 import { ToastHost, ToastItem, ToastType } from './components/ToastHost';
@@ -245,7 +245,18 @@ export default function App() {
     }
 
     if (page === 'qrcodes') {
-      return <QRCodePage events={data.events} onReload={() => void loadAll()} />;
+      return (
+        <QRCodePage
+          events={data.events}
+          onUpdateEvent={(updatedEvent) => {
+            setData(prev => ({
+              ...prev,
+              events: (prev.events as ChurchEvent[]).map(e => e.id === updatedEvent.id ? updatedEvent : e)
+            }));
+          }}
+          onReload={() => void loadAll()}
+        />
+      );
     }
 
     if (page === 'settings') {
