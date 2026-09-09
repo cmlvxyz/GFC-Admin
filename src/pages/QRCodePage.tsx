@@ -42,9 +42,6 @@ export const QRCodePage: React.FC<QRCodePageProps> = ({
   const [uploadedPhotos, setUploadedPhotos] = useState<string[]>([]);
   const [uploadedPhotoPreviews, setUploadedPhotoPreviews] = useState<string[]>([]);
   const [isUploading, setIsUploading] = useState(false);
-  const [photoDateTitle, setPhotoDateTitle] = useState('');
-  const [photoVerse, setPhotoVerse] = useState('');
-  const [photoVerseRef, setPhotoVerseRef] = useState('');
   const [uploadStatus, setUploadStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
   const [errorMessage, setErrorMessage] = useState('');
   const [selectedDateIndex, setSelectedDateIndex] = useState<number>(0);
@@ -57,7 +54,6 @@ export const QRCodePage: React.FC<QRCodePageProps> = ({
 
   // Helper: Check if a photo already exists in All Photos
   const isPhotoInAllPhotos = (photoData: string): boolean => {
-    // Check if this exact image data already exists in any All Photos album
     for (const album of allPhotos) {
       if (album.photos && album.photos.some((p: string) => p === photoData)) {
         return true;
@@ -186,7 +182,7 @@ export const QRCodePage: React.FC<QRCodePageProps> = ({
     setUploadedPhotos(prev => prev.filter((_, i) => i !== index));
   };
 
-  // Also save photos to All Photos when saving to event
+  // Save photos to event AND All Photos
   const handleSavePhotosToEvent = async () => {
     if (!selectedEventId) {
       setErrorMessage('Please select an event first.');
@@ -221,9 +217,7 @@ export const QRCodePage: React.FC<QRCodePageProps> = ({
       const updatedEntries = [...event.dateEntries];
       updatedEntries[targetIndex] = {
         ...updatedEntries[targetIndex],
-        photos: updatedPhotos,
-        verse: photoVerse || updatedEntries[targetIndex]?.verse || undefined,
-        verseRef: photoVerseRef || updatedEntries[targetIndex]?.verseRef || undefined
+        photos: updatedPhotos
       };
 
       const updatedEvent: ChurchEvent = {
@@ -236,7 +230,6 @@ export const QRCodePage: React.FC<QRCodePageProps> = ({
       if (onUpdateEvent) onUpdateEvent(updatedEvent);
 
       // ALSO SAVE TO ALL PHOTOS
-      // Get current month/year from the event date
       const now = new Date();
       const currentMonth = now.getMonth();
       const currentYear = now.getFullYear();
@@ -245,7 +238,6 @@ export const QRCodePage: React.FC<QRCodePageProps> = ({
       // Save each new photo to All Photos
       for (const photoData of newPhotos) {
         try {
-          // Use the existing /api/uploads/all endpoint
           const response = await fetch(`${GFC_BASE}/api/uploads/all`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -272,9 +264,6 @@ export const QRCodePage: React.FC<QRCodePageProps> = ({
       setUploadStatus('success');
       setUploadedPhotos([]);
       setUploadedPhotoPreviews([]);
-      setPhotoDateTitle('');
-      setPhotoVerse('');
-      setPhotoVerseRef('');
     } catch (error) {
       setUploadStatus('error');
       setErrorMessage('Error uploading photos. Please try again.');
@@ -323,9 +312,6 @@ export const QRCodePage: React.FC<QRCodePageProps> = ({
     setUploadedPhotoPreviews([]);
     setUploadStatus('idle');
     setErrorMessage('');
-    setPhotoDateTitle('');
-    setPhotoVerse('');
-    setPhotoVerseRef('');
     if (photoFileInputRef.current) {
       photoFileInputRef.current.value = '';
     }
@@ -496,7 +482,7 @@ export const QRCodePage: React.FC<QRCodePageProps> = ({
                 <a
                   href={getUploadUrl(selectedEventId, selectedDateIndex)}
                   target="_blank"
-                  rel=""
+                  rel="noopener noreferrer"
                   className="mt-2 text-[11px] font-mono text-indigo-500 dark:text-indigo-400 underline break-all text-center block hover:text-indigo-600 dark:hover:text-indigo-300"
                 >
                   {getUploadUrl(selectedEventId, selectedDateIndex)}
@@ -598,34 +584,6 @@ export const QRCodePage: React.FC<QRCodePageProps> = ({
               </p>
             </div>
           )}
-
-          {/* Verse Inputs */}
-          <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <div>
-              <label className="block text-xs font-bold text-gray-700 dark:text-[#A1A1A1] uppercase tracking-wider mb-1">
-                Verse (optional)
-              </label>
-              <input
-                type="text"
-                value={photoVerse}
-                onChange={(e) => setPhotoVerse(e.target.value)}
-                placeholder="e.g. Pray without ceasing"
-                className="w-full px-4 py-2 rounded-xl border border-gray-200 dark:border-white/10 bg-gray-50 dark:bg-black/30 text-black dark:text-white text-sm focus:border-indigo-400 dark:focus:border-indigo-400/50 focus:outline-hidden focus:ring-2 focus:ring-indigo-400/20 transition-all"
-              />
-            </div>
-            <div>
-              <label className="block text-xs font-bold text-gray-700 dark:text-[#A1A1A1] uppercase tracking-wider mb-1">
-                Verse Reference (optional)
-              </label>
-              <input
-                type="text"
-                value={photoVerseRef}
-                onChange={(e) => setPhotoVerseRef(e.target.value)}
-                placeholder="e.g. 1 Thessalonians 5:17"
-                className="w-full px-4 py-2 rounded-xl border border-gray-200 dark:border-white/10 bg-gray-50 dark:bg-black/30 text-black dark:text-white text-sm focus:border-indigo-400 dark:focus:border-indigo-400/50 focus:outline-hidden focus:ring-2 focus:ring-indigo-400/20 transition-all"
-              />
-            </div>
-          </div>
 
           {/* Upload Button */}
           <div className="mt-4 flex flex-wrap gap-3">
