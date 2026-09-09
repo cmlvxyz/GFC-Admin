@@ -504,29 +504,6 @@ export const QRCodePage: React.FC<QRCodePageProps> = ({
             <Upload className="w-4 h-4 text-indigo-500" />
             Upload Photos to Event
           </h4>
-
-          {/* Photo Upload Input */}
-          <div className="flex flex-wrap items-center gap-3">
-            <label className="cursor-pointer inline-flex items-center gap-2 px-4 py-2.5 bg-indigo-500 hover:bg-indigo-600 text-white rounded-xl text-xs font-bold transition-all shadow-md">
-              <Image className="w-4 h-4" />
-              Select Photos
-              <input
-                ref={photoFileInputRef}
-                type="file"
-                accept="image/*"
-                multiple
-                onChange={handlePhotoUpload}
-                className="hidden"
-              />
-            </label>
-            <button
-              onClick={handleResetUpload}
-              className="px-4 py-2.5 bg-gray-100 dark:bg-white/5 hover:bg-gray-200 dark:hover:bg-white/10 text-gray-700 dark:text-[#A1A1A1] rounded-xl text-xs font-bold transition-all border border-gray-200 dark:border-white/10"
-            >
-              Clear All
-            </button>
-          </div>
-
           {/* Photo Preview Grid with Duplicate Detection */}
           {uploadedPhotoPreviews.length > 0 && (
             <div className="mt-4">
