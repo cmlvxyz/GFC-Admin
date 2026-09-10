@@ -58,13 +58,12 @@
   }
 
   function show(view) {
-    viewLoading.classList.add('hidden');
-    viewError.classList.add('hidden');
-    viewUpload.classList.add('hidden');
-    viewSuccess.classList.add('hidden');
-    viewPicker.classList.add('hidden');
-    viewBye.classList.add('hidden');
-    view.classList.remove('hidden');
+    // viewBye/successText are intentionally absent from the HTML in some
+    // builds, so every view is guarded against being null.
+    [viewLoading, viewError, viewUpload, viewSuccess, viewPicker, viewBye].forEach(function (v) {
+      if (v) v.classList.add('hidden');
+    });
+    if (view) view.classList.remove('hidden');
   }
 
   function setStatus(text, type) {
@@ -187,10 +186,10 @@
     uploadBtn.disabled = false;
 
     if (ok === total) {
-      successText.textContent = '✅ ' + (total === 1 ? 'Na-upload na ang iyong photo.' : total + ' photos ang na-upload. Salamat po!');
+      if (successText) successText.textContent = '✅ ' + (total === 1 ? 'Na-upload na ang iyong photo.' : total + ' photos ang na-upload. Salamat po!');
       showSuccessWithGallery();
     } else if (ok > 0) {
-      successText.textContent = '⚠️ ' + ok + ' of ' + total + ' photos ang na-upload. ' + failed.length + ' ang hindi na-upload.';
+      if (successText) successText.textContent = '⚠️ ' + ok + ' of ' + total + ' photos ang na-upload. ' + failed.length + ' ang hindi na-upload.';
       showSuccessWithGallery();
     } else {
       uploadBtnLabel.textContent = 'Upload Photos';
@@ -458,7 +457,7 @@
       history.back();
       return;
     }
-    show(viewBye);
+    if (viewBye) show(viewBye);
   }
 
   exitBtn.addEventListener('click', exitToPreviousPage);
