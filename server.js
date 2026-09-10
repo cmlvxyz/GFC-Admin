@@ -763,6 +763,293 @@ app.delete('/api/allPhotos/delete', async (req, res, next) => {
 });
 
 // ============================================
+// FACEBOOK IMPORT
+// ============================================
+// Detects which configured Facebook Page a URL belongs to and
+// imports the post/photo/album into All Photos.
+//
+// Required env vars (NEVER expose these to the frontend):
+//   FACEBOOK_GFC_PAGE_ID
+//   FACEBOOK_GFC_PAGE_ACCESS_TOKEN
+//   FACEBOOK_NEXTGEN_PAGE_ID
+//   FACEBOOK_NEXTGEN_PAGE_ACCESS_TOKEN
+//
+// Optional:
+//   FACEBOOK_GRAPH_VERSION (default: v21.0)
+
+const GRAPH_VERSION = (process.env.FACEBOOK_GRAPH_VERSION || 'v21.0').trim();
+
+function getFacebookPages() {
+  const pages = [];
+  if (process.env.FACEBOOK_GFC_PAGE_ID && process.env.FACEBOOK_GFC_PAGE_ACCESS_TOKEN) {
+    pages.push({
+      key: 'gfc',
+      label: 'GFC',
+      id: String(process.env.FACEBOOK_GFC_PAGE_ID).trim(),
+      token: String(process.env.FACEBOOK_GFC_PAGE_ACCESS_TOKEN).trim()
+    });
+  }
+  if (process.env.FACEBOOK_NEXTGEN_PAGE_ID && process.env.FACEBOOK_NEXTGEN_PAGE_ACCESS_TOKEN) {
+    pages.push({
+      key: 'nextgen',
+      label: 'NextGen',
+      id: String(process.env.FACEBOOK_NEXTGEN_PAGE_ID).trim(),
+      token: String(process.env.FACEBOOK_NEXTGEN_PAGE_ACCESS_TOKEN).trim()
+    });
+  }
+  return pages;
+}
+
+// Extracts the "identifier" from a Facebook URL so we can decide
+// which configured Page it belongs to.
+//   https://www.facebook.com/1234567890/posts/abc  -> id "1234567890"
+//   https://www.facebook.com/GFCpage/photos/...    -> slug "GFCpage"
+//   https://fb.watch/xxxx                          -> null (unknown)
+function extractFacebookOwner(rawUrl) {
+  try {
+    const u = new URL(rawUrl);
+    if (!/(^|\.)facebook\.com$/i.test(u.hostname)) return null;
+    const segments = u.pathname.split('/').filter(Boolean);
+    if (segments.length === 0) return null;
+    const first = segments[0].toLowerCase();
+    // Skip Facebook's own reserved paths
+    if (['photo', 'photo.php', 'media', 'watch', 'reel', 'story.php', 'permalink.php', 'share', 'groups'].includes(first)) {
+      return null;
+    }
+    return segments[0];
+  } catch {
+    return null;
+  }
+}
+
+async function graphGet(pathname, params) {
+  const url = new URL(`https://graph.facebook.com/${GRAPH_VERSION}/${pathname}`);
+  for (const [k, v] of Object.entries(params || {})) {
+    if (v !== undefined && v !== null) url.searchParams.set(k, String(v));
+  }
+  const resp = await fetch(url.toString(), { method: 'GET' });
+  const data = await resp.json().catch(() => ({}));
+  if (!resp.ok) {
+    const msg = data?.error?.message || `Facebook API error (${resp.status})`;
+    const err = new Error(msg);
+    err.status = resp.status;
+    err.fb = data?.error;
+    throw err;
+  }
+  return data;
+}
+
+// Given a Facebook URL, resolve it down to a set of image URLs we
+// can store inside the All Photos bucket.
+async function resolveFacebookImages(rawUrl, page) {
+  const owner = extractFacebookOwner(rawUrl);
+  const token = page.token;
+
+  // ---- 1) If the URL contains a numeric post/photo id, ask the Graph
+  //         API for it directly (works for posts and single photos).
+  //         We try the common id-bearing URL patterns first.
+  const idCandidates = [];
+  try {
+    const u = new URL(rawUrl);
+    // /{pageId}/posts/{postId}
+    const m1 = u.pathname.match(/\/(?:posts|photos|videos)\/(\d+)/i);
+    if (m1) idCandidates.push(m1[1]);
+    // ?fbid=12345
+    const fbid = u.searchParams.get('fbid');
+    if (fbid) idCandidates.push(fbid);
+    // /photo.php?fbid=12345 already covered above
+  } catch { /* ignore */ }
+
+  for (const id of idCandidates) {
+    try {
+      const data = await graphGet(id, {
+        fields: 'id,images,source,created_time,message,permalink_url',
+        access_token: token
+      });
+      const urls = [];
+      if (Array.isArray(data.images)) {
+        // Pick the largest image
+        const best = data.images.reduce((a, b) => (Number(a?.width || 0) >= Number(b?.width || 0) ? a : b), data.images[0]);
+        if (best?.source) urls.push(best.source);
+      }
+      if (data.source) urls.push(data.source);
+      if (urls.length > 0) {
+        return {
+          images: Array.from(new Set(urls)),
+          caption: data.message || '',
+          permalink: data.permalink_url || rawUrl
+        };
+      }
+    } catch (err) {
+      // try next candidate
+    }
+  }
+
+  // ---- 2) Album URL: /media/set/?set=a.{albumId}... or /{page}/albums/{albumId}
+  try {
+    const u = new URL(rawUrl);
+    const set = u.searchParams.get('set') || '';
+    const albumIdMatch = set.match(/a\.(\d+)/);
+    const albumPathMatch = u.pathname.match(/\/albums\/(\d+)/);
+    const albumId = albumIdMatch?.[1] || albumPathMatch?.[1];
+    if (albumId) {
+      const data = await graphGet(`${albumId}/photos`, {
+        fields: 'images,source,name',
+        limit: 100,
+        access_token: token
+      });
+      const images = (data.data || []).map(p => {
+        const best = Array.isArray(p.images)
+          ? p.images.reduce((a, b) => (Number(a?.width || 0) >= Number(b?.width || 0) ? a : b), p.images[0])
+          : null;
+        return best?.source || p.source;
+      }).filter(Boolean);
+      if (images.length > 0) {
+        return { images: Array.from(new Set(images)), caption: '', permalink: rawUrl };
+      }
+    }
+  } catch (err) {
+    // fall through
+  }
+
+  // ---- 3) Fallback: if the owner in the URL matches the configured Page,
+  //         pull the Page's recent posts and match by permalink / id.
+  if (owner && (owner === page.id || owner.toLowerCase() === page.id.toLowerCase())) {
+    const data = await graphGet(`${page.id}/posts`, {
+      fields: 'id,message,permalink_url,full_picture,attachments{media,subattachments}',
+      limit: 50,
+      access_token: token
+    });
+    const posts = data.data || [];
+    const match = posts.find(p =>
+      rawUrl.includes(p.id) ||
+      (p.permalink_url && rawUrl.split('?')[0] === p.permalink_url.split('?')[0])
+    );
+    if (match) {
+      const images = [];
+      if (match.full_picture) images.push(match.full_picture);
+      const subs = match.attachments?.data?.[0]?.subattachments?.data || [];
+      subs.forEach(s => { if (s?.media?.image?.src) images.push(s.media.image.src); });
+      if (images.length > 0) {
+        return { images: Array.from(new Set(images)), caption: match.message || '', permalink: match.permalink_url || rawUrl };
+      }
+    }
+  }
+
+  throw new Error(
+    'Could not resolve images from that Facebook link. Make sure the post/photo/album belongs to one of the configured Pages and is public.'
+  );
+}
+
+// POST /api/facebook/import
+// Body: { url: "FACEBOOK_URL" }
+app.post('/api/facebook/import', async (req, res, next) => {
+  try {
+    const { url } = req.body || {};
+    if (!url || typeof url !== 'string') {
+      return res.status(400).json({ message: 'Facebook URL is required.' });
+    }
+
+    let parsed;
+    try {
+      parsed = new URL(url.trim());
+    } catch {
+      return res.status(400).json({ message: 'Please enter a valid Facebook URL.' });
+    }
+    if (!/(^|\.)facebook\.com$/i.test(parsed.hostname)) {
+      return res.status(400).json({ message: 'Only facebook.com URLs are supported.' });
+    }
+
+    const pages = getFacebookPages();
+    if (pages.length === 0) {
+      return res.status(500).json({
+        message: 'No Facebook Pages are configured on the server. Please set FACEBOOK_GFC_PAGE_ID/FACEBOOK_GFC_PAGE_ACCESS_TOKEN (and/or NEXTGEN equivalents).'
+      });
+    }
+
+    // Pick the matching Page. If only one Page is configured, use it.
+    const owner = extractFacebookOwner(url);
+    let page = null;
+    if (owner) {
+      page = pages.find(p => p.id === owner) || pages.find(p => p.id.toLowerCase() === owner.toLowerCase());
+    }
+    if (!page && pages.length === 1) page = pages[0];
+
+    if (!page) {
+      // Try each configured Page until one resolves the URL.
+      let lastErr = null;
+      for (const p of pages) {
+        try {
+          const result = await resolveFacebookImages(url, p);
+          page = p;
+          req._fbResolved = result;
+          break;
+        } catch (e) { lastErr = e; }
+      }
+      if (!page) {
+        return res.status(400).json({
+          message: lastErr?.message || 'Could not resolve that Facebook link against any configured Page.'
+        });
+      }
+    }
+
+    const resolved = req._fbResolved || await resolveFacebookImages(url, page);
+    const images = resolved.images || [];
+    if (images.length === 0) {
+      return res.status(400).json({ message: 'No photos were found at that Facebook URL.' });
+    }
+
+    // Bucket into the current month/year (same convention as /api/uploads/all)
+    const now = new Date();
+    const m = now.getMonth();
+    const y = now.getFullYear();
+    const label = `${m + 1}/${y}`;
+
+    const list = await dbGetCollection('allPhotos');
+    let bucket = list.find(a => String(a.month) === String(m) && String(a.year) === String(y));
+    if (!bucket) {
+      bucket = { month: m, year: y, date: label, photos: [] };
+      list.push(bucket);
+    }
+    bucket.photos = Array.isArray(bucket.photos) ? bucket.photos : [];
+
+    // De-dup: don't insert a URL that already exists in this bucket.
+    const existing = new Set(bucket.photos);
+    const added = [];
+    for (const img of images) {
+      if (!existing.has(img)) {
+        bucket.photos.push(img);
+        existing.add(img);
+        added.push(img);
+      }
+    }
+
+    await dbSetCollection('allPhotos', list);
+    await logActivity({
+      collection: 'allPhotos',
+      action: 'photo',
+      record: bucket,
+      actor: 'admin',
+      message: `Imported ${added.length} photo(s) from Facebook (${page.label})`
+    });
+
+    res.status(201).json({
+      success: true,
+      message: `Imported ${added.length} photo(s) from ${page.label} Facebook page.`,
+      imported: added.length,
+      skipped: images.length - added.length,
+      bucket: { month: m, year: y, date: label }
+    });
+  } catch (error) {
+    console.error('Facebook import error:', error);
+    if (error.fb?.message) {
+      return res.status(error.status || 400).json({ message: error.fb.message });
+    }
+    next(error);
+  }
+});
+
+// ============================================
 // PHOTO UPLOADS (public - for QR upload page)
 // ============================================
 app.post('/api/photos/delete', async (req, res, next) => {

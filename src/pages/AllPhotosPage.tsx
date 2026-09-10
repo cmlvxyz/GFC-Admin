@@ -9,7 +9,11 @@ import {
   Images,
   Trash2,
   ChevronDown,
-  ChevronUp
+  ChevronUp,
+  Facebook,
+  Loader2,
+  CheckCircle,
+  AlertCircle
 } from 'lucide-react';
 import QRCodeStyling from 'qr-code-styling';
 import { API_URL } from '../api';
@@ -105,6 +109,10 @@ export const AllPhotosPage: React.FC<AllPhotosPageProps> = ({
   const [qrContainerEl, setQrContainerEl] = useState<HTMLDivElement | null>(null);
   const [expandedMonth, setExpandedMonth] = useState<string | null>(null);
   const [deletedPhotoKeys, setDeletedPhotoKeys] = useState<Set<string>>(new Set());
+  const [facebookUrl, setFacebookUrl] = useState('');
+  const [facebookImporting, setFacebookImporting] = useState(false);
+  const [facebookStatus, setFacebookStatus] = useState<'idle' | 'success' | 'error'>('idle');
+  const [facebookMessage, setFacebookMessage] = useState('');
 
   const getPhotoKey = (photo: PhotoItem): string => {
     return [
@@ -189,6 +197,64 @@ export const AllPhotosPage: React.FC<AllPhotosPageProps> = ({
   }, [allPhotosList, selectedMonth, selectedYear, deletedPhotoKeys]);
 
   const toggleExpand = (key: string) => setExpandedMonth(expandedMonth === key ? null : key);
+
+    // ============================================
+  // Facebook import handler
+  // ============================================
+  const handleFacebookImport = async () => {
+    const url = facebookUrl.trim();
+
+    if (!url) {
+      setFacebookStatus('error');
+      setFacebookMessage('Please paste a Facebook URL first.');
+      return;
+    }
+
+    if (!/^https?:\/\/(www\.|m\.|web\.)?facebook\.com\//i.test(url) &&
+        !/^https?:\/\/fb\.watch\//i.test(url)) {
+      setFacebookStatus('error');
+      setFacebookMessage('Please enter a valid Facebook post, photo, or album URL.');
+      return;
+    }
+
+    setFacebookImporting(true);
+    setFacebookStatus('idle');
+    setFacebookMessage('');
+
+    try {
+      const response = await fetch(`${API_URL}/api/facebook/import`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url })
+      });
+
+      const data = await response.json().catch(() => ({}));
+
+      if (!response.ok) {
+        throw new Error(data?.message || 'Failed to import from Facebook.');
+      }
+
+      setFacebookStatus('success');
+      setFacebookMessage(data?.message || 'Imported successfully!');
+      setFacebookUrl('');
+
+      // Refresh All Photos so the imported images appear immediately.
+      onAllPhotosUpdated?.();
+
+      setTimeout(() => {
+        setFacebookStatus('idle');
+        setFacebookMessage('');
+      }, 4000);
+    } catch (error) {
+      console.error('Facebook import error:', error);
+      setFacebookStatus('error');
+      setFacebookMessage(
+        error instanceof Error ? error.message : 'Failed to import from Facebook.'
+      );
+    } finally {
+      setFacebookImporting(false);
+    }
+  };
 
   /* Instant optimistic delete: the clicked photo disappears immediately. */
   const deletePhoto = async (photo: PhotoItem, e: React.MouseEvent) => {
@@ -289,6 +355,140 @@ export const AllPhotosPage: React.FC<AllPhotosPageProps> = ({
       <div className="bg-white dark:bg-[#14141f]/80 backdrop-blur-sm p-6 rounded-2xl border border-gray-200 dark:border-white/5 shadow-sm">
         <h3 className="text-sm font-bold text-black dark:text-white mb-2 flex items-center gap-2"><Images className="w-5 h-5 text-indigo-500" /><span>All Photos</span></h3>
         <div className="mt-3 inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-indigo-50 dark:bg-indigo-950/40 border border-indigo-200 dark:border-indigo-800/40 text-xs font-mono font-bold text-indigo-600 dark:text-indigo-400">Upload page: {getUploadUrl()}</div>
+      </div>
+
+      <div className="bg-white dark:bg-[#14141f]/80 backdrop-blur-sm p-6 rounded-2xl border border-gray-200 dark:border-white/5 shadow-sm">
+        <h3 className="text-sm font-bold text-black dark:text-white mb-2 flex items-center gap-2"><Images className="w-5 h-5 text-indigo-500" /><span>All Photos</span></h3>
+        <div className="mt-3 inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-indigo-50 dark:bg-indigo-950/40 border border-indigo-200 dark:border-indigo-800/40 text-xs font-mono font-bold text-indigo-600 dark:text-indigo-400">Upload page: {getUploadUrl()}</div>
+      </div>
+
+      {/* ============================================ */}
+      {/* Import Facebook Link                         */}
+      {/* ============================================ */}
+      <div className="bg-white dark:bg-[#14141f]/80 backdrop-blur-sm p-6 rounded-2xl border border-gray-200 dark:border-white/5 shadow-sm">
+        <h3 className="text-sm font-bold text-black dark:text-white mb-2 flex items-center gap-2">
+          <Facebook className="w-5 h-5 text-indigo-500" />
+          <span>Import Facebook Link</span>
+        </h3>
+        <p className="text-xs text-gray-500 dark:text-gray-400 mb-3">
+          Paste a public Facebook post, photo, or album URL from a configured Page.
+        </p>
+
+        <div className="flex flex-col sm:flex-row gap-2">
+          <input
+            type="url"
+            value={facebookUrl}
+            onChange={e => {
+              setFacebookUrl(e.target.value);
+              if (facebookStatus !== 'idle') {
+                setFacebookStatus('idle');
+                setFacebookMessage('');
+              }
+            }}
+            onKeyDown={e => {
+              if (e.key === 'Enter' && !facebookImporting) {
+                void handleFacebookImport();
+              }
+            }}
+            placeholder="https://www.facebook.com/..."
+            disabled={facebookImporting}
+            className="flex-1 px-4 py-2.5 rounded-xl border border-gray-200 dark:border-white/10 bg-gray-50 dark:bg-black/30 text-black dark:text-white text-sm focus:border-indigo-400 dark:focus:border-indigo-400/50 focus:outline-hidden focus:ring-2 focus:ring-indigo-400/20 transition-all disabled:opacity-50"
+          />
+          <button
+            onClick={() => void handleFacebookImport()}
+            disabled={facebookImporting || !facebookUrl.trim()}
+            className="inline-flex items-center justify-center gap-2 px-5 py-2.5 bg-indigo-500 hover:bg-indigo-600 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-xl text-xs font-bold transition-all shadow-md whitespace-nowrap"
+          >
+            {facebookImporting ? (
+              <>
+                <Loader2 className="w-4 h-4 animate-spin" />
+                Importing...
+              </>
+            ) : (
+              <>
+                <Facebook className="w-4 h-4" />
+                Import
+              </>
+            )}
+          </button>
+        </div>
+
+        {facebookStatus === 'success' && facebookMessage && (
+          <p className="mt-2 text-xs text-emerald-500 dark:text-emerald-400 flex items-center gap-1 font-semibold">
+            <CheckCircle className="w-3.5 h-3.5" />
+            {facebookMessage}
+          </p>
+        )}
+
+        {facebookStatus === 'error' && facebookMessage && (
+          <p className="mt-2 text-xs text-red-500 dark:text-red-400 flex items-center gap-1 font-semibold">
+            <AlertCircle className="w-3.5 h-3.5" />
+            {facebookMessage}
+          </p>
+        )}
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-[1fr_320px] gap-6 items-start">
+        <div className="space-y-6">
+          <div className="bg-white dark:bg-[#14141f]/80 backdrop-blur-sm p-6 rounded-2xl border border-gray-200 dark:border-white/5 shadow-sm">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-xs font-bold text-gray-700 dark:text-[#A1A1A1] uppercase tracking-wider mb-2">Select Month</label>
+                <div className="flex items-center gap-2"><CalendarDays className="w-4 h-4 text-indigo-400 flex-shrink-0" /><select value={selectedMonth} onChange={e => { setSelectedMonth(e.target.value === '' ? '' : parseInt(e.target.value)); setExpandedMonth(null); }} className="w-full px-4 py-2.5 rounded-xl border border-gray-200 dark:border-white/10 bg-gray-50 dark:bg-black/30 text-black dark:text-white text-sm focus:border-indigo-400 dark:focus:border-indigo-400/50 focus:outline-hidden focus:ring-2 focus:ring-indigo-400/20 transition-all"><option value="">All Months</option>{MONTH_NAMES.map((name, idx) => <option key={name} value={idx}>{name}</option>)}</select></div>
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-gray-700 dark:text-[#A1A1A1] uppercase tracking-wider mb-2">Select Year</label>
+                <div className="flex items-center gap-2"><CalendarDays className="w-4 h-4 text-indigo-400 flex-shrink-0" /><select value={selectedYear} onChange={e => { const year = e.target.value === '' ? '' : parseInt(e.target.value); setSelectedYear(year); setExpandedMonth(null); }} className="w-full px-4 py-2.5 rounded-xl border border-gray-200 dark:border-white/10 bg-gray-50 dark:bg-black/30 text-black dark:text-white text-sm focus:border-indigo-400 dark:focus:border-indigo-400/50 focus:outline-hidden focus:ring-2 focus:ring-indigo-400/20 transition-all"><option value="">All Years</option>{YEAR_RANGE.map(year => <option key={year} value={year}>{year}</option>)}</select></div>
+              </div>
+            </div>
+          </div>
+
+          <div className="space-y-4">
+            {grouped.length === 0 ? (
+              <div className="bg-white dark:bg-[#14141f]/80 backdrop-blur-sm p-10 rounded-2xl border border-gray-200 dark:border-white/5 shadow-sm text-center"><Images className="w-10 h-10 text-gray-300 dark:text-gray-600 mx-auto mb-2" /><p className="text-gray-500 dark:text-gray-400">{selectedMonth === '' && selectedYear === '' ? 'No photos found. Upload some photos using the QR code.' : 'No photos found for the selected filters.'}</p></div>
+            ) : (
+              grouped.map(group => {
+                const isExpanded = expandedMonth === group.key;
+                const allPhotosInGroup = group.photos;
+                return (
+                  <div key={group.key} className="bg-white dark:bg-[#14141f]/80 backdrop-blur-sm rounded-2xl border border-gray-200 dark:border-white/5 shadow-sm overflow-hidden transition-all">
+                    <div className="flex items-center justify-between p-3 cursor-pointer hover:bg-gray-50 dark:hover:bg-white/5 transition-all" onClick={() => toggleExpand(group.key)}>
+                      <div className="flex items-center gap-3"><h4 className="text-sm font-bold text-black dark:text-white">{group.label}</h4></div>
+                      <div className="flex items-center gap-2">{isExpanded ? <ChevronUp className="w-5 h-5 text-gray-400" /> : <ChevronDown className="w-5 h-5 text-gray-400" />}</div>
+                    </div>
+                    <div className="p-3 pt-0">
+                      {isExpanded ? (
+                        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
+                          {allPhotosInGroup.map((photo, idx) => (
+                            <div key={`${getPhotoKey(photo)}-${idx}`} className="group relative rounded-lg overflow-hidden shadow-sm hover:shadow-md transition-all aspect-square cursor-pointer hover:scale-[1.02]" title={`${photo.eventTitle} — ${photo.date}`} onClick={() => setSelectedPhoto(photo)}>
+                              <img src={photo.url} alt={`${photo.eventTitle} - ${photo.date}`} loading="lazy" className="w-full h-full object-cover transition-transform hover:scale-110 duration-500" onError={e => { (e.target as HTMLImageElement).src = 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="100" height="100" viewBox="0 0 100 100"%3E%3Crect fill="%23ddd" width="100%" height="100%"/%3E%3Ctext x="50%" y="50%" text-anchor="middle" dy=".3em" font-family="sans-serif" font-size="12" fill="%23999"%3ENo image%3C/text%3E%3C/svg%3E'; }} />
+                              <div className="absolute bottom-0 left-0 right-0 px-2 py-1 bg-black/50 text-white text-[9px] font-semibold truncate opacity-0 group-hover:opacity-100 transition-opacity">{photo.eventTitle} • {photo.date}</div>
+                              <button onClick={e => deletePhoto(photo, e)} className="absolute top-1 right-1 p-1.5 bg-red-500 hover:bg-red-600 text-white rounded-full opacity-0 group-hover:opacity-100 transition-all shadow-lg" title="Delete photo permanently" aria-label="Delete photo"><Trash2 className="w-3.5 h-3.5" /></button>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
+                          {allPhotosInGroup.slice(0, 1).map((photo, idx) => (
+                            <div key={`${getPhotoKey(photo)}-${idx}`} className="relative rounded-lg overflow-hidden shadow-sm hover:shadow-md transition-all aspect-square cursor-pointer hover:scale-[1.02]" title={`${group.label} - Click to expand`} onClick={() => toggleExpand(group.key)}>
+                              <img src={photo.url} alt={`${group.label} cover`} loading="lazy" className="w-full h-full object-cover transition-transform hover:scale-110 duration-500" onError={e => { (e.target as HTMLImageElement).src = 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="100" height="100" viewBox="0 0 100 100"%3E%3Crect fill="%23ddd" width="100%" height="100%"/%3E%3Ctext x="50%" y="50%" text-anchor="middle" dy=".3em" font-family="sans-serif" font-size="12" fill="%23999"%3ENo image%3C/text%3E%3C/svg%3E'; }} /></div>
+                          ))}
+                          {allPhotosInGroup.length === 0 && <div className="aspect-square rounded-lg bg-gray-100 dark:bg-black/20 flex items-center justify-center text-gray-400 text-xs">No photos</div>}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                );
+              })
+            )}
+          </div>
+        </div>
+
+        <div className="bg-white dark:bg-[#14141f]/80 backdrop-blur-sm p-6 rounded-2xl border border-gray-200 dark:border-white/5 shadow-sm lg:sticky lg:top-4">
+          <div className="flex items-center gap-2 mb-3"><QrCode className="w-5 h-5 text-indigo-500" /><span className="text-sm font-bold text-black dark:text-white">Upload QR Code</span></div>
+          <div className="flex justify-center bg-gray-50 dark:bg-black/30 rounded-xl border border-gray-200 dark:border-white/10 p-4"><div ref={el => setQrContainerEl(el)} className="bg-white rounded-lg shadow-md" /></div>
+          <a href={getUploadUrl()} target="_blank" rel="noopener noreferrer" className="mt-2 text-[11px] font-mono text-indigo-500 dark:text-indigo-400 underline break-all text-center block hover:text-indigo-600 dark:hover:text-indigo-300">{getUploadUrl()}</a>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-[1fr_320px] gap-6 items-start">
