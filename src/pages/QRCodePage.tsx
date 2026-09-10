@@ -16,6 +16,77 @@ import {
 import QRCodeStyling from 'qr-code-styling';
 import { updateRecord as apiUpdateRecord } from '../api';
 
+interface UploadedPhoto {
+  id: string;
+  dataUrl: string;
+  hash: string | null;
+  isDuplicate: boolean;
+  duplicateLocation: string | null;
+}
+
+let photoIdSeed = 0;
+const nextPhotoId = (): string =>
+  `photo-${Date.now()}-${photoIdSeed++}`;
+
+// SHA-256 caches so repeated selections do not re-hash the same data.
+const stringHashCache = new Map<string, string | null>();
+const pathHashCache = new Map<string, string | null>();
+
+function bytesToHex(bytes: Uint8Array): string {
+  return Array.from(bytes)
+    .map(b => b.toString(16).padStart(2, '0'))
+    .join('');
+}
+
+async function sha256String(text: string): Promise<string | null> {
+  const cached = stringHashCache.get(text);
+  if (cached !== undefined) return cached;
+  try {
+    if (!globalThis.crypto?.subtle) {
+      stringHashCache.set(text, null);
+      return null;
+    }
+    const digest = await globalThis.crypto.subtle.digest(
+      'SHA-256',
+      new TextEncoder().encode(text)
+    );
+    const hash = bytesToHex(new Uint8Array(digest));
+    stringHashCache.set(text, hash);
+    return hash;
+  } catch {
+    stringHashCache.set(text, null);
+    return null;
+  }
+}
+
+async function sha256Bytes(bytes: ArrayBuffer): Promise<string | null> {
+  try {
+    if (!globalThis.crypto?.subtle) return null;
+    const digest = await globalThis.crypto.subtle.digest('SHA-256', bytes);
+    return bytesToHex(new Uint8Array(digest));
+  } catch {
+    return null;
+  }
+}
+
+async function hashRemoteResource(url: string): Promise<string | null> {
+  if (pathHashCache.has(url)) return pathHashCache.get(url) ?? null;
+  try {
+    const res = await fetch(url);
+    if (!res.ok) {
+      pathHashCache.set(url, null);
+      return null;
+    }
+    const bytes = await res.arrayBuffer();
+    const hash = await sha256Bytes(bytes);
+    pathHashCache.set(url, hash);
+    return hash;
+  } catch {
+    pathHashCache.set(url, null);
+    return null;
+  }
+}
+
 interface QRCodePageProps {
   events: ChurchEvent[];
   onUpdateEvent?: (updatedEvent: ChurchEvent) => void;
@@ -82,8 +153,7 @@ export const QRCodePage: React.FC<QRCodePageProps> = ({
     `${GFC_BASE}/upload?event=${encodeURIComponent(eventId)}&date=${encodeURIComponent(dateValue.replace(/\s+/g, ''))}`;
 
   const [selectedEventId, setSelectedEventId] = useState<string>('');
-  const [uploadedPhotos, setUploadedPhotos] = useState<string[]>([]);
-  const [uploadedPhotoPreviews, setUploadedPhotoPreviews] = useState<string[]>([]);
+  const [uploadedPhotos, setUploadedPhotos] = useState<UploadedPhoto[]>([]);
   const [isUploading, setIsUploading] = useState(false);
   const [uploadStatus, setUploadStatus] = useState<
     'idle' | 'loading' | 'success' | 'error'
@@ -141,39 +211,103 @@ export const QRCodePage: React.FC<QRCodePageProps> = ({
     );
   };
 
-  const isPhotoInAllPhotos = (photoData: string): boolean => {
-    for (const album of allPhotos) {
-      if (
-        album.photos &&
-        album.photos.some((p: string) => p === photoData)
-      ) {
-        return true;
-      }
+  /*
+   * Collect every existing photo across ALL events/date entries + All Photos.
+   * The location label always uses the real date value (entry.date), never
+   * the array index.
+   */
+  const collectExistingPhotoRefs = (): {
+    resource: string;
+    location: string;
+  }[] => {
+    const refs: { resource: string; location: string }[] = [];
+
+    for (const ev of events) {
+      if (!Array.isArray(ev.dateEntries)) continue;
+
+      ev.dateEntries.forEach(entry => {
+        (entry.photos || []).forEach((photo: string) => {
+          refs.push({
+            resource: photo,
+            location: `${ev.title} • ${entry.date}`
+          });
+        });
+      });
     }
 
-    return false;
+    for (const album of allPhotos) {
+      if (!Array.isArray(album?.photos)) continue;
+
+      const monthName = new Date(
+        0,
+        album.month
+      ).toLocaleString('default', {
+        month: 'long'
+      });
+
+      const albumLocation =
+        `All Photos • ${monthName} ${album.year}`;
+
+      album.photos.forEach((photo: string) => {
+        refs.push({
+          resource: photo,
+          location: albumLocation
+        });
+      });
+    }
+
+    return refs;
   };
 
-  const getPhotoAllPhotosLocation = (
-    photoData: string
-  ): string | null => {
-    for (const album of allPhotos) {
-      if (
-        album.photos &&
-        album.photos.some((p: string) => p === photoData)
-      ) {
-        const monthName = new Date(
-          0,
-          album.month
-        ).toLocaleString('default', {
-          month: 'long'
-        });
+  /*
+   * Content-based image identity check.
+   *
+   * 1. Exact-string match (stored string === resized data URL). Both the admin
+   *    and the public uploader re-encode with canvas.toDataURL('image/jpeg',
+   *    0.75), so the SAME source image produces the SAME stored string.
+   * 2. SHA-256 hash of the stored photo string vs the selected image hash.
+   * 3. Best-effort: path-based photos (e.g. seed images) are fetched and
+   *    hashed on the fly. Cross-origin/CORS failures are treated as
+   *    "not duplicate" and never block the upload.
+   */
+  const checkDuplicateForNewPhoto = async (
+    dataUrl: string,
+    hash: string | null
+  ): Promise<{
+    isDuplicate: boolean;
+    location: string | null;
+  }> => {
+    const refs = collectExistingPhotoRefs();
 
-        return `${monthName} ${album.year}`;
+    const exact = refs.find(r => r.resource === dataUrl);
+    if (exact) {
+      return { isDuplicate: true, location: exact.location };
+    }
+
+    if (!hash) {
+      return { isDuplicate: false, location: null };
+    }
+
+    for (const ref of refs) {
+      if (!ref.resource.startsWith('data:')) continue;
+      const refHash = await sha256String(ref.resource);
+      if (refHash && refHash === hash) {
+        return { isDuplicate: true, location: ref.location };
       }
     }
 
-    return null;
+    for (const ref of refs) {
+      if (ref.resource.startsWith('data:')) continue;
+      const resolved = ref.resource.startsWith('http')
+        ? ref.resource
+        : GFC_BASE + (ref.resource.startsWith('/') ? ref.resource : '/' + ref.resource);
+      const refHash = await hashRemoteResource(resolved);
+      if (refHash && refHash === hash) {
+        return { isDuplicate: true, location: ref.location };
+      }
+    }
+
+    return { isDuplicate: false, location: null };
   };
 
   /*
@@ -340,7 +474,7 @@ export const QRCodePage: React.FC<QRCodePageProps> = ({
     setUploadStatus('loading');
     setUploadProgress(0);
 
-    const urls: string[] = [];
+    const photos: UploadedPhoto[] = [];
     const totalFiles = files.length;
 
     let processed = 0;
@@ -355,7 +489,22 @@ export const QRCodePage: React.FC<QRCodePageProps> = ({
           const imageData =
             await resizeImage(file);
 
-          urls.push(imageData);
+          const hash =
+            await sha256String(imageData);
+
+          const duplicate =
+            await checkDuplicateForNewPhoto(
+              imageData,
+              hash
+            );
+
+          photos.push({
+            id: nextPhotoId(),
+            dataUrl: imageData,
+            hash,
+            isDuplicate: duplicate.isDuplicate,
+            duplicateLocation: duplicate.location
+          });
 
           processed++;
 
@@ -370,15 +519,10 @@ export const QRCodePage: React.FC<QRCodePageProps> = ({
       }
     }
 
-    if (urls.length > 0) {
-      setUploadedPhotoPreviews(prev => [
-        ...prev,
-        ...urls
-      ]);
-
+    if (photos.length > 0) {
       setUploadedPhotos(prev => [
         ...prev,
-        ...urls
+        ...photos
       ]);
 
       setUploadStatus('idle');
@@ -395,10 +539,6 @@ export const QRCodePage: React.FC<QRCodePageProps> = ({
   const handleRemoveUploadedPhoto = (
     index: number
   ) => {
-    setUploadedPhotoPreviews(prev =>
-      prev.filter((_, i) => i !== index)
-    );
-
     setUploadedPhotos(prev =>
       prev.filter((_, i) => i !== index)
     );
@@ -418,6 +558,21 @@ export const QRCodePage: React.FC<QRCodePageProps> = ({
     if (uploadedPhotos.length === 0) {
       setErrorMessage(
         'Please select photos to upload.'
+      );
+      return;
+    }
+
+    /*
+     * IMPORTANT: duplicates are NEVER uploaded. Only remove them from the
+     * current selection via X; the existing database photos stay untouched.
+     */
+    const uploadable = uploadedPhotos.filter(
+      p => !p.isDuplicate
+    );
+
+    if (uploadable.length === 0) {
+      setErrorMessage(
+        'All selected photos are duplicates (existing already). Click the X to remove them, then upload again.'
       );
       return;
     }
@@ -456,10 +611,12 @@ export const QRCodePage: React.FC<QRCodePageProps> = ({
         new Set(currentPhotos);
 
       const newPhotos =
-        uploadedPhotos.filter(
-          (p: string) =>
-            !existingPhotoSet.has(p)
-        );
+        uploadable
+          .map(p => p.dataUrl)
+          .filter(
+            (p: string) =>
+              !existingPhotoSet.has(p)
+          );
 
       const updatedPhotos = [
         ...currentPhotos,
@@ -568,7 +725,6 @@ export const QRCodePage: React.FC<QRCodePageProps> = ({
       setUploadProgress(100);
 
       setUploadedPhotos([]);
-      setUploadedPhotoPreviews([]);
 
       /*
        * Auto-hide success after 3 seconds.
@@ -687,7 +843,6 @@ export const QRCodePage: React.FC<QRCodePageProps> = ({
    */
   const handleResetUpload = () => {
     setUploadedPhotos([]);
-    setUploadedPhotoPreviews([]);
     setUploadStatus('idle');
     setErrorMessage('');
     setUploadProgress(0);
@@ -1024,50 +1179,35 @@ export const QRCodePage: React.FC<QRCodePageProps> = ({
                 </div>
               )}
 
-            {uploadedPhotoPreviews.length >
+            {uploadedPhotos.length >
               0 && (
               <div className="mt-4">
                 <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-3">
-                  {uploadedPhotoPreviews.map(
-                    (
-                      preview: string,
-                      index: number
-                    ) => {
+                  {uploadedPhotos.map(
+                    (photo, index) => {
                       const isDuplicate =
-                        isPhotoInAllPhotos(
-                          preview
-                        );
+                        photo.isDuplicate;
 
                       const location =
-                        getPhotoAllPhotosLocation(
-                          preview
-                        );
+                        photo.duplicateLocation;
 
                       return (
                         <div
-                          key={index}
+                          key={photo.id}
                           className="relative group"
                         >
-                          <div className="relative rounded-xl overflow-hidden aspect-square bg-gray-100 dark:bg-black/20 border border-gray-200 dark:border-white/10">
+                          <div
+                            className={`relative rounded-xl overflow-hidden aspect-square bg-gray-100 dark:bg-black/20 ${
+                              isDuplicate
+                                ? 'border-2 border-red-500'
+                                : 'border border-gray-200 dark:border-white/10'
+                            }`}
+                          >
                             <img
-                              src={preview}
+                              src={photo.dataUrl}
                               alt={`Upload ${index + 1}`}
                               className="w-full h-full object-cover"
                             />
-
-                            {isDuplicate && (
-                              <div className="absolute top-0 right-0 m-1 bg-red-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full flex items-center gap-1 shadow-lg">
-                                <span className="w-1.5 h-1.5 bg-white rounded-full animate-pulse" />
-                                In All Photos
-                              </div>
-                            )}
-
-                            {isDuplicate &&
-                              location && (
-                                <div className="absolute bottom-0 left-0 right-0 bg-black/70 text-white text-[9px] px-1.5 py-0.5 truncate">
-                                  📍 {location}
-                                </div>
-                              )}
 
                             <button
                               onClick={() =>
@@ -1075,11 +1215,34 @@ export const QRCodePage: React.FC<QRCodePageProps> = ({
                                   index
                                 )
                               }
-                              className="absolute top-1 right-1 p-1 bg-black/60 hover:bg-red-500 text-white rounded-full opacity-0 group-hover:opacity-100 transition-all"
-                              title="Remove photo"
+                              className={`absolute top-1 right-1 p-1 bg-black/60 hover:bg-red-500 text-white rounded-full shadow-lg transition-all ${
+                                isDuplicate
+                                  ? 'opacity-100'
+                                  : 'opacity-0 group-hover:opacity-100'
+                              }`}
+                              title={
+                                isDuplicate
+                                  ? 'Remove duplicate from selection (existing photo is kept)'
+                                  : 'Remove photo from selection'
+                              }
                             >
                               <X className="w-3.5 h-3.5" />
                             </button>
+
+                            {isDuplicate && (
+                              <>
+                                <div className="absolute top-0 left-0 m-1 bg-red-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full flex items-center gap-1 shadow-lg">
+                                  <span className="w-1.5 h-1.5 bg-white rounded-full animate-pulse" />
+                                  Duplicate
+                                </div>
+
+                                <div className="absolute bottom-0 left-0 right-0 bg-red-500/85 text-white text-[9px] px-1.5 py-0.5 truncate">
+                                  📍{' '}
+                                  {location ||
+                                    'Already exists'}
+                                </div>
+                              </>
+                            )}
                           </div>
 
                           <div className="mt-1 text-[9px] text-gray-400 dark:text-gray-500 truncate">
@@ -1098,27 +1261,29 @@ export const QRCodePage: React.FC<QRCodePageProps> = ({
                 </div>
 
                 <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">
-                  {uploadedPhotoPreviews.length}{' '}
+                  {uploadedPhotos.length}{' '}
                   photo
-                  {uploadedPhotoPreviews.length >
-                  1
+                  {uploadedPhotos.length > 1
                     ? 's'
                     : ''}{' '}
                   selected
-
-                  {uploadedPhotoPreviews.some(
-                    (
-                      preview: string
-                    ) =>
-                      isPhotoInAllPhotos(
-                        preview
-                      )
-                  ) && (
-                    <span className="text-red-400 ml-2">
-                      ⚠️ Some photos already
-                      exist in All Photos
-                    </span>
-                  )}
+                  {(() => {
+                    const dupCount =
+                      uploadedPhotos.filter(
+                        p => p.isDuplicate
+                      ).length;
+                    return dupCount > 0 ? (
+                      <span className="text-red-400 ml-2">
+                        ⚠️ {dupCount}{' '}
+                        photo
+                        {dupCount > 1 ? 's are' : ' is'}{' '}
+                        duplicate
+                        {dupCount > 1 ? 's' : ''}{' '}
+                        (click X to remove; they will
+                        NOT be uploaded)
+                      </span>
+                    ) : null;
+                  })()}
                 </p>
               </div>
             )}

@@ -31,6 +31,11 @@
   var status = document.getElementById('status');
   var successText = document.getElementById('successText');
   var uploadMoreBtn = document.getElementById('uploadMoreBtn');
+  var exitBtn = document.getElementById('exitBtn');
+  var successGallery = document.getElementById('successGallery');
+  var lightbox = document.getElementById('lightbox');
+  var lightboxImg = document.getElementById('lightboxImg');
+  var lightboxClose = document.getElementById('lightboxClose');
 
   var viewPicker = document.getElementById('viewPicker');
   var pickerMonth = document.getElementById('pickerMonth');
@@ -44,7 +49,7 @@
   var allMonth = '';
   var allYear = '';
   var allDate = '';
-  var autoHideTimer = null; // Timer for auto-hide
+  var sessionUploads = []; // Successfully uploaded photos this session (for the gallery)
 
   function show(view) {
     viewLoading.classList.add('hidden');
@@ -176,6 +181,7 @@
             if (!res.ok) throw new Error(data.message || 'Upload failed');
             p.done = true;
             ok++;
+            sessionUploads.push(p.url);
             renderPreviews();
             setStatus('📤 Uploaded ' + ok + ' of ' + total);
           } catch (err) {
@@ -193,13 +199,13 @@
     uploadBtn.disabled = false;
     
     if (ok === total) {
-      // 🔥 ALL SUCCESS - Show success with auto-hide
-      successText.textContent = '✅ ' + (total === 1 ? 'Your photo has' : total + ' photos have') + ' been uploaded successfully. Salamat po!';
-      showSuccessWithAutoHide();
+      // 🔥 ALL SUCCESS - Show the gallery with the uploaded photos
+      successText.textContent = '✅ ' + (total === 1 ? 'Na-upload na ang iyong photo.' : total + ' photos ang na-upload. Salamat po!');
+      showSuccessWithGallery();
     } else if (ok > 0) {
-      // PARTIAL SUCCESS
-      successText.textContent = '⚠️ ' + ok + ' of ' + total + ' photos uploaded. ' + failed.length + ' failed.';
-      showSuccessWithAutoHide();
+      // PARTIAL SUCCESS - still show the successfully uploaded ones
+      successText.textContent = '⚠️ ' + ok + ' of ' + total + ' photos ang na-upload. ' + failed.length + ' ang hindi na-upload.';
+      showSuccessWithGallery();
     } else {
       // ALL FAILED
       uploadBtnLabel.textContent = 'Upload Photos';
@@ -208,22 +214,68 @@
     }
   }
 
-  // 🔥 NEW: Show success with auto-hide after 3 seconds
-  function showSuccessWithAutoHide() {
-    // Clear any existing timer
-    if (autoHideTimer) {
-      clearTimeout(autoHideTimer);
-      autoHideTimer = null;
-    }
-    
+  // 🔥 NEW: Show success WITH a gallery of the uploaded photos (no auto-hide —
+  // the screen stays until the user clicks "Upload More Photos" or "Exit").
+  function showSuccessWithGallery() {
+    renderSuccessGallery();
     show(viewSuccess);
-    
-    // Auto-hide after 3 seconds and reset
-    autoHideTimer = setTimeout(function() {
-      autoHideTimer = null;
-      resetAndGoBack();
-    }, 1000);
   }
+
+  function renderSuccessGallery() {
+    successGallery.innerHTML = '';
+    if (sessionUploads.length === 0) return;
+
+    sessionUploads.forEach(function (url) {
+      var wrap = document.createElement('div');
+      wrap.className = 'thumb';
+
+      var img = document.createElement('img');
+      img.src = url;
+      img.loading = 'lazy';
+      img.onclick = function () { openLightbox(url); };
+
+      var zoom = document.createElement('div');
+      zoom.className = 'zoom';
+      zoom.textContent = '🔍';
+
+      wrap.appendChild(img);
+      wrap.appendChild(zoom);
+      successGallery.appendChild(wrap);
+    });
+  }
+
+  function openLightbox(url) {
+    lightboxImg.src = url;
+    lightbox.classList.remove('hidden');
+  }
+
+  function closeLightbox() {
+    lightbox.classList.add('hidden');
+    lightboxImg.src = '';
+  }
+
+  lightboxClose.addEventListener('click', closeLightbox);
+  lightbox.addEventListener('click', function (e) {
+    if (e.target === lightbox) closeLightbox();
+  });
+
+  // 🔥 NEW: Exit - go back to the page the user was on before scanning the QR
+  // or opening the link (no navigation to a hardcoded domain).
+  function exitToPreviousPage() {
+    var ref = document.referrer;
+    if (ref && /^https?:/i.test(ref)) {
+      location.href = ref;
+      return;
+    }
+    if (window.history.length > 1) {
+      history.back();
+      return;
+    }
+    // No referrer and no history - just return to a fresh upload screen.
+    location.reload();
+  }
+
+  exitBtn.addEventListener('click', exitToPreviousPage);
 
   // 🔥 NEW: Reset and go back to upload form
   function resetAndGoBack() {
@@ -265,12 +317,8 @@
   dropzone.addEventListener('drop', function (e) { addFiles(e.dataTransfer.files); });
   uploadBtn.addEventListener('click', uploadAll);
   
-  // 🔥 FIXED: Upload More button - reset and go back
+  // 🔥 FIXED: Upload More button - reset and go back (gallery stays for the session)
   uploadMoreBtn.addEventListener('click', function () {
-    if (autoHideTimer) {
-      clearTimeout(autoHideTimer);
-      autoHideTimer = null;
-    }
     resetAndGoBack();
   });
 
