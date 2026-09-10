@@ -460,116 +460,128 @@ export const AllPhotosPage: React.FC<AllPhotosPageProps> = ({
   ) => {
     e.stopPropagation();
 
-    // Store the photo key for per-photo loading
     const photoKey = getPhotoKey(photo);
 
-    // Guard: this exact photo is already being deleted
     if (deletingKeys.has(photoKey)) {
       return;
     }
 
-    // Mark THIS photo as in-flight (spinner on its button)
-    setDeletingKeys(prev => new Set(prev).add(photoKey));
+    setDeletingKeys(prev => {
+      const next = new Set(prev);
+      next.add(photoKey);
+      return next;
+    });
 
     try {
-      const occurrences =
-        photo.occurrences && photo.occurrences.length > 0
-          ? photo.occurrences
-          : [];
+      /*
+      * IMPORTANT:
+      * Delete ONLY the exact occurrence represented by this
+      * displayed photo.
+      *
+      * Do NOT loop through photo.occurrences.
+      * That was causing multiple stored copies to be deleted.
+      */
 
-      if (occurrences.length === 0) {
-        throw new Error(
-          'Photo location is missing. Please refresh and try again.'
+      if (photo.source === 'allPhotos') {
+        if (
+          photo.albumIndex === undefined ||
+          photo.photoIndex === undefined
+        ) {
+          throw new Error(
+            'Photo location is missing. Please refresh and try again.'
+          );
+        }
+
+        const response = await fetch(
+          `${API_URL}/api/allPhotos/delete`,
+          {
+            method: 'DELETE',
+            headers: {
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+              albumIndex: photo.albumIndex,
+              photoIndex: photo.photoIndex
+            })
+          }
         );
-      }
 
-      // Delete EVERY stored copy with its correct per-source endpoint.
-      // Indices come from the CURRENT parent data, so they are exact.
-      for (const occ of occurrences) {
-        if (occ.source === 'allPhotos') {
-          const response = await fetch(
-            `${API_URL}/api/allPhotos/delete`,
-            {
-              method: 'DELETE',
-              headers: {
-                'Content-Type': 'application/json'
-              },
-              body: JSON.stringify({
-                albumIndex: occ.albumIndex,
-                photoIndex: occ.photoIndex
-              })
-            }
+        if (!response.ok) {
+          const errorData = await response
+            .json()
+            .catch(() => null);
+
+          throw new Error(
+            errorData?.message ||
+              'Failed to delete photo.'
           );
-
-          if (!response.ok) {
-            const errorData = await response
-              .json()
-              .catch(() => null);
-
-            throw new Error(
-              errorData?.message ||
-                'Failed to delete photo.'
-            );
-          }
-        } else {
-          const response = await fetch(
-            `${API_URL}/api/events/photo/delete`,
-            {
-              method: 'DELETE',
-              headers: {
-                'Content-Type': 'application/json'
-              },
-              body: JSON.stringify({
-                eventId: occ.eventId,
-                dateEntryIndex:
-                  occ.dateEntryIndex,
-                photoUrl:
-                  occ.rawUrl || photo.rawUrl
-              })
-            }
+        }
+      } else {
+        if (
+          photo.eventId === undefined ||
+          photo.dateEntryIndex === undefined ||
+          !photo.rawUrl
+        ) {
+          throw new Error(
+            'Photo location is missing. Please refresh and try again.'
           );
+        }
 
-          if (!response.ok) {
-            const errorData = await response
-              .json()
-              .catch(() => null);
-
-            throw new Error(
-              errorData?.message ||
-                'Failed to delete photo.'
-            );
+        const response = await fetch(
+          `${API_URL}/api/events/photo/delete`,
+          {
+            method: 'DELETE',
+            headers: {
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+              eventId: photo.eventId,
+              dateEntryIndex: photo.dateEntryIndex,
+              photoUrl: photo.rawUrl
+            })
           }
+        );
+
+        if (!response.ok) {
+          const errorData = await response
+            .json()
+            .catch(() => null);
+
+          throw new Error(
+            errorData?.message ||
+              'Failed to delete photo.'
+          );
         }
       }
 
-      // ==========================================
-      // SUCCESS - CONFIRMED BY THE SERVER
-      // ==========================================
+      /*
+      * SERVER CONFIRMED
+      */
 
-      // Remove from lightbox immediately
       setSelectedPhoto(null);
 
-      // Temporary UI guard so the photo cannot flicker back while
-      // the parent data is being refreshed. Server data is the
-      // source of truth; this only bridges the gap until the
-      // refetch lands. The photo stays gone on refresh because the
-      // backend delete already persisted.
-      setDeletedPhotoKeys(prev =>
-        new Set(prev).add(photoKey)
-      );
+      /*
+      * Temporary UI guard.
+      * This prevents the deleted image from flashing back
+      * while the parent refreshes.
+      */
+      setDeletedPhotoKeys(prev => {
+        const next = new Set(prev);
+        next.add(photoKey);
+        return next;
+      });
 
-      // Refetch fresh data from the server (WITHOUT the photo).
-      if (onAllPhotosUpdated) {
-        onAllPhotosUpdated();
-      }
-
-      // Event copies also need the events list refetched.
-      const hasEventCopy =
-        photo.source === 'event' ||
-        occurrences.some(o => o.source === 'event');
-
-      if (hasEventCopy && onEventsUpdated) {
-        onEventsUpdated();
+      /*
+      * Refresh the correct source.
+      */
+      if (photo.source === 'allPhotos') {
+        if (onAllPhotosUpdated) {
+          onAllPhotosUpdated();
+        }
+      } else {
+        if (onEventsUpdated) {
+          onEventsUpdated();
+        }
       }
 
     } catch (error) {
@@ -578,9 +590,10 @@ export const AllPhotosPage: React.FC<AllPhotosPageProps> = ({
         error
       );
 
-      // The delete was NOT confirmed by the server: the photo stays
-      // visible so the user can see it and retry. deletedPhotoKeys is
-      // untouched here because we only ever add to it on success.
+      /*
+      * DO NOT add to deletedPhotoKeys when deletion fails.
+      * The photo remains visible so it can be retried.
+      */
       onError?.(
         error instanceof Error
           ? error.message
@@ -588,7 +601,6 @@ export const AllPhotosPage: React.FC<AllPhotosPageProps> = ({
       );
 
     } finally {
-      // Clear the in-flight spinner for THIS photo
       setDeletingKeys(prev => {
         const next = new Set(prev);
         next.delete(photoKey);
