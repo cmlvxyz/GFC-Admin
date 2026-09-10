@@ -4,3 +4,6 @@ dist/
 data/data.json
 *.log
 .DS_Store
+
+.vercel
+.env*
