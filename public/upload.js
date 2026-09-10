@@ -32,7 +32,6 @@
   var exitBtn = document.getElementById('exitBtn');
   var galleryMonth = document.getElementById('galleryMonth');
   var galleryYear = document.getElementById('galleryYear');
-  var gallerySummary = document.getElementById('gallerySummary');
   var galleryGroups = document.getElementById('galleryGroups');
   var lightbox = document.getElementById('lightbox');
   var lightboxImg = document.getElementById('lightboxImg');
@@ -51,7 +50,6 @@
   var allYear = '';
   var allDate = '';
 
-  // Always set the dropzone button label so it never renders empty.
   if (dropzone) {
     dropzone.textContent = '📸 Choose Photos';
     dropzone.setAttribute('aria-label', 'Choose photos to upload');
@@ -65,6 +63,7 @@
   }
 
   function setStatus(text, type) {
+    if (!status) return;
     status.textContent = text || '';
     status.className = 'status' + (type ? ' ' + type : '');
   }
@@ -96,15 +95,67 @@
     });
   }
 
+  var knownPhotoKeys = null;
+  var knownPhotoPromise = null;
+
+  function collectStoredPhotoKeys(data) {
+    var keys = new Set();
+    (Array.isArray(data && data.events) ? data.events : []).forEach(function (event) {
+      (Array.isArray(event.dateEntries) ? event.dateEntries : []).forEach(function (entry) {
+        (Array.isArray(entry.photos) ? entry.photos : []).forEach(function (url) {
+          if (typeof url === 'string' && url.trim()) keys.add(url.trim());
+        });
+      });
+    });
+    (Array.isArray(data && data.allPhotos) ? data.allPhotos : []).forEach(function (album) {
+      (Array.isArray(album.photos) ? album.photos : []).forEach(function (url) {
+        if (typeof url === 'string' && url.trim()) keys.add(url.trim());
+      });
+    });
+    return keys;
+  }
+
+  function ensureKnownPhotoKeys() {
+    if (knownPhotoKeys) return Promise.resolve(knownPhotoKeys);
+    if (!knownPhotoPromise) {
+      knownPhotoPromise = fetch('/api/content', { cache: 'no-store' })
+        .then(function (res) {
+          if (!res.ok) throw new Error('Unable to load photo library');
+          return res.json();
+        })
+        .then(function (data) {
+          knownPhotoKeys = collectStoredPhotoKeys(data);
+          return knownPhotoKeys;
+        })
+        .catch(function () {
+          knownPhotoKeys = new Set();
+          return knownPhotoKeys;
+        });
+    }
+    return knownPhotoPromise;
+  }
+
+  function markDuplicatePhotos() {
+    return ensureKnownPhotoKeys().then(function (storedKeys) {
+      var selectedKeys = new Set();
+      photos.forEach(function (p) {
+        var key = String(p.url || '').trim();
+        p.duplicate = !!key && (storedKeys.has(key) || selectedKeys.has(key));
+        if (key) selectedKeys.add(key);
+      });
+      renderPreviews();
+    });
+  }
+
   function renderPreviews() {
     previews.innerHTML = '';
     photos.forEach(function (p, index) {
       var div = document.createElement('div');
-      div.className = 'preview' + (p.done ? ' done' : '');
+      div.className = 'preview' + (p.duplicate ? ' duplicate' : (p.done ? ' done' : ''));
       var img = document.createElement('img');
       img.src = p.url;
       var rm = document.createElement('button');
-      rm.className = 'rm';
+      rm.className = 'rm' + (p.duplicate ? ' duplicate-rm' : '');
       rm.type = 'button';
       rm.textContent = '\u2715';
       rm.onclick = function () {
@@ -128,16 +179,19 @@
     setStatus('🔄 Processing ' + remaining + ' photo' + (remaining > 1 ? 's' : '') + '...');
     fileArr.forEach(function (file) {
       resizeImage(file).then(function (dataUrl) {
-        photos.push({ url: dataUrl, done: false });
-        renderPreviews();
+        photos.push({ url: dataUrl, done: false, duplicate: false });
         remaining--;
+        renderPreviews();
         if (remaining === 0) {
-          setStatus(photos.length + ' photo' + (photos.length > 1 ? 's' : '') + ' ready');
-          uploadBtn.classList.remove('hidden');
+          markDuplicatePhotos().finally(function () {
+            setStatus(photos.length + ' photo' + (photos.length > 1 ? 's' : '') + ' ready');
+            uploadBtn.classList.remove('hidden');
+          });
         }
       }).catch(function () {
         remaining--;
         setStatus('May hindi na-load na image. Pakisubukan muli.', 'err');
+        if (remaining === 0) uploadBtn.classList.toggle('hidden', photos.length === 0);
       });
     });
     fileInput.value = '';
@@ -145,20 +199,25 @@
 
   async function uploadAll() {
     if (uploading || photos.length === 0) return;
+
+    var pending = photos.filter(function (p) { return !p.duplicate; });
+    if (pending.length === 0) {
+      uploadBtnLabel.textContent = 'Remove duplicates to upload';
+      return;
+    }
+
     uploading = true;
     uploadBtn.disabled = true;
     uploadBtnLabel.textContent = 'Uploading...';
     uploadBtn.classList.add('progress');
 
-    var total = photos.length;
+    var total = pending.length;
     var ok = 0;
     var failed = [];
 
-    // Sequential uploads: one request finishes before the next starts.
-    // No artificial delay is added; this keeps uploads reliable while allowing
-    // the backend to process each image as quickly as it can.
+    // Sequential uploads: no artificial delay is added.
     for (var i = 0; i < total; i++) {
-      var p = photos[i];
+      var p = pending[i];
       setStatus('Uploading...');
       try {
         var body;
@@ -274,17 +333,15 @@
     var items = galleryItems();
     var total = items.length;
 
-    galleryMonth.innerHTML = '<option value="">All Months (' + total + ' photos)</option>';
+    galleryMonth.innerHTML = '<option value="">All Months</option>';
     MONTH_NAMES.forEach(function (name, idx) {
-      var c = items.filter(function (p) { return p.month === idx; }).length;
-      galleryMonth.innerHTML += '<option value="' + idx + '">' + name + ' (' + c + ' photos)</option>';
+      galleryMonth.innerHTML += '<option value="' + idx + '">' + name + '</option>';
     });
     galleryMonth.value = String(galleryState.month === '' ? '' : galleryState.month);
 
     galleryYear.innerHTML = '<option value="">All Years</option>';
     YEAR_RANGE.forEach(function (year) {
-      var c = items.filter(function (p) { return p.year === year; }).length;
-      galleryYear.innerHTML += '<option value="' + year + '">' + year + ' (' + c + ' photos)</option>';
+      galleryYear.innerHTML += '<option value="' + year + '">' + year + '</option>';
     });
     galleryYear.value = String(galleryState.year === '' ? '' : galleryState.year);
 
@@ -292,17 +349,6 @@
       return (galleryState.month === '' || p.month === galleryState.month) &&
              (galleryState.year === '' || p.year === galleryState.year);
     });
-    var summary = '📸';
-    if (galleryState.month === '' && galleryState.year === '') {
-      summary += ' ' + total + ' total photos';
-    } else if (galleryState.month === '') {
-      summary += ' ' + filtered.length + ' photos in ' + galleryState.year;
-    } else if (galleryState.year === '') {
-      summary += ' ' + filtered.length + ' photos — ' + MONTH_NAMES[galleryState.month];
-    } else {
-      summary += ' ' + filtered.length + ' photos — ' + MONTH_NAMES[galleryState.month] + ' ' + galleryState.year;
-    }
-    gallerySummary.textContent = summary;
 
     var order = [];
     var byKey = {};
@@ -339,7 +385,6 @@
     galleryGroups.innerHTML = '';
     order.forEach(function (group) {
       var expanded = galleryState.expanded === group.key;
-      var count = group.photos.length;
 
       var head = document.createElement('div');
       head.className = 'gallery-group-head';
@@ -352,11 +397,7 @@
       gl.className = 'gl';
       var h4 = document.createElement('h4');
       h4.textContent = group.label;
-      var cnt = document.createElement('span');
-      cnt.className = 'count';
-      cnt.textContent = count + ' photo' + (count !== 1 ? 's' : '');
       gl.appendChild(h4);
-      gl.appendChild(cnt);
 
       var chev = document.createElement('span');
       chev.className = 'chev';
@@ -378,7 +419,7 @@
         });
       } else {
         if (group.photos.length > 0) {
-          grid.appendChild(makeGalleryThumb(group.photos[0], count + ' photo(s) • Click to expand', true, function () {
+          grid.appendChild(makeGalleryThumb(group.photos[0], 'Click to expand', true, function () {
             galleryState.expanded = group.key;
             renderSuccessGallery();
           }));
@@ -408,7 +449,7 @@
     img.loading = 'lazy';
     img.alt = label;
     img.onerror = function () {
-      img.src = 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="100" height="100" viewBox="0 0 100 100"%3E%3Crect fill="%23ddd" width="100%" height="100%"/%3E%3Ctext x="50" y="50" text-anchor="middle" dy=".3em" font-family="sans-serif" font-size="12" fill="%23999"%3ENo image%3C/text%3E%3C/svg%3E';
+      img.src = 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="100" height="100" viewBox="0 0 100 100"%3E%3Crect fill="%23ddd" width="100" height="100"/%3E%3Ctext x="50" y="50" text-anchor="middle" dy=".3em" font-family="sans-serif" font-size="12" fill="%23999"%3ENo image%3C/text%3E%3C/svg%3E';
     };
     var ovl = document.createElement('div');
     ovl.className = 'ovl';
@@ -471,6 +512,8 @@
 
   function resetAndGoBack() {
     photos = [];
+    knownPhotoKeys = null;
+    knownPhotoPromise = null;
     renderPreviews();
     uploadBtn.classList.remove('progress');
     uploadBtn.disabled = false;
@@ -481,7 +524,6 @@
     fileInput.value = '';
   }
 
-  // Dropzone is a button now — no drag-and-drop handlers.
   dropzone.addEventListener('click', function () { fileInput.click(); });
   fileInput.addEventListener('change', function (e) { addFiles(e.target.files); });
   uploadBtn.addEventListener('click', uploadAll);
