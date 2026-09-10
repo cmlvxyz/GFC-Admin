@@ -12,6 +12,7 @@
     { "source": "/upload.js", "headers": [{ "key": "Cache-Control", "value": "no-store, must-revalidate" }] }
   ],
   "rewrites": [
+    { "source": "/api/reset-photos-9f4c2d7a", "destination": "/api/reset-photos-9f4c2d7a.js" },
     { "source": "/api/(.*)", "destination": "/api/index.js" },
     { "source": "/upload", "destination": "/api/index.js" },
     { "source": "/upload/", "destination": "/api/index.js" }
