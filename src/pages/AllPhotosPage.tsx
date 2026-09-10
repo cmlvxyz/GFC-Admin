@@ -435,11 +435,6 @@ export const AllPhotosPage: React.FC<AllPhotosPageProps> = ({
     deletedPhotoKeys
   ]);
 
-  const totalPhotos =
-    allPhotosList.filter(
-      photo => !deletedPhotoKeys.has(getPhotoKey(photo))
-    ).length;
-
   const toggleExpand = (key: string) => {
     setExpandedMonth(
       expandedMonth === key
@@ -449,13 +444,14 @@ export const AllPhotosPage: React.FC<AllPhotosPageProps> = ({
   };
 
   /*
-   * DELETE PHOTO - OPTIMISTIC VERSION
+   * DELETE PHOTO - SERVER-CONFIRMED VERSION
    *
    * - No confirmation
-   * - Hides the photo IMMEDIATELY (only this photo, via its key)
-   * - Fires the delete to the backend in the background
-   * - Uses the ORIGINAL database URL (rawUrl)
-   * - Re-shows the photo + reports an error IF the delete fails
+   * - Per-source endpoint for EVERY stored copy of this photo
+   * - Uses the ORIGINAL database URL (rawUrl), never the resolved URL
+   * - Only hides the photo AFTER the server confirms the delete
+   * - On error: photo stays visible + error message (deletedPhotoKeys
+   *   is only ever set on success, so nothing flickers back)
    * - Refreshes parent data after a successful delete
    */
   const deletePhoto = async (
@@ -464,87 +460,115 @@ export const AllPhotosPage: React.FC<AllPhotosPageProps> = ({
   ) => {
     e.stopPropagation();
 
-    // Store the photo key for optimistic update + per-photo loading
+    // Store the photo key for per-photo loading
     const photoKey = getPhotoKey(photo);
 
+    // Guard: this exact photo is already being deleted
     if (deletingKeys.has(photoKey)) {
       return;
     }
 
     // Mark THIS photo as in-flight (spinner on its button)
-    setDeletingKeys(prev => {
-      const next = new Set(prev);
-      next.add(photoKey);
-      return next;
-    });
-
-    // Hide the photo instantly so the UI does not wait/lag.
-    setDeletedPhotoKeys(prev => {
-      const next = new Set(prev);
-      next.add(photoKey);
-      return next;
-    });
+    setDeletingKeys(prev => new Set(prev).add(photoKey));
 
     try {
-      // Send every stored copy of this photo (an event copy AND an album
-      // copy are the SAME photo) so deleting it removes it everywhere and
-      // it can never come back from the other location.
-      const occurrenceUrls =
-        (photo.occurrences || []).map(o => o.rawUrl);
+      const occurrences =
+        photo.occurrences && photo.occurrences.length > 0
+          ? photo.occurrences
+          : [];
 
-      const urls =
-        occurrenceUrls.length > 0
-          ? occurrenceUrls
-          : [photo.rawUrl];
+      if (occurrences.length === 0) {
+        throw new Error(
+          'Photo location is missing. Please refresh and try again.'
+        );
+      }
 
-      const response = await fetch(
-        `${API_URL}/api/photos/delete`,
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify({
-            photos: urls
-          })
-        }
-      );
+      // Delete EVERY stored copy with its correct per-source endpoint.
+      // Indices come from the CURRENT parent data, so they are exact.
+      for (const occ of occurrences) {
+        if (occ.source === 'allPhotos') {
+          const response = await fetch(
+            `${API_URL}/api/allPhotos/delete`,
+            {
+              method: 'DELETE',
+              headers: {
+                'Content-Type': 'application/json'
+              },
+              body: JSON.stringify({
+                albumIndex: occ.albumIndex,
+                photoIndex: occ.photoIndex
+              })
+            }
+          );
 
-      // Check backend response
-      if (!response.ok) {
-        let errorMessage =
-          'Failed to delete photo.';
+          if (!response.ok) {
+            const errorData = await response
+              .json()
+              .catch(() => null);
 
-        try {
-          const errorData =
-            await response.json();
-
-          if (errorData?.message) {
-            errorMessage =
-              errorData.message;
+            throw new Error(
+              errorData?.message ||
+                'Failed to delete photo.'
+            );
           }
-        } catch {
-          // Ignore JSON parsing error
-        }
+        } else {
+          const response = await fetch(
+            `${API_URL}/api/events/photo/delete`,
+            {
+              method: 'DELETE',
+              headers: {
+                'Content-Type': 'application/json'
+              },
+              body: JSON.stringify({
+                eventId: occ.eventId,
+                dateEntryIndex:
+                  occ.dateEntryIndex,
+                photoUrl:
+                  occ.rawUrl || photo.rawUrl
+              })
+            }
+          );
 
-        throw new Error(errorMessage);
+          if (!response.ok) {
+            const errorData = await response
+              .json()
+              .catch(() => null);
+
+            throw new Error(
+              errorData?.message ||
+                'Failed to delete photo.'
+            );
+          }
+        }
       }
 
       // ==========================================
-      // SUCCESS - BACKGROUND SYNC
+      // SUCCESS - CONFIRMED BY THE SERVER
       // ==========================================
 
       // Remove from lightbox immediately
       setSelectedPhoto(null);
 
-      // The photo is already hidden via deletedPhotoKeys.
-      // Sync the parent data in the background so the change
-      // persists and does not reappear after navigating.
+      // Temporary UI guard so the photo cannot flicker back while
+      // the parent data is being refreshed. Server data is the
+      // source of truth; this only bridges the gap until the
+      // refetch lands. The photo stays gone on refresh because the
+      // backend delete already persisted.
+      setDeletedPhotoKeys(prev =>
+        new Set(prev).add(photoKey)
+      );
+
+      // Refetch fresh data from the server (WITHOUT the photo).
       if (onAllPhotosUpdated) {
         onAllPhotosUpdated();
       }
 
-      if (onEventsUpdated) {
+      // Event copies also need the events list refetched.
+      const hasEventCopy =
+        photo.source === 'event' ||
+        occurrences.some(o => o.source === 'event');
+
+      if (hasEventCopy && onEventsUpdated) {
         onEventsUpdated();
       }
 
@@ -554,14 +578,9 @@ export const AllPhotosPage: React.FC<AllPhotosPageProps> = ({
         error
       );
 
-      // The delete was NOT confirmed by the server: bring the
-      // photo back so the user can see it and retry.
-      setDeletedPhotoKeys(prev => {
-        const next = new Set(prev);
-        next.delete(photoKey);
-        return next;
-      });
-
+      // The delete was NOT confirmed by the server: the photo stays
+      // visible so the user can see it and retry. deletedPhotoKeys is
+      // untouched here because we only ever add to it on success.
       onError?.(
         error instanceof Error
           ? error.message
@@ -720,29 +739,18 @@ export const AllPhotosPage: React.FC<AllPhotosPageProps> = ({
                     className="w-full px-4 py-2.5 rounded-xl border border-gray-200 dark:border-white/10 bg-gray-50 dark:bg-black/30 text-black dark:text-white text-sm focus:border-indigo-400 dark:focus:border-indigo-400/50 focus:outline-hidden focus:ring-2 focus:ring-indigo-400/20 transition-all"
                   >
                     <option value="">
-                      All Months ({totalPhotos} photos)
+                      All Months
                     </option>
 
                     {MONTH_NAMES.map(
-                      (name, idx) => {
-                        const count =
-                          allPhotosList.filter(
-                            p =>
-                              p.month === idx &&
-                              !deletedPhotoKeys.has(
-                                getPhotoKey(p)
-                              )
-                          ).length;
-
-                        return (
-                          <option
-                            key={name}
-                            value={idx}
-                          >
-                            {name} ({count} photos)
-                          </option>
-                        );
-                      }
+                      (name, idx) => (
+                        <option
+                          key={name}
+                          value={idx}
+                        >
+                          {name}
+                        </option>
+                      )
                     )}
                   </select>
                 </div>
@@ -778,81 +786,18 @@ export const AllPhotosPage: React.FC<AllPhotosPageProps> = ({
                       All Years
                     </option>
 
-                    {YEAR_RANGE.map(
-                      year => {
-                        const count =
-                          allPhotosList.filter(
-                            p =>
-                              p.year === year &&
-                              !deletedPhotoKeys.has(
-                                getPhotoKey(p)
-                              )
-                          ).length;
-
-                        return (
-                          <option
-                            key={year}
-                            value={year}
-                          >
-                            {year} ({count} photos)
-                          </option>
-                        );
-                      }
-                    )}
+                    {YEAR_RANGE.map(year => (
+                      <option
+                        key={year}
+                        value={year}
+                      >
+                        {year}
+                      </option>
+                    ))}
                   </select>
 
                 </div>
               </div>
-
-            </div>
-
-            <div className="mt-4 flex items-center gap-2 text-xs font-bold text-indigo-500 dark:text-indigo-400">
-
-              <span>📸</span>
-
-              <span>
-                {selectedMonth === '' &&
-                selectedYear === ''
-                  ? `${totalPhotos} total photos`
-                  : selectedMonth === ''
-                  ? `${
-                      allPhotosList.filter(
-                        p =>
-                          p.year === selectedYear &&
-                          !deletedPhotoKeys.has(
-                            getPhotoKey(p)
-                          )
-                      ).length
-                    } photos in ${selectedYear}`
-                  : selectedYear === ''
-                  ? `${
-                      allPhotosList.filter(
-                        p =>
-                          p.month === selectedMonth &&
-                          !deletedPhotoKeys.has(
-                            getPhotoKey(p)
-                          )
-                      ).length
-                    } photos — ${
-                      MONTH_NAMES[
-                        selectedMonth
-                      ]
-                    }`
-                  : `${
-                      allPhotosList.filter(
-                        p =>
-                          p.month === selectedMonth &&
-                          p.year === selectedYear &&
-                          !deletedPhotoKeys.has(
-                            getPhotoKey(p)
-                          )
-                      ).length
-                    } photos — ${
-                      MONTH_NAMES[
-                        selectedMonth
-                      ]
-                    } ${selectedYear}`}
-              </span>
 
             </div>
 
@@ -883,9 +828,6 @@ export const AllPhotosPage: React.FC<AllPhotosPageProps> = ({
                 const isExpanded =
                   expandedMonth === group.key;
 
-                const photoCount =
-                  group.photos.length;
-
                 const allPhotosInGroup =
                   group.photos;
 
@@ -909,13 +851,6 @@ export const AllPhotosPage: React.FC<AllPhotosPageProps> = ({
                         <h4 className="text-sm font-bold text-black dark:text-white">
                           {group.label}
                         </h4>
-
-                        <span className="text-xs font-bold text-indigo-500 dark:text-indigo-400">
-                          {photoCount} photo
-                          {photoCount !== 1
-                            ? 's'
-                            : ''}
-                        </span>
 
                       </div>
 
@@ -1032,14 +967,6 @@ export const AllPhotosPage: React.FC<AllPhotosPageProps> = ({
                                         'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="100" height="100" viewBox="0 0 100 100"%3E%3Crect fill="%23ddd" width="100" height="100"/%3E%3Ctext x="50" y="50" text-anchor="middle" dy=".3em" font-family="sans-serif" font-size="12" fill="%23999"%3ENo image%3C/text%3E%3C/svg%3E';
                                     }}
                                   />
-
-                                  <div className="absolute bottom-0 left-0 right-0 px-2 py-1 bg-black/50 text-white text-[9px] font-semibold truncate">
-                                    {photoCount} photo
-                                    {photoCount !== 1
-                                      ? 's'
-                                      : ''}{' '}
-                                    • Click to expand
-                                  </div>
 
                                 </div>
 
@@ -1193,17 +1120,6 @@ export const AllPhotosPage: React.FC<AllPhotosPageProps> = ({
 
                           <div>
                             {name}
-                          </div>
-
-                          <div className="text-[10px] mt-0.5">
-                            {has
-                              ? `${count} photo${
-                                  count !==
-                                  1
-                                    ? 's'
-                                    : ''
-                                }`
-                              : 'No photos'}
                           </div>
 
                         </button>
