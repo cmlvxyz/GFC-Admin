@@ -51,15 +51,13 @@
   var allYear = '';
   var allDate = '';
 
-  // ✅ FIX: Always set the dropzone button label so it never renders empty.
+  // Always set the dropzone button label so it never renders empty.
   if (dropzone) {
     dropzone.textContent = '📸 Choose Photos';
     dropzone.setAttribute('aria-label', 'Choose photos to upload');
   }
 
   function show(view) {
-    // viewBye/successText are intentionally absent from the HTML in some
-    // builds, so every view is guarded against being null.
     [viewLoading, viewError, viewUpload, viewSuccess, viewPicker, viewBye].forEach(function (v) {
       if (v) v.classList.add('hidden');
     });
@@ -156,9 +154,12 @@
     var ok = 0;
     var failed = [];
 
+    // Sequential uploads: one request finishes before the next starts.
+    // No artificial delay is added; this keeps uploads reliable while allowing
+    // the backend to process each image as quickly as it can.
     for (var i = 0; i < total; i++) {
       var p = photos[i];
-      setStatus('📤 Uploading ' + (i + 1) + ' of ' + total + '...');
+      setStatus('Uploading...');
       try {
         var body;
         if (isAllPhotosMode) {
@@ -176,7 +177,7 @@
         p.done = true;
         ok++;
         renderPreviews();
-        setStatus('📤 Uploaded ' + ok + ' of ' + total);
+        setStatus('Uploading...');
       } catch (err) {
         failed.push({ index: i, error: err });
       }
@@ -407,7 +408,7 @@
     img.loading = 'lazy';
     img.alt = label;
     img.onerror = function () {
-      img.src = 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="100" height="100" viewBox="0 0 100 100"%3E%3Crect fill="%23ddd" width="100" height="100"/%3E%3Ctext x="50" y="50" text-anchor="middle" dy=".3em" font-family="sans-serif" font-size="12" fill="%23999"%3ENo image%3C/text%3E%3C/svg%3E';
+      img.src = 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="100" height="100" viewBox="0 0 100 100"%3E%3Crect fill="%23ddd" width="100%" height="100%"/%3E%3Ctext x="50" y="50" text-anchor="middle" dy=".3em" font-family="sans-serif" font-size="12" fill="%23999"%3ENo image%3C/text%3E%3C/svg%3E';
     };
     var ovl = document.createElement('div');
     ovl.className = 'ovl';
@@ -463,8 +464,6 @@
         return;
       }
     } catch (e) {}
-    // Walang referrer, history, o opener (e.g. direct open mula sa QR scan):
-    // lumabas na sa upload page papunta sa admin home.
     location.href = '/';
   }
 
