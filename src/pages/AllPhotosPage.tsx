@@ -55,12 +55,12 @@ const MONTH_NAMES = [
 
 const GFC_BASE = (() => {
   const fromEnv = (import.meta.env.VITE_GFC_URL as string | undefined)?.trim();
-  if (fromEnv) return fromEnv;
-  const host = typeof window !== 'undefined' ? window.location.hostname : '';
-  const isLocalhost = !host || host === 'localhost' || host === '127.0.0.1';
-  const isLanIp = /^\d{1,3}(\.\d{1,3}){3}$/.test(host);
-  if (isLocalhost || isLanIp) return host ? `http://${host}:4000` : 'http://localhost:4000';
-  return typeof window !== 'undefined' ? window.location.origin : 'https://gfc-admin-rosy.vercel.app';
+
+  if (fromEnv) {
+    return fromEnv.replace(/\/+$/, '');
+  }
+
+  return 'https://gfc-admin-rosy.vercel.app';
 })();
 
 const SITE_BASE = (() => {
@@ -268,10 +268,19 @@ export const AllPhotosPage: React.FC<AllPhotosPageProps> = ({
   };
 
   const getUploadUrl = () => {
-    let url = `${GFC_BASE}/upload`;
-    if (selectedMonth !== '') url += `?month=${selectedMonth + 1}`;
-    if (selectedYear !== '') url += selectedMonth !== '' ? `&year=${selectedYear}` : `?year=${selectedYear}`;
-    return url;
+    const params = new URLSearchParams();
+
+    if (selectedMonth !== '') {
+      params.set('month', String(selectedMonth + 1));
+    }
+
+    if (selectedYear !== '') {
+      params.set('year', String(selectedYear));
+    }
+
+    const query = params.toString();
+
+    return `${GFC_BASE}/upload${query ? `?${query}` : ''}`;
   };
 
   return (
