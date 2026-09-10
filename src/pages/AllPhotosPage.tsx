@@ -34,6 +34,7 @@ interface PhotoItem {
   photoIndex?: number;
   eventId?: string;
   dateEntryIndex?: number;
+  photoEntryIndex?: number;
   source: 'event' | 'allPhotos';
 }
 
@@ -198,6 +199,7 @@ export const AllPhotosPage: React.FC<AllPhotosPageProps> = ({
         'event',
         photo.eventId ?? '',
         photo.dateEntryIndex ?? '',
+        photo.photoEntryIndex ?? '',
         photo.rawUrl
       ].join('|');
     }
@@ -240,7 +242,13 @@ export const AllPhotosPage: React.FC<AllPhotosPageProps> = ({
           ? parsed.year
           : -1;
 
-        for (const url of entry.photos || []) {
+        for (
+          let urlIndex = 0;
+          urlIndex < (entry.photos || []).length;
+          urlIndex++
+        ) {
+          const url = entry.photos[urlIndex];
+
           list.push({
             // URL used by the browser
             url: resolvePhotoUrl(url),
@@ -255,6 +263,7 @@ export const AllPhotosPage: React.FC<AllPhotosPageProps> = ({
             date: entry.date,
             eventId: ev.id,
             dateEntryIndex: entryIndex,
+            photoEntryIndex: urlIndex,
             source: 'event'
           });
         }
