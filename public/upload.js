@@ -32,7 +32,10 @@
   var successText = document.getElementById('successText');
   var uploadMoreBtn = document.getElementById('uploadMoreBtn');
   var exitBtn = document.getElementById('exitBtn');
-  var successGallery = document.getElementById('successGallery');
+  var galleryMonth = document.getElementById('galleryMonth');
+  var galleryYear = document.getElementById('galleryYear');
+  var gallerySummary = document.getElementById('gallerySummary');
+  var galleryGroups = document.getElementById('galleryGroups');
   var lightbox = document.getElementById('lightbox');
   var lightboxImg = document.getElementById('lightboxImg');
   var lightboxClose = document.getElementById('lightboxClose');
@@ -49,7 +52,6 @@
   var allMonth = '';
   var allYear = '';
   var allDate = '';
-  var sessionUploads = []; // Successfully uploaded photos this session (for the gallery)
 
   function show(view) {
     viewLoading.classList.add('hidden');
@@ -181,7 +183,6 @@
             if (!res.ok) throw new Error(data.message || 'Upload failed');
             p.done = true;
             ok++;
-            sessionUploads.push(p.url);
             renderPreviews();
             setStatus('📤 Uploaded ' + ok + ' of ' + total);
           } catch (err) {
@@ -214,34 +215,199 @@
     }
   }
 
-  // 🔥 NEW: Show success WITH a gallery of the uploaded photos (no auto-hide —
-  // the screen stays until the user clicks "Upload More Photos" or "Exit").
+  // 🔥 NEW: After upload - show the All Photos gallery (filters + grouped
+  // albums, no delete button) so the user can browse the church's photos.
+  // The screen stays until the user clicks "Upload More Photos" or "Exit".
+  var galleryAlbums = []; // cached albums from /api/content
+  var galleryState = { month: '', year: '', expanded: null };
+
   function showSuccessWithGallery() {
-    renderSuccessGallery();
     show(viewSuccess);
+    // Always re-fetch so newly uploaded photos appear immediately.
+    galleryAlbums = [];
+    fetch('/api/content')
+      .then(function (res) { return res.json(); })
+      .then(function (data) {
+        galleryAlbums = Array.isArray(data.allPhotos) ? data.allPhotos : [];
+        galleryMonth.value = String(galleryState.month);
+        galleryYear.value = String(galleryState.year);
+        renderSuccessGallery();
+      })
+      .catch(function () {
+        renderSuccessGallery();
+      });
+  }
+
+  function galleryItems() {
+    var items = [];
+    galleryAlbums.forEach(function (album) {
+      var m = typeof album.month === 'number' ? album.month : -1;
+      var y = typeof album.year === 'number' ? album.year : -1;
+      var date = String(album.date || '');
+      (Array.isArray(album.photos) ? album.photos : []).forEach(function (url) {
+        items.push({ url: url, month: m, year: y, date: date });
+      });
+    });
+    return items;
   }
 
   function renderSuccessGallery() {
-    successGallery.innerHTML = '';
-    if (sessionUploads.length === 0) return;
+    var items = galleryItems();
+    var total = items.length;
 
-    sessionUploads.forEach(function (url) {
-      var wrap = document.createElement('div');
-      wrap.className = 'thumb';
-
-      var img = document.createElement('img');
-      img.src = url;
-      img.loading = 'lazy';
-      img.onclick = function () { openLightbox(url); };
-
-      var zoom = document.createElement('div');
-      zoom.className = 'zoom';
-      zoom.textContent = '🔍';
-
-      wrap.appendChild(img);
-      wrap.appendChild(zoom);
-      successGallery.appendChild(wrap);
+    // Month select
+    galleryMonth.innerHTML = '<option value="">All Months (' + total + ' photos)</option>';
+    MONTH_NAMES.forEach(function (name, idx) {
+      var c = items.filter(function (p) { return p.month === idx; }).length;
+      galleryMonth.innerHTML += '<option value="' + idx + '">' + name + ' (' + c + ' photos)</option>';
     });
+    galleryMonth.value = String(galleryState.month === '' ? '' : galleryState.month);
+
+    // Year select
+    galleryYear.innerHTML = '<option value="">All Years</option>';
+    YEAR_RANGE.forEach(function (year) {
+      var c = items.filter(function (p) { return p.year === year; }).length;
+      galleryYear.innerHTML += '<option value="' + year + '">' + year + ' (' + c + ' photos)</option>';
+    });
+    galleryYear.value = String(galleryState.year === '' ? '' : galleryState.year);
+
+    // Summary line
+    var filtered = items.filter(function (p) {
+      return (galleryState.month === '' || p.month === galleryState.month) &&
+             (galleryState.year === '' || p.year === galleryState.year);
+    });
+    var summary = '📸';
+    if (galleryState.month === '' && galleryState.year === '') {
+      summary += ' ' + total + ' total photos';
+    } else if (galleryState.month === '') {
+      summary += ' ' + filtered.length + ' photos in ' + galleryState.year;
+    } else if (galleryState.year === '') {
+      summary += ' ' + filtered.length + ' photos — ' + MONTH_NAMES[galleryState.month];
+    } else {
+      summary += ' ' + filtered.length + ' photos — ' + MONTH_NAMES[galleryState.month] + ' ' + galleryState.year;
+    }
+    gallerySummary.textContent = summary;
+
+    // Group by month/year, newest first
+    var order = [];
+    var byKey = {};
+    filtered.forEach(function (p) {
+      var key = p.year === -1 ? 'x-other' : p.year + '-' + p.month;
+      if (!byKey[key]) {
+        byKey[key] = [];
+        order.push({
+          key: key,
+          label: p.year === -1 ? '📁 Other / Not Categorized' : MONTH_NAMES[p.month] + ' ' + p.year,
+          photos: []
+        });
+      }
+      byKey[key].push(p);
+    });
+    order.sort(function (a, b) {
+      var ka = a.key === 'x-other' ? [-1, -1] : a.key.split('-').map(Number);
+      var kb = b.key === 'x-other' ? [-1, -1] : b.key.split('-').map(Number);
+      return (kb[0] - ka[0]) || (kb[1] - ka[1]);
+    });
+    order.forEach(function (g) { g.photos = byKey[g.key]; });
+
+    if (order.length === 0) {
+      galleryGroups.innerHTML = '<div class="gallery-empty">' +
+        (total === 0 ? 'No photos yet. Upload some photos using the QR code.' : 'No photos found for the selected filters.') +
+        '</div>';
+      return;
+    }
+
+    // Default to expanding the newest group so the user sees their photos right away
+    if (galleryState.expanded === null || !byKey[galleryState.expanded]) {
+      galleryState.expanded = order[0].key;
+    }
+
+    galleryGroups.innerHTML = '';
+    order.forEach(function (group) {
+      var expanded = galleryState.expanded === group.key;
+      var count = group.photos.length;
+
+      var head = document.createElement('div');
+      head.className = 'gallery-group-head';
+      head.onclick = function () {
+        galleryState.expanded = expanded ? null : group.key;
+        renderSuccessGallery();
+      };
+
+      var gl = document.createElement('div');
+      gl.className = 'gl';
+      var h4 = document.createElement('h4');
+      h4.textContent = group.label;
+      var cnt = document.createElement('span');
+      cnt.className = 'count';
+      cnt.textContent = count + ' photo' + (count !== 1 ? 's' : '');
+      gl.appendChild(h4);
+      gl.appendChild(cnt);
+
+      var chev = document.createElement('span');
+      chev.className = 'chev';
+      chev.textContent = expanded ? '▲' : '▼';
+
+      head.appendChild(gl);
+      head.appendChild(chev);
+
+      var body = document.createElement('div');
+      body.className = 'gallery-group-body';
+      var grid = document.createElement('div');
+      grid.className = 'gallery-grid';
+
+      if (expanded) {
+        group.photos.forEach(function (photo) {
+          grid.appendChild(makeGalleryThumb(photo, photo.date || group.label, function () {
+            openLightbox(photo.url);
+          }));
+        });
+      } else {
+        // Collapsed: show one cover tile + "Click to expand"
+        if (group.photos.length > 0) {
+          grid.appendChild(makeGalleryThumb(group.photos[0], count + ' photo(s) • Click to expand', true, function () {
+            galleryState.expanded = group.key;
+            renderSuccessGallery();
+          }));
+        } else {
+          var none = document.createElement('div');
+          none.className = 'gthumb-empty';
+          none.textContent = 'No photos';
+          grid.appendChild(none);
+        }
+      }
+
+      body.appendChild(grid);
+
+      var wrap = document.createElement('div');
+      wrap.className = 'gallery-group';
+      wrap.appendChild(head);
+      wrap.appendChild(body);
+      galleryGroups.appendChild(wrap);
+    });
+  }
+
+  function makeGalleryThumb(photo, label, isCover, onClickCb) {
+    var div = document.createElement('div');
+    div.className = 'gthumb' + (isCover ? ' cover' : '');
+    var img = document.createElement('img');
+    img.src = photo.url;
+    img.loading = 'lazy';
+    img.alt = label;
+    img.onerror = function () {
+      img.src = 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="100" height="100" viewBox="0 0 100 100"%3E%3Crect fill="%23ddd" width="100" height="100"/%3E%3Ctext x="50" y="50" text-anchor="middle" dy=".3em" font-family="sans-serif" font-size="12" fill="%23999"%3ENo image%3C/text%3E%3C/svg%3E';
+    };
+    var ovl = document.createElement('div');
+    ovl.className = 'ovl';
+    ovl.textContent = label;
+
+    if (typeof onClickCb === 'function') {
+      div.onclick = onClickCb;
+    }
+
+    div.appendChild(img);
+    div.appendChild(ovl);
+    return div;
   }
 
   function openLightbox(url) {
@@ -257,6 +423,16 @@
   lightboxClose.addEventListener('click', closeLightbox);
   lightbox.addEventListener('click', function (e) {
     if (e.target === lightbox) closeLightbox();
+  });
+
+  galleryMonth.addEventListener('change', function () {
+    galleryState.month = galleryMonth.value === '' ? '' : parseInt(galleryMonth.value, 10);
+    renderSuccessGallery();
+  });
+
+  galleryYear.addEventListener('change', function () {
+    galleryState.year = galleryYear.value === '' ? '' : parseInt(galleryYear.value, 10);
+    renderSuccessGallery();
   });
 
   // 🔥 NEW: Exit - go back to the page the user was on before scanning the QR
