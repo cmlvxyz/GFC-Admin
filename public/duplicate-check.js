@@ -12,6 +12,7 @@
   var checkTimer = null;
   var checking = false;
   var lastPreviewSignature = '';
+  var reconcilePromise = null;
 
   function setUploadAvailability(hasDuplicate, ready) {
     if (hasDuplicate) {
@@ -74,6 +75,129 @@
     });
   }
 
+  function collectStoredOccurrences(data) {
+    var occurrences = [];
+
+    (Array.isArray(data && data.events) ? data.events : []).forEach(function (event) {
+      var isSunday = String(event && event.id || '').toLowerCase() === 'sunday' ||
+        String(event && event.title || '').toLowerCase().indexOf('sunday service') !== -1;
+      if (!isSunday) return;
+
+      (Array.isArray(event.dateEntries) ? event.dateEntries : []).forEach(function (entry, dateEntryIndex) {
+        var dateValue = String(entry && entry.date || '').trim();
+        var parsed = parseDateValue(dateValue);
+        (Array.isArray(entry.photos) ? entry.photos : []).forEach(function (url, photoIndex) {
+          if (typeof url !== 'string' || !url.trim()) return;
+          occurrences.push({
+            source: 'event',
+            eventId: event.id,
+            dateEntryIndex: dateEntryIndex,
+            photoIndex: photoIndex,
+            url: url.trim(),
+            dateKey: parsed ? parsed.key : dateValue.toLowerCase(),
+            timestamp: parsed ? parsed.timestamp : 0
+          });
+        });
+      });
+    });
+
+    return occurrences;
+  }
+
+  function parseDateValue(value) {
+    if (!value) return null;
+    var currentYear = new Date().getFullYear();
+    var d = new Date(/\d{4}/.test(value) ? value : (value + ', ' + currentYear));
+    if (isNaN(d.getTime())) return null;
+    return {
+      timestamp: d.getTime(),
+      key: d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0')
+    };
+  }
+
+  function resolveStoredUrl(url) {
+    if (/^data:/i.test(url) || /^https?:\/\//i.test(url)) return url;
+    return location.origin + (url.charAt(0) === '/' ? url : '/' + url);
+  }
+
+  async function fetchContent() {
+    var res = await fetch('/api/content', { cache: 'no-store' });
+    if (!res.ok) throw new Error('content');
+    return res.json();
+  }
+
+  /*
+   * The Sunday Service gallery is date-aware. If exactly the same photo is
+   * stored under two different Sunday Service dates, the newer date wins.
+   * Example: August 30 wins over June 21; July 5 wins over June 14.
+   * Only the older occurrence is removed. The newer occurrence is preserved.
+   */
+  async function reconcileSundayServiceDuplicates() {
+    if (reconcilePromise) return reconcilePromise;
+
+    reconcilePromise = (async function () {
+      try {
+        var data = await fetchContent();
+        var occurrences = collectStoredOccurrences(data);
+        if (occurrences.length < 2) return;
+
+        var uniqueUrls = Array.from(new Set(occurrences.map(function (o) { return o.url; })));
+        var signatureResults = await Promise.all(uniqueUrls.map(function (url) {
+          return imageSignature(resolveStoredUrl(url));
+        }));
+        var signatureByUrl = new Map();
+        uniqueUrls.forEach(function (url, i) {
+          if (signatureResults[i]) signatureByUrl.set(url, signatureResults[i]);
+        });
+
+        var groups = new Map();
+        occurrences.forEach(function (occurrence) {
+          var sig = signatureByUrl.get(occurrence.url);
+          if (!sig) return;
+          if (!groups.has(sig)) groups.set(sig, []);
+          groups.get(sig).push(occurrence);
+        });
+
+        var deletions = [];
+        groups.forEach(function (group) {
+          var distinctDates = Array.from(new Set(group.map(function (o) { return o.dateKey; })));
+          if (distinctDates.length < 2) return;
+
+          var newestTimestamp = Math.max.apply(null, group.map(function (o) { return o.timestamp || 0; }));
+          if (!newestTimestamp) return;
+
+          group.forEach(function (occurrence) {
+            if ((occurrence.timestamp || 0) < newestTimestamp) deletions.push(occurrence);
+          });
+        });
+
+        /* Delete by exact occurrence, never by URL globally. */
+        for (var i = 0; i < deletions.length; i++) {
+          var occurrence = deletions[i];
+          try {
+            await fetch('/api/events/photo/delete', {
+              method: 'DELETE',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                eventId: occurrence.eventId,
+                dateEntryIndex: occurrence.dateEntryIndex,
+                photoUrl: occurrence.url
+              })
+            });
+          } catch (e) {
+            /* A later refresh will retry reconciliation if a deletion fails. */
+          }
+        }
+      } catch (e) {
+        /* Duplicate checking must never prevent normal photo selection. */
+      } finally {
+        reconcilePromise = null;
+      }
+    })();
+
+    return reconcilePromise;
+  }
+
   function collectStoredUrls(data) {
     var urls = [];
     (Array.isArray(data && data.events) ? data.events : []).forEach(function (event) {
@@ -91,18 +215,10 @@
     return Array.from(new Set(urls));
   }
 
-  function resolveStoredUrl(url) {
-    if (/^data:/i.test(url) || /^https?:\/\//i.test(url)) return url;
-    return location.origin + (url.charAt(0) === '/' ? url : '/' + url);
-  }
-
   function loadStoredSignatures() {
     if (storedSignaturePromise) return storedSignaturePromise;
-    storedSignaturePromise = fetch('/api/content', { cache: 'no-store' })
-      .then(function (res) {
-        if (!res.ok) throw new Error('content');
-        return res.json();
-      })
+    storedSignaturePromise = reconcileSundayServiceDuplicates()
+      .then(function () { return fetchContent(); })
       .then(function (data) {
         var urls = collectStoredUrls(data);
         return Promise.all(urls.map(function (url) {
@@ -182,4 +298,11 @@
     });
     statusObserver.observe(status, { childList: true, characterData: true, subtree: true });
   }
+
+  /* Reconcile existing Sunday Service duplicates as soon as the upload page
+     connects to the shared GFC Admin database. */
+  reconcileSundayServiceDuplicates().then(function () {
+    storedSignaturePromise = null;
+    scheduleCheck();
+  });
 })();
