@@ -984,9 +984,11 @@ app.delete('/api/content', async (req, res, next) => {
 const distDirectory = path.join(__dirname, 'dist');
 
 app.get(['/upload', '/upload/', '/upload.html'], (req, res) => {
+  res.set('Cache-Control', 'no-store, must-revalidate');
   res.sendFile(path.join(__dirname, 'public', 'upload.html'));
 });
 app.get('/upload.js', (req, res) => {
+  res.set('Cache-Control', 'no-store, must-revalidate');
   res.sendFile(path.join(__dirname, 'public', 'upload.js'));
 });
 

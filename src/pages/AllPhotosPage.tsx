@@ -120,7 +120,7 @@ const SITE_BASE = (() => {
 
   return typeof window !== 'undefined'
     ? window.location.origin
-    : 'https://gfc-3uhmkt62h-yans-projects-3c2ad947.vercel.app';
+    : 'https://gfc-admin-rosy.vercel.app';
 })();
 
 const resolvePhotoUrl = (u: string): string => {

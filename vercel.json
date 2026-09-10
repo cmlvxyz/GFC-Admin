@@ -5,6 +5,12 @@
       "includeFiles": "public/**"
     }
   },
+  "headers": [
+    { "source": "/upload", "headers": [{ "key": "Cache-Control", "value": "no-store, must-revalidate" }] },
+    { "source": "/upload/", "headers": [{ "key": "Cache-Control", "value": "no-store, must-revalidate" }] },
+    { "source": "/upload.html", "headers": [{ "key": "Cache-Control", "value": "no-store, must-revalidate" }] },
+    { "source": "/upload.js", "headers": [{ "key": "Cache-Control", "value": "no-store, must-revalidate" }] }
+  ],
   "rewrites": [
     { "source": "/api/(.*)", "destination": "/api/index.js" },
     { "source": "/upload", "destination": "/api/index.js" },
