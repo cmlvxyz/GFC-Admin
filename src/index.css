@@ -32,12 +32,21 @@
 .hide-scrollbar { scrollbar-width: none; -ms-overflow-style: none; }
 .hide-scrollbar::-webkit-scrollbar { display: none; }
 
-/* Crisp replacement QR visual supplied by the user. The QR generator's
-   canvas remains mounted for compatibility, but this visual is what is shown. */
+/*
+ * STATIC QR IMAGE
+ *
+ * The actual QR image is supplied by the user as:
+ * public/qr-code.png
+ *
+ * QRCodePage and All Photos still keep their QR generator mounted so the
+ * existing URL logic is preserved, but the generated canvas is hidden and
+ * this PNG is displayed instead. The PNG itself must contain the desired,
+ * scannable QR code.
+ */
 .bg-white.rounded-xl.shadow-md:has(canvas) {
   width: 260px;
   height: 260px;
-  background: #fff url('/gfc-upload-qr.svg') center / contain no-repeat !important;
+  background: #fff url('/qr-code.png') center / contain no-repeat !important;
   box-shadow: none !important;
 }
 
@@ -49,6 +58,6 @@
 .bg-white.rounded-lg.shadow-md:has(canvas) {
   width: 240px;
   height: 240px;
-  background: #fff url('/gfc-upload-qr.svg') center / contain no-repeat !important;
+  background: #fff url('/qr-code.png') center / contain no-repeat !important;
   box-shadow: none !important;
 }
