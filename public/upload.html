@@ -7,31 +7,27 @@
 <title>Photo Upload | Gospel Fellowship Church</title>
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
-  :root { --indigo-500: #6366f1; --indigo-600: #4f46e5; --indigo-700: #4338ca; --ink: #1a1a2e; --muted: #6b7280; }
-  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: linear-gradient(160deg, #eef0ff 0%, #ffffff 40%, #faf5ff 100%); color: var(--ink); min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 16px; }
-  .card { background: #ffffff; border-radius: 24px; box-shadow: 0 20px 60px rgba(79, 70, 229, 0.15); border: 1px solid #e6e8ff; width: 100%; max-width: 440px; padding: 28px 22px; }
+  :root { --indigo-500: #6366f1; --indigo-600: #4f46e5; --indigo-700: #4338ca; --ink: #1a1a2e; --muted: #6b7280; --border: #e6e8ff; --border-strong: #c7caff; }
+  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #f7f8ff; color: var(--ink); min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 16px; }
+  .card { background: #ffffff; border-radius: 24px; border: 1px solid var(--border); width: 100%; max-width: 440px; padding: 28px 22px; }
   .brand { text-align: center; margin-bottom: 20px; }
-  .brand img { width: 72px; height: 72px; border-radius: 50%; display: block; margin: 0 auto 10px; box-shadow: 0 8px 20px rgba(79,70,229,0.25); }
+  .brand img { width: 72px; height: 72px; border-radius: 50%; display: block; margin: 0 auto 10px; }
   .brand h1 { font-size: 17px; font-weight: 800; letter-spacing: 0.01em; }
   .brand p { font-size: 12.5px; color: var(--muted); margin-top: 2px; }
   .chip { display: inline-flex; align-items: center; gap: 6px; background: #eef0ff; color: var(--indigo-700); font-size: 12px; font-weight: 700; padding: 6px 12px; border-radius: 999px; margin-bottom: 14px; }
-  .event-info { background: linear-gradient(135deg, #eef0ff, #f4f0ff); border: 1px solid #e0e3ff; border-radius: 16px; padding: 14px 16px; margin-bottom: 18px; }
+  .event-info { background: #f7f8ff; border: 1px solid var(--border); border-radius: 16px; padding: 14px 16px; margin-bottom: 18px; }
   .event-info h2 { font-size: 16px; font-weight: 800; line-height: 1.3; }
   .event-info .date { font-size: 13px; color: var(--indigo-600); font-weight: 700; margin-top: 4px; }
-  .dropzone { border: 2px dashed #c7caff; border-radius: 18px; background: #fafbff; padding: 26px 14px; text-align: center; cursor: pointer; transition: all 0.2s ease; }
-  .dropzone.dragging { border-color: var(--indigo-500); background: #eef0ff; }
-  .dropzone .icon { font-size: 34px; }
-  .dropzone h3 { font-size: 15px; margin-top: 6px; font-weight: 700; }
-  .dropzone p { font-size: 12px; color: var(--muted); margin-top: 3px; }
-  .dropzone input { display: none; }
   .previews { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-top: 16px; }
-  .preview { position: relative; aspect-ratio: 1; border-radius: 14px; overflow: hidden; background: #f1f1f5; box-shadow: 0 4px 12px rgba(0,0,0,0.08); }
+  .preview { position: relative; aspect-ratio: 1; border-radius: 14px; overflow: hidden; background: #f1f1f5; border: 1px solid var(--border); }
   .preview img { width: 100%; height: 100%; object-fit: cover; }
   .preview .rm { position: absolute; top: 4px; right: 4px; width: 24px; height: 24px; border: none; border-radius: 50%; background: rgba(0,0,0,0.65); color: #fff; font-size: 12px; cursor: pointer; display: flex; align-items: center; justify-content: center; }
   .preview.done { outline: 3px solid #10b981; outline-offset: -2px; }
-  .btn { width: 100%; margin-top: 18px; padding: 15px; border: none; border-radius: 16px; font-size: 15px; font-weight: 800; cursor: pointer; background: linear-gradient(135deg, var(--indigo-500), var(--indigo-600)); color: #fff; box-shadow: 0 10px 24px rgba(79,70,229,0.35); transition: transform 0.15s ease, opacity 0.2s ease; }
+  .btn { width: 100%; margin-top: 18px; padding: 15px; border: none; border-radius: 16px; font-size: 15px; font-weight: 800; cursor: pointer; background: var(--indigo-500); color: #fff; transition: background 0.15s ease, transform 0.15s ease, opacity 0.2s ease; }
+  .btn:hover { background: var(--indigo-600); }
   .btn:active { transform: scale(0.98); }
-  .btn:disabled { opacity: 0.5; cursor: not-allowed; box-shadow: none; }
+  .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+  #dropzone { display: block; width: 100%; }
   .status { margin-top: 14px; font-size: 13px; font-weight: 600; text-align: center; min-height: 20px; }
   .status.ok { color: #059669; }
   .status.err { color: #dc2626; }
@@ -43,14 +39,15 @@
   .success-screen h2 { font-size: 20px; font-weight: 800; margin-top: 10px; }
   .success-screen p { font-size: 13.5px; color: var(--muted); margin-top: 8px; line-height: 1.5; }
   .success-gallery { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 16px; text-align: left; }
-  .success-gallery .thumb { position: relative; aspect-ratio: 1; border-radius: 12px; overflow: hidden; background: #f1f1f5; box-shadow: 0 3px 10px rgba(0,0,0,0.08); cursor: pointer; }
+  .success-gallery .thumb { position: relative; aspect-ratio: 1; border-radius: 12px; overflow: hidden; background: #f1f1f5; border: 1px solid var(--border); cursor: pointer; }
   .success-gallery .thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
   .success-gallery .thumb .zoom { position: absolute; inset: 0; background: rgba(0,0,0,0.35); color: #fff; display: flex; align-items: center; justify-content: center; font-size: 22px; opacity: 0; transition: opacity 0.2s ease; }
   .success-gallery .thumb:active .zoom { opacity: 1; }
-  .btn-ghost { background: #fff; color: var(--indigo-600); border: 2px solid var(--indigo-500); box-shadow: none; }
+  .btn-ghost { background: #fff; color: var(--indigo-600); border: 2px solid var(--indigo-500); }
+  .btn-ghost:hover { background: #eef0ff; color: var(--indigo-700); }
   .gallery-page { width: 100%; max-width: 960px; margin: 0 auto; padding: 8px 0 24px; }
-  .gallery-card { background: #fff; border: 1px solid #e6e8ff; border-radius: 24px; box-shadow: 0 20px 60px rgba(79, 70, 229, 0.15); padding: 24px 20px; }
-  .thankyou { text-align: center; padding: 6px 0 20px; border-bottom: 1px solid #eef0ff; margin-bottom: 20px; }
+  .gallery-card { background: #fff; border: 1px solid var(--border); border-radius: 24px; padding: 24px 20px; }
+  .thankyou { text-align: center; padding: 6px 0 20px; border-bottom: 1px solid var(--border); margin-bottom: 20px; }
   .thankyou .big { font-size: 50px; }
   .thankyou h2 { font-size: 20px; font-weight: 800; margin-top: 8px; }
   .thankyou p { font-size: 13.5px; color: var(--muted); margin-top: 6px; line-height: 1.5; }
@@ -59,10 +56,10 @@
   .gallery-title h3 { font-size: 16px; font-weight: 800; color: var(--indigo-700); }
   .gallery-filters { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
   .gallery-filters label { display: block; font-size: 11.5px; font-weight: 800; color: var(--indigo-700); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 6px; }
-  .gallery-filters select { width: 100%; padding: 11px 12px; border-radius: 12px; border: 1px solid #c7caff; background: #fafbff; font-size: 13.5px; font-weight: 600; color: var(--ink); }
+  .gallery-filters select { width: 100%; padding: 11px 12px; border-radius: 12px; border: 1px solid var(--border-strong); background: #fafbff; font-size: 13.5px; font-weight: 600; color: var(--ink); }
   .gallery-summary { margin-top: 12px; font-size: 12px; font-weight: 700; color: var(--indigo-600); }
   .gallery-groups { margin-top: 18px; display: flex; flex-direction: column; gap: 12px; }
-  .gallery-group { border: 1px solid #e6e8ff; border-radius: 16px; overflow: hidden; background: #fff; }
+  .gallery-group { border: 1px solid var(--border); border-radius: 16px; overflow: hidden; background: #fff; }
   .gallery-group-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 12px 14px; cursor: pointer; }
   .gallery-group-head:hover { background: #fafbff; }
   .gallery-group-head .gl { display: flex; align-items: center; gap: 10px; min-width: 0; }
@@ -72,20 +69,20 @@
   .gallery-group-body { padding: 0 12px 12px; }
   .gallery-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
   @media (min-width: 640px) { .gallery-grid { grid-template-columns: repeat(4, 1fr); } }
-  .gthumb { position: relative; aspect-ratio: 1; border-radius: 12px; overflow: hidden; background: #f1f1f5; cursor: pointer; box-shadow: 0 3px 10px rgba(0,0,0,0.08); }
+  .gthumb { position: relative; aspect-ratio: 1; border-radius: 12px; overflow: hidden; background: #f1f1f5; cursor: pointer; border: 1px solid var(--border); }
   .gthumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
   .gthumb .ovl { position: absolute; bottom: 0; left: 0; right: 0; padding: 5px 8px; background: rgba(0,0,0,0.5); color: #fff; font-size: 9.5px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; opacity: 0; transition: opacity 0.2s ease; }
   .gthumb:hover .ovl { opacity: 1; }
   .gthumb.cover .ovl { opacity: 1; color: #fff; }
   .gthumb-empty { aspect-ratio: 1; border-radius: 12px; background: #f1f1f5; display: flex; align-items: center; justify-content: center; font-size: 12px; color: #9ca3af; }
   .gallery-actions { margin-top: 20px; display: flex; flex-direction: column; gap: 10px; }
-  .gallery-empty { text-align: center; padding: 32px 12px; color: var(--muted); font-size: 13.5px; border: 1px dashed #e0e3ff; border-radius: 16px; background: #fafbff; }
+  .gallery-empty { text-align: center; padding: 32px 12px; color: var(--muted); font-size: 13.5px; border: 1px dashed var(--border); border-radius: 16px; background: #fafbff; }
   .bye-screen { text-align: center; padding: 30px 12px; }
   .bye-screen .big { font-size: 50px; }
   .bye-screen h2 { font-size: 20px; font-weight: 800; margin-top: 10px; }
   .bye-screen p { font-size: 13.5px; color: var(--muted); margin-top: 8px; line-height: 1.5; }
   .lightbox { position: fixed; inset: 0; z-index: 100; background: rgba(0,0,0,0.92); display: flex; align-items: center; justify-content: center; padding: 16px; }
-  .lightbox img { max-width: 100%; max-height: 100%; border-radius: 14px; box-shadow: 0 12px 40px rgba(0,0,0,0.6); }
+  .lightbox img { max-width: 100%; max-height: 100%; border-radius: 14px; }
   .lightbox-close { position: absolute; top: 16px; right: 16px; width: 40px; height: 40px; border: none; border-radius: 50%; background: rgba(255,255,255,0.14); color: #fff; font-size: 18px; cursor: pointer; display: flex; align-items: center; justify-content: center; }
 </style>
 </head>
@@ -116,12 +113,8 @@
         <h2 id="eventTitle">—</h2>
         <div class="date" id="eventDate">—</div>
       </div>
-      <div class="dropzone" id="dropzone">
-        <div class="icon">🖼️</div>
-        <h3>Tap to choose photos</h3>
-        <p>Select one or multiple photos from your gallery</p>
-        <input type="file" id="fileInput" accept="image/*" multiple />
-      </div>
+      <button type="button" class="btn" id="dropzone">📸 Choose Photos</button>
+      <input type="file" id="fileInput" accept="image/*" multiple style="display:none;" />
       <div class="previews" id="previews"></div>
       <button class="btn hidden" id="uploadBtn"><span id="uploadBtnLabel">Upload Photos</span></button>
       <div class="status" id="status"></div>
@@ -129,17 +122,13 @@
 
     <div id="viewSuccess" class="hidden gallery-page">
       <div class="gallery-card">
-        <!-- Thank You -->
         <div class="thankyou">
           <div class="big">🎉</div>
           <h2>Thank you!</h2>
-          <p id="successText">Na-upload na ang iyong mga photo. Makikita sila rito — at sa church gallery.</p>
         </div>
 
-        <!-- Controls -->
         <div class="gallery-controls">
           <div class="gallery-title">
-            <span>📸</span>
             <h3>All Photos</h3>
           </div>
 
@@ -157,10 +146,8 @@
           <div class="gallery-summary" id="gallerySummary"></div>
         </div>
 
-        <!-- Groups -->
         <div id="galleryGroups" class="gallery-groups"></div>
 
-        <!-- Actions -->
         <div class="gallery-actions">
           <button class="btn" id="uploadMoreBtn">Upload More Photos</button>
           <button class="btn btn-ghost" id="exitBtn">Exit</button>
@@ -173,19 +160,12 @@
       <button id="lightboxClose" class="lightbox-close" type="button" aria-label="Close">✕</button>
     </div>
 
-    <div id="viewBye" class="hidden bye-screen">
-      <div class="big">🙏</div>
-      <h2>Salamat po!</h2>
-      <p>Tapos na ang pag-upload. Maaari mo nang isara ang page na ito.</p>
-    </div>
-
     <div id="viewPicker" class="hidden">
       <div class="brand">
         <img src="/image.png" alt="Gospel Fellowship Church" />
         <h1>Gospel Fellowship Church</h1>
-        <p>Ilagay ang date ng photo bago mag-upload</p>
       </div>
-      <div style="text-align:center;"><span class="chip">📸 All Photos Upload</span></div>
+      <div style="text-align:center;"><span class="chip">All Photos Upload</span></div>
       <div style="display:flex; flex-direction:column; gap:14px;">
         <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
           <div>
@@ -197,12 +177,8 @@
             <select id="pickerYear" style="width:100%; padding:13px; border-radius:14px; border:1px solid #c7caff; font-size:14px; font-weight:600; color:var(--ink); background:#fafbff;"></select>
           </div>
         </div>
-        <div>
-          <label style="font-size:12px; font-weight:800; color:var(--indigo-700); margin-bottom:6px; display:block;">Date label <span style="font-weight:500; color:var(--muted);">(optional — e.g. "June 10", "Sunday Service")</span></label>
-          <input id="pickerLabel" type="text" placeholder="June 10" style="width:100%; padding:13px; border-radius:14px; border:1px solid #c7caff; font-size:14px; font-weight:600; color:var(--ink); background:#fafbff;" />
-        </div>
       </div>
-      <button class="btn" id="pickerGo">Continue to Upload ➜</button>
+      <button class="btn" id="pickerGo">Upload</button>
       <div class="status" id="pickerStatus"></div>
     </div>
   </div>

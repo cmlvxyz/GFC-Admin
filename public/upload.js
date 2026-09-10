@@ -1,9 +1,6 @@
 (function () {
   var params = new URLSearchParams(location.search);
   var eventId = (params.get('event') || '').trim();
-  // The QR code now uses the ACTUAL selected date value (e.g. "August 30")
-  // as the date parameter. Old QR codes used a numeric dateEntries index
-  // (e.g. "1"). Keep supporting the numeric format for old QR codes.
   var dateParam = (params.get('date') || '').trim();
   var isNumericDate = /^\d+$/.test(dateParam);
   var dateIndex = dateParam === '' ? 0 : (isNumericDate ? (parseInt(dateParam, 10) || 0) : -1);
@@ -54,6 +51,12 @@
   var allYear = '';
   var allDate = '';
 
+  // ✅ FIX: Always set the dropzone button label so it never renders empty.
+  if (dropzone) {
+    dropzone.textContent = '📸 Choose Photos';
+    dropzone.setAttribute('aria-label', 'Choose photos to upload');
+  }
+
   function show(view) {
     viewLoading.classList.add('hidden');
     viewError.classList.add('hidden');
@@ -69,14 +72,12 @@
     status.className = 'status' + (type ? ' ' + type : '');
   }
 
-  // 🔥 OPTIMIZED: Faster resize with lower quality
   function resizeImage(file) {
     return new Promise(function (resolve, reject) {
       var img = new Image();
       var reader = new FileReader();
       reader.onload = function (e) {
         img.onload = function () {
-          // Reduced from 1600 to 1200 for faster upload
           var MAX = 1200;
           var scale = Math.min(1, MAX / Math.max(img.width, img.height));
           var w = Math.round(img.width * scale);
@@ -88,7 +89,6 @@
           ctx.fillStyle = '#ffffff';
           ctx.fillRect(0, 0, w, h);
           ctx.drawImage(img, 0, 0, w, h);
-          // Reduced quality from 0.85 to 0.75 for smaller file
           resolve(canvas.toDataURL('image/jpeg', 0.75));
         };
         img.onerror = reject;
@@ -136,7 +136,6 @@
         remaining--;
         if (remaining === 0) {
           setStatus(photos.length + ' photo' + (photos.length > 1 ? 's' : '') + ' ready');
-          // Auto-show upload button
           uploadBtn.classList.remove('hidden');
         }
       }).catch(function () {
@@ -147,20 +146,17 @@
     fileInput.value = '';
   }
 
-  // Uploads run ONE AT A TIME (never in parallel). The server saves the
-  // whole collection per request, so parallel uploads overwrite each other
-  // and photos get silently LOST. Sequential = each request sees fresh data.
   async function uploadAll() {
     if (uploading || photos.length === 0) return;
     uploading = true;
     uploadBtn.disabled = true;
     uploadBtnLabel.textContent = 'Uploading...';
     uploadBtn.classList.add('progress');
-    
+
     var total = photos.length;
     var ok = 0;
     var failed = [];
-    
+
     for (var i = 0; i < total; i++) {
       var p = photos[i];
       setStatus('📤 Uploading ' + (i + 1) + ' of ' + total + '...');
@@ -186,35 +182,27 @@
         failed.push({ index: i, error: err });
       }
     }
-    
+
     uploading = false;
     uploadBtn.disabled = false;
-    
+
     if (ok === total) {
-      // 🔥 ALL SUCCESS - Show the gallery with the uploaded photos
       successText.textContent = '✅ ' + (total === 1 ? 'Na-upload na ang iyong photo.' : total + ' photos ang na-upload. Salamat po!');
       showSuccessWithGallery();
     } else if (ok > 0) {
-      // PARTIAL SUCCESS - still show the successfully uploaded ones
       successText.textContent = '⚠️ ' + ok + ' of ' + total + ' photos ang na-upload. ' + failed.length + ' ang hindi na-upload.';
       showSuccessWithGallery();
     } else {
-      // ALL FAILED
       uploadBtnLabel.textContent = 'Upload Photos';
       uploadBtn.classList.remove('progress');
       setStatus('❌ Upload failed. Please try again.', 'err');
     }
   }
 
-  // 🔥 NEW: After upload - show the All Photos gallery (filters + grouped
-  // albums, no delete button) so the user can browse the church's photos.
-  // The screen stays until the user clicks "Upload More Photos" or "Exit".
-  var galleryAlbums = []; // cached albums from /api/content
-  var galleryEvents = []; // cached events from /api/content (photos live there too)
+  var galleryAlbums = [];
+  var galleryEvents = [];
   var galleryState = { month: '', year: '', expanded: null };
 
-  // Replicate the admin's photo URL resolution (SITE_BASE) so path-based
-  // photos (e.g. seed images) load the same way they do in the admin.
   function resolvePhotoUrlPublic(u) {
     if (u.indexOf('data:') === 0 || /^https?:\/\//i.test(u)) return u;
     var host = (location.hostname || '');
@@ -223,7 +211,6 @@
     return base + (u.indexOf('/') === 0 ? '' : '/') + u;
   }
 
-  // Replicate the admin's parseEntryDate: "June 14" -> month = 5, year = current.
   function parseEntryDatePublic(value) {
     if (!value) return null;
     var hasYear = /\d{4}/.test(value);
@@ -234,7 +221,6 @@
 
   function showSuccessWithGallery() {
     show(viewSuccess);
-    // Always re-fetch so newly uploaded photos appear immediately.
     galleryAlbums = [];
     galleryEvents = [];
     fetch('/api/content')
@@ -253,8 +239,6 @@
 
   function galleryItems() {
     var items = [];
-    // Dedupe by month + year + stored content so the same photo saved in
-    // BOTH an event and a bucket is only shown ONCE (same as the admin).
     var seen = {};
     function push(url, m, y, date) {
       var stored = String(url);
@@ -263,7 +247,6 @@
       seen[key] = true;
       items.push({ url: resolvePhotoUrlPublic(stored), month: m, year: y, date: date });
     }
-    // Photos from events (same as the admin's All Photos page)
     galleryEvents.forEach(function (ev) {
       if (!Array.isArray(ev.dateEntries)) return;
       ev.dateEntries.forEach(function (entry) {
@@ -276,7 +259,6 @@
         });
       });
     });
-    // Photos from the All Photos album
     galleryAlbums.forEach(function (album) {
       var m = typeof album.month === 'number' ? album.month : -1;
       var y = typeof album.year === 'number' ? album.year : -1;
@@ -292,7 +274,6 @@
     var items = galleryItems();
     var total = items.length;
 
-    // Month select
     galleryMonth.innerHTML = '<option value="">All Months (' + total + ' photos)</option>';
     MONTH_NAMES.forEach(function (name, idx) {
       var c = items.filter(function (p) { return p.month === idx; }).length;
@@ -300,7 +281,6 @@
     });
     galleryMonth.value = String(galleryState.month === '' ? '' : galleryState.month);
 
-    // Year select
     galleryYear.innerHTML = '<option value="">All Years</option>';
     YEAR_RANGE.forEach(function (year) {
       var c = items.filter(function (p) { return p.year === year; }).length;
@@ -308,7 +288,6 @@
     });
     galleryYear.value = String(galleryState.year === '' ? '' : galleryState.year);
 
-    // Summary line
     var filtered = items.filter(function (p) {
       return (galleryState.month === '' || p.month === galleryState.month) &&
              (galleryState.year === '' || p.year === galleryState.year);
@@ -325,7 +304,6 @@
     }
     gallerySummary.textContent = summary;
 
-    // Group by month/year, newest first
     var order = [];
     var byKey = {};
     filtered.forEach(function (p) {
@@ -354,7 +332,6 @@
       return;
     }
 
-    // Default to expanding the newest group so the user sees their photos right away
     if (galleryState.expanded === null || !byKey[galleryState.expanded]) {
       galleryState.expanded = order[0].key;
     }
@@ -400,7 +377,6 @@
           }));
         });
       } else {
-        // Collapsed: show one cover tile + "Click to expand"
         if (group.photos.length > 0) {
           grid.appendChild(makeGalleryThumb(group.photos[0], count + ' photo(s) • Click to expand', true, function () {
             galleryState.expanded = group.key;
@@ -472,10 +448,6 @@
     renderSuccessGallery();
   });
 
-  // 🔥 NEW: Exit - leave the upload page completely.
-  // 1) Return to the page the user was on before scanning the QR / opening link
-  // 2) Fall back to the browser's previous page
-  // 3) Otherwise show a simple goodbye (never re-enter the upload/picker views)
   function exitToPreviousPage() {
     var ref = (document.referrer || '').trim();
     if (ref && /^https?:/i.test(ref)) {
@@ -491,47 +463,23 @@
 
   exitBtn.addEventListener('click', exitToPreviousPage);
 
-  // 🔥 NEW: Reset and go back to upload form
   function resetAndGoBack() {
-    // Clear photos
     photos = [];
     renderPreviews();
-    
-    // Reset upload button
     uploadBtn.classList.remove('progress');
     uploadBtn.disabled = false;
     uploadBtnLabel.textContent = 'Upload Photos';
     uploadBtn.classList.add('hidden');
-    
-    // Clear status
     setStatus('');
-    
-    // Go back to upload view
     show(viewUpload);
-    
-    // Reset file input
     fileInput.value = '';
   }
 
-  // Dropzone events
+  // Dropzone is a button now — no drag-and-drop handlers.
   dropzone.addEventListener('click', function () { fileInput.click(); });
   fileInput.addEventListener('change', function (e) { addFiles(e.target.files); });
-  ['dragenter', 'dragover'].forEach(function (ev) { 
-    dropzone.addEventListener(ev, function (e) { 
-      e.preventDefault(); 
-      dropzone.classList.add('dragging'); 
-    }); 
-  });
-  ['dragleave', 'drop'].forEach(function (ev) { 
-    dropzone.addEventListener(ev, function (e) { 
-      e.preventDefault(); 
-      dropzone.classList.remove('dragging'); 
-    }); 
-  });
-  dropzone.addEventListener('drop', function (e) { addFiles(e.dataTransfer.files); });
   uploadBtn.addEventListener('click', uploadAll);
-  
-  // 🔥 FIXED: Upload More button - reset and go back (gallery stays for the session)
+
   uploadMoreBtn.addEventListener('click', function () {
     resetAndGoBack();
   });
@@ -545,7 +493,7 @@
       MONTH_NAMES.map(function (m, i) { return '<option value="' + i + '">' + m + '</option>'; }).join('');
     pickerYear.innerHTML = '<option value="">-- Pumili ng year --</option>' +
       YEAR_RANGE.map(function (y) { return '<option value="' + y + '"' + (y === currentYear ? ' selected' : '') + '>' + y + '</option>'; }).join('');
-    pickerLabel.value = '';
+    if (pickerLabel) pickerLabel.value = '';
     pickerMonth.focus();
   }
 
@@ -559,7 +507,8 @@
     }
     allMonth = parseInt(m, 10);
     allYear = parseInt(y, 10);
-    allDate = (pickerLabel.value || '').trim() || MONTH_NAMES[allMonth] + ' ' + allYear;
+    var labelValue = pickerLabel ? (pickerLabel.value || '').trim() : '';
+    allDate = labelValue || (MONTH_NAMES[allMonth] + ' ' + allYear);
 
     eventTitle.textContent = MONTH_NAMES[allMonth] + ' ' + allYear;
     eventDate.textContent = allDate;
@@ -579,10 +528,6 @@
       if (dateIndex >= 0) {
         entry = entries[dateIndex] || null;
       } else if (dateParam) {
-        // Match the ACTUAL selected date string against the date entries
-        // (single source of truth). Never fall back to an arbitrary index.
-        // Matching is whitespace-insensitive so the QR value "August30"
-        // matches the entry date "August 30".
         for (var j = 0; j < entries.length; j++) {
           if (String(entries[j].date).replace(/\s+/g, '') === dateParam.replace(/\s+/g, '')) {
             dateIndex = j;

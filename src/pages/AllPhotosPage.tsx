@@ -238,7 +238,7 @@ export const AllPhotosPage: React.FC<AllPhotosPageProps> = ({
       const existing = byContent.get(key);
 
       if (existing) {
-        existing.occurrences.push(occurrence);
+        (existing.occurrences ??= []).push(occurrence);
         return;
       }
 
