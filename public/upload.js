@@ -457,7 +457,15 @@
       history.back();
       return;
     }
-    if (viewBye) show(viewBye);
+    try {
+      if (window.opener) {
+        window.close();
+        return;
+      }
+    } catch (e) {}
+    // Walang referrer, history, o opener (e.g. direct open mula sa QR scan):
+    // lumabas na sa upload page papunta sa admin home.
+    location.href = '/';
   }
 
   exitBtn.addEventListener('click', exitToPreviousPage);
