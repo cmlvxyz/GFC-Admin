@@ -181,7 +181,7 @@ export const AllPhotosPage: React.FC<AllPhotosPageProps> = ({
     useState<number | null>(null);
 
   const [selectedPhoto, setSelectedPhoto] =
-    useState<string | null>(null);
+    useState<PhotoItem | null>(null);
 
   const [qrContainerEl, setQrContainerEl] =
     useState<HTMLDivElement | null>(null);
@@ -203,92 +203,60 @@ export const AllPhotosPage: React.FC<AllPhotosPageProps> = ({
   const [deletedPhotoKeys, setDeletedPhotoKeys] =
     useState<Set<string>>(new Set());
 
-  // Generate a stable key for optimistic deletion
-  /*
-   * Photo identity = year + month + stored content.
-   * The same photo saved in BOTH an event and a bucket is ONE display
-   * entry, so a "deleted" key hides every copy of it at once and the
-   * photo can never "come back" from the other location.
-   */
+  // Generate a stable key for optimistic deletion.
+  // The key is location-specific so two copies of the same image
+  // remain independent delete targets.
   const getPhotoKey = (photo: PhotoItem): string => {
     return [
+      photo.source,
       photo.year ?? '',
       photo.month ?? '',
+      photo.eventId ?? '',
+      photo.dateEntryIndex ?? '',
+      photo.photoEntryIndex ?? '',
+      photo.albumIndex ?? '',
+      photo.photoIndex ?? '',
       String(photo.rawUrl ?? '').trim()
     ].join('|');
   };
 
-  // Build the deduped all-photos list. Each unique photo (by content,
-  // within its month/year) appears once; all its locations are tracked in
-  // `occurrences` so deletion removes every copy at the same time.
+  // Build one display item per stored occurrence.
+  // IMPORTANT: Events and All Photos are intentionally NOT deduped here.
+  // Each item keeps its exact database location so deleting one occurrence
+  // can never delete or hide another occurrence of the same image.
   const allPhotosList = useMemo<PhotoItem[]>(() => {
     const list: PhotoItem[] = [];
-    const byContent = new Map<string, PhotoItem>();
 
-    const add = (
-      item: PhotoItem,
-      occurrence: PhotoOccurrence
-    ) => {
-      const key = [
-        item.year ?? '',
-        item.month ?? '',
-        String(item.rawUrl ?? '').trim()
-      ].join('|');
-
-      const existing = byContent.get(key);
-
-      if (existing) {
-        (existing.occurrences ??= []).push(occurrence);
-        return;
-      }
-
-      item.occurrences = [occurrence];
-      byContent.set(key, item);
-      list.push(item);
+    const add = (item: PhotoItem, occurrence: PhotoOccurrence) => {
+      list.push({
+        ...item,
+        occurrences: [occurrence],
+        source: occurrence.source,
+        rawUrl: occurrence.rawUrl,
+        albumIndex: occurrence.albumIndex,
+        photoIndex: occurrence.photoIndex,
+        eventId: occurrence.eventId,
+        dateEntryIndex: occurrence.dateEntryIndex,
+        photoEntryIndex: occurrence.photoEntryIndex
+      });
     };
 
     // Photos from events
     for (const ev of events) {
-      if (
-        !ev.dateEntries ||
-        ev.dateEntries.length === 0
-      ) {
-        continue;
-      }
+      if (!ev.dateEntries || ev.dateEntries.length === 0) continue;
 
-      for (
-        let entryIndex = 0;
-        entryIndex < ev.dateEntries.length;
-        entryIndex++
-      ) {
+      for (let entryIndex = 0; entryIndex < ev.dateEntries.length; entryIndex++) {
         const entry = ev.dateEntries[entryIndex];
-
         const parsed = parseEntryDate(entry.date);
+        const month = parsed ? parsed.month : -1;
+        const year = parsed ? parsed.year : -1;
 
-        const month = parsed
-          ? parsed.month
-          : -1;
-
-        const year = parsed
-          ? parsed.year
-          : -1;
-
-        for (
-          let urlIndex = 0;
-          urlIndex < (entry.photos || []).length;
-          urlIndex++
-        ) {
+        for (let urlIndex = 0; urlIndex < (entry.photos || []).length; urlIndex++) {
           const url = entry.photos[urlIndex];
-
           add(
             {
-              // URL used by the browser
               url: resolvePhotoUrl(url),
-
-              // IMPORTANT:
-              // Keep original database value for DELETE
               rawUrl: url,
-
               month,
               year,
               eventTitle: ev.title,
@@ -308,42 +276,19 @@ export const AllPhotosPage: React.FC<AllPhotosPageProps> = ({
     }
 
     // Photos from All Photos album
-    for (
-      let albumIndex = 0;
-      albumIndex < allPhotos.length;
-      albumIndex++
-    ) {
+    for (let albumIndex = 0; albumIndex < allPhotos.length; albumIndex++) {
       const album = allPhotos[albumIndex];
+      if (!Array.isArray(album?.photos)) continue;
 
-      if (!Array.isArray(album?.photos)) {
-        continue;
-      }
+      const month = typeof album.month === 'number' ? album.month : -1;
+      const year = typeof album.year === 'number' ? album.year : -1;
 
-      const month =
-        typeof album.month === 'number'
-          ? album.month
-          : -1;
-
-      const year =
-        typeof album.year === 'number'
-          ? album.year
-          : -1;
-
-      for (
-        let photoIndex = 0;
-        photoIndex < album.photos.length;
-        photoIndex++
-      ) {
+      for (let photoIndex = 0; photoIndex < album.photos.length; photoIndex++) {
         const rawUrl = album.photos[photoIndex];
-
         add(
           {
-            // URL used by browser
             url: resolvePhotoUrl(rawUrl),
-
-            // Original database value
             rawUrl,
-
             month,
             year,
             eventTitle: 'All Photos',
@@ -363,13 +308,11 @@ export const AllPhotosPage: React.FC<AllPhotosPageProps> = ({
     return list;
   }, [events, allPhotos]);
 
-  // Group photos by month/year for display
+  // Group photos by month/year for display.
   const grouped = useMemo(() => {
     let filtered = allPhotosList;
 
-    /*
-     * Immediately hide photos that were successfully deleted.
-     */
+    // Immediately hide photos that were successfully deleted.
     filtered = filtered.filter(
       photo => !deletedPhotoKeys.has(getPhotoKey(photo))
     );
@@ -447,12 +390,11 @@ export const AllPhotosPage: React.FC<AllPhotosPageProps> = ({
    * DELETE PHOTO - SERVER-CONFIRMED VERSION
    *
    * - No confirmation
-   * - Per-source endpoint for EVERY stored copy of this photo
+   * - Deletes ONLY the exact stored occurrence represented by this card
    * - Uses the ORIGINAL database URL (rawUrl), never the resolved URL
    * - Only hides the photo AFTER the server confirms the delete
-   * - On error: photo stays visible + error message (deletedPhotoKeys
-   *   is only ever set on success, so nothing flickers back)
-   * - Refreshes parent data after a successful delete
+   * - On error: photo stays visible + error message
+   * - Refreshes the correct parent data source after success
    */
   const deletePhoto = async (
     photo: PhotoItem,
@@ -473,15 +415,7 @@ export const AllPhotosPage: React.FC<AllPhotosPageProps> = ({
     });
 
     try {
-      /*
-      * IMPORTANT:
-      * Delete ONLY the exact occurrence represented by this
-      * displayed photo.
-      *
-      * Do NOT loop through photo.occurrences.
-      * That was causing multiple stored copies to be deleted.
-      */
-
+      // Delete ONLY the exact occurrence represented by this displayed photo.
       if (photo.source === 'allPhotos') {
         if (
           photo.albumIndex === undefined ||
@@ -554,52 +488,34 @@ export const AllPhotosPage: React.FC<AllPhotosPageProps> = ({
         }
       }
 
-      /*
-      * SERVER CONFIRMED
-      */
-
+      // Server confirmed the deletion.
       setSelectedPhoto(null);
 
-      /*
-      * Temporary UI guard.
-      * This prevents the deleted image from flashing back
-      * while the parent refreshes.
-      */
+      // Temporary UI guard while parent data refreshes.
       setDeletedPhotoKeys(prev => {
         const next = new Set(prev);
         next.add(photoKey);
         return next;
       });
 
-      /*
-      * Refresh the correct source.
-      */
+      // Refresh only the source that was actually changed.
       if (photo.source === 'allPhotos') {
-        if (onAllPhotosUpdated) {
-          onAllPhotosUpdated();
-        }
+        onAllPhotosUpdated?.();
       } else {
-        if (onEventsUpdated) {
-          onEventsUpdated();
-        }
+        onEventsUpdated?.();
       }
-
     } catch (error) {
       console.error(
         'Error deleting photo:',
         error
       );
 
-      /*
-      * DO NOT add to deletedPhotoKeys when deletion fails.
-      * The photo remains visible so it can be retried.
-      */
+      // Do not add to deletedPhotoKeys when deletion fails.
       onError?.(
         error instanceof Error
           ? error.message
           : 'Failed to delete the photo.'
       );
-
     } finally {
       setDeletingKeys(prev => {
         const next = new Set(prev);
@@ -619,17 +535,17 @@ export const AllPhotosPage: React.FC<AllPhotosPageProps> = ({
 
     qrContainerEl.innerHTML = '';
 
-    // Build URL with selected month and year
+    // Build URL with selected month and year.
     let qrUrl = `${GFC_BASE}/upload`;
-    
+
     // Add month parameter if selected.
     // NOTE: Use calendar month (1-12), NOT the zero-based index,
     // so February = 2 and August = 8 in the URL.
     if (selectedMonth !== '') {
       qrUrl += `?month=${selectedMonth + 1}`;
     }
-    
-    // Add year parameter if selected
+
+    // Add year parameter if selected.
     if (selectedYear !== '') {
       qrUrl += selectedMonth !== '' ? `&year=${selectedYear}` : `?year=${selectedYear}`;
     }
@@ -703,10 +619,8 @@ export const AllPhotosPage: React.FC<AllPhotosPageProps> = ({
 
   return (
     <div className="space-y-6">
-
       {/* Header */}
       <div className="bg-white dark:bg-[#14141f]/80 backdrop-blur-sm p-6 rounded-2xl border border-gray-200 dark:border-white/5 shadow-sm">
-
         <h3 className="text-sm font-bold text-black dark:text-white mb-2 flex items-center gap-2">
           <Images className="w-5 h-5 text-indigo-500" />
           <span>All Photos</span>
@@ -718,25 +632,18 @@ export const AllPhotosPage: React.FC<AllPhotosPageProps> = ({
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-[1fr_320px] gap-6 items-start">
-
         <div className="space-y-6">
-
           {/* Controls */}
           <div className="bg-white dark:bg-[#14141f]/80 backdrop-blur-sm p-6 rounded-2xl border border-gray-200 dark:border-white/5 shadow-sm">
-
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-
               {/* Month */}
               <div>
-
                 <label className="block text-xs font-bold text-gray-700 dark:text-[#A1A1A1] uppercase tracking-wider mb-2">
                   Select Month
                 </label>
 
                 <div className="flex items-center gap-2">
-
                   <CalendarDays className="w-4 h-4 text-indigo-400 flex-shrink-0" />
-
                   <select
                     value={selectedMonth}
                     onChange={(e) => {
@@ -745,15 +652,11 @@ export const AllPhotosPage: React.FC<AllPhotosPageProps> = ({
                           ? ''
                           : parseInt(e.target.value)
                       );
-
                       setExpandedMonth(null);
                     }}
                     className="w-full px-4 py-2.5 rounded-xl border border-gray-200 dark:border-white/10 bg-gray-50 dark:bg-black/30 text-black dark:text-white text-sm focus:border-indigo-400 dark:focus:border-indigo-400/50 focus:outline-hidden focus:ring-2 focus:ring-indigo-400/20 transition-all"
                   >
-                    <option value="">
-                      All Months
-                    </option>
-
+                    <option value="">All Months</option>
                     {MONTH_NAMES.map(
                       (name, idx) => (
                         <option
@@ -770,15 +673,12 @@ export const AllPhotosPage: React.FC<AllPhotosPageProps> = ({
 
               {/* Year */}
               <div>
-
                 <label className="block text-xs font-bold text-gray-700 dark:text-[#A1A1A1] uppercase tracking-wider mb-2">
                   Select Year
                 </label>
 
                 <div className="flex items-center gap-2">
-
                   <CalendarDays className="w-4 h-4 text-indigo-400 flex-shrink-0" />
-
                   <select
                     value={selectedYear}
                     onChange={(e) => {
@@ -794,10 +694,7 @@ export const AllPhotosPage: React.FC<AllPhotosPageProps> = ({
                     }}
                     className="w-full px-4 py-2.5 rounded-xl border border-gray-200 dark:border-white/10 bg-gray-50 dark:bg-black/30 text-black dark:text-white text-sm focus:border-indigo-400 dark:focus:border-indigo-400/50 focus:outline-hidden focus:ring-2 focus:ring-indigo-400/20 transition-all"
                   >
-                    <option value="">
-                      All Years
-                    </option>
-
+                    <option value="">All Years</option>
                     {YEAR_RANGE.map(year => (
                       <option
                         key={year}
@@ -807,49 +704,35 @@ export const AllPhotosPage: React.FC<AllPhotosPageProps> = ({
                       </option>
                     ))}
                   </select>
-
                 </div>
               </div>
-
             </div>
-
           </div>
 
           {/* Gallery */}
           <div className="space-y-4">
-
             {grouped.length === 0 ? (
-
               <div className="bg-white dark:bg-[#14141f]/80 backdrop-blur-sm p-10 rounded-2xl border border-gray-200 dark:border-white/5 shadow-sm text-center">
-
                 <Images className="w-10 h-10 text-gray-300 dark:text-gray-600 mx-auto mb-2" />
-
                 <p className="text-gray-500 dark:text-gray-400">
                   {selectedMonth === '' &&
                   selectedYear === ''
                     ? 'No photos found. Upload some photos using the QR code.'
                     : 'No photos found for the selected filters.'}
                 </p>
-
               </div>
-
             ) : (
-
               grouped.map(group => {
-
                 const isExpanded =
                   expandedMonth === group.key;
-
                 const allPhotosInGroup =
                   group.photos;
 
                 return (
-
                   <div
                     key={group.key}
                     className="bg-white dark:bg-[#14141f]/80 backdrop-blur-sm rounded-2xl border border-gray-200 dark:border-white/5 shadow-sm overflow-hidden transition-all"
                   >
-
                     {/* Month Header */}
                     <div
                       className="flex items-center justify-between p-3 cursor-pointer hover:bg-gray-50 dark:hover:bg-white/5 transition-all"
@@ -857,37 +740,27 @@ export const AllPhotosPage: React.FC<AllPhotosPageProps> = ({
                         toggleExpand(group.key)
                       }
                     >
-
                       <div className="flex items-center gap-3">
-
                         <h4 className="text-sm font-bold text-black dark:text-white">
                           {group.label}
                         </h4>
-
                       </div>
 
                       <div className="flex items-center gap-2">
-
                         {isExpanded ? (
                           <ChevronUp className="w-5 h-5 text-gray-400" />
                         ) : (
                           <ChevronDown className="w-5 h-5 text-gray-400" />
                         )}
-
                       </div>
-
                     </div>
 
                     {/* Thumbnail Grid */}
                     <div className="p-3 pt-0">
-
                       {isExpanded ? (
-
                         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
-
                           {allPhotosInGroup.map(
                             (photo, idx) => (
-
                               <div
                                 key={`${getPhotoKey(
                                   photo
@@ -895,12 +768,9 @@ export const AllPhotosPage: React.FC<AllPhotosPageProps> = ({
                                 className="group relative rounded-lg overflow-hidden shadow-sm hover:shadow-md transition-all aspect-square cursor-pointer hover:scale-[1.02]"
                                 title={`${photo.eventTitle} — ${photo.date}`}
                                 onClick={() =>
-                                  setSelectedPhoto(
-                                    photo.url
-                                  )
+                                  setSelectedPhoto(photo)
                                 }
                               >
-
                                 <img
                                   src={photo.url}
                                   alt={`${photo.eventTitle} - ${photo.date}`}
@@ -937,23 +807,16 @@ export const AllPhotosPage: React.FC<AllPhotosPageProps> = ({
                                     <Trash2 className="w-3.5 h-3.5" />
                                   )}
                                 </button>
-
                               </div>
-
                             )
                           )}
-
                         </div>
-
                       ) : (
-
                         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
-
                           {allPhotosInGroup
                             .slice(0, 1)
                             .map(
                               (photo, idx) => (
-
                                 <div
                                   key={`${getPhotoKey(
                                     photo
@@ -966,7 +829,6 @@ export const AllPhotosPage: React.FC<AllPhotosPageProps> = ({
                                     )
                                   }
                                 >
-
                                   <img
                                     src={photo.url}
                                     alt={`${group.label} cover`}
@@ -979,9 +841,7 @@ export const AllPhotosPage: React.FC<AllPhotosPageProps> = ({
                                         'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="100" height="100" viewBox="0 0 100 100"%3E%3Crect fill="%23ddd" width="100" height="100"/%3E%3Ctext x="50" y="50" text-anchor="middle" dy=".3em" font-family="sans-serif" font-size="12" fill="%23999"%3ENo image%3C/text%3E%3C/svg%3E';
                                     }}
                                   />
-
                                 </div>
-
                               )
                             )}
 
@@ -991,46 +851,32 @@ export const AllPhotosPage: React.FC<AllPhotosPageProps> = ({
                               No photos
                             </div>
                           )}
-
                         </div>
-
                       )}
-
                     </div>
-
                   </div>
-
                 );
               })
-
             )}
-
           </div>
-
         </div>
 
         {/* QR Card */}
         <div className="bg-white dark:bg-[#14141f]/80 backdrop-blur-sm p-6 rounded-2xl border border-gray-200 dark:border-white/5 shadow-sm lg:sticky lg:top-4">
-
           <div className="flex items-center gap-2 mb-3">
-
             <QrCode className="w-5 h-5 text-indigo-500" />
-
             <span className="text-sm font-bold text-black dark:text-white">
               Upload QR Code
             </span>
-
           </div>
 
           <div className="flex justify-center bg-gray-50 dark:bg-black/30 rounded-xl border border-gray-200 dark:border-white/10 p-4">
-
             <div
               ref={el =>
                 setQrContainerEl(el)
               }
               className="bg-white rounded-lg shadow-md"
             />
-
           </div>
 
           <a
@@ -1041,28 +887,23 @@ export const AllPhotosPage: React.FC<AllPhotosPageProps> = ({
           >
             {getUploadUrl()}
           </a>
-
         </div>
-
       </div>
 
       {/* Year Modal */}
       {yearModal !== null && (
-
         <div
           className="fixed inset-0 z-[60] bg-black/70 dark:bg-black/90 backdrop-blur-md flex items-center justify-center p-4"
           onClick={() =>
             setYearModal(null)
           }
         >
-
           <div
             className="bg-white dark:bg-[#1A1A1A] border border-gray-200 dark:border-white/10 text-black dark:text-[#F5F5F5] rounded-3xl max-w-lg w-full p-6 space-y-4 shadow-2xl relative"
             onClick={e =>
               e.stopPropagation()
             }
           >
-
             <button
               onClick={() =>
                 setYearModal(null)
@@ -1074,35 +915,27 @@ export const AllPhotosPage: React.FC<AllPhotosPageProps> = ({
             </button>
 
             <div className="space-y-1">
-
               <h3 className="text-xl font-serif text-indigo-500 dark:text-indigo-400">
                 Photos of {yearModal}
               </h3>
-
             </div>
 
             {(() => {
-
               const counts =
                 monthCountsForYear(
                   yearModal
                 );
 
               return (
-
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-
                   {MONTH_NAMES.map(
                     (name, month) => {
-
                       const count =
                         counts[month];
-
                       const has =
                         count > 0;
 
                       return (
-
                         <button
                           key={name}
                           disabled={!has}
@@ -1110,15 +943,12 @@ export const AllPhotosPage: React.FC<AllPhotosPageProps> = ({
                             setSelectedMonth(
                               month
                             );
-
                             setSelectedYear(
                               yearModal
                             );
-
                             setExpandedMonth(
                               null
                             );
-
                             setYearModal(
                               null
                             );
@@ -1129,24 +959,18 @@ export const AllPhotosPage: React.FC<AllPhotosPageProps> = ({
                               : 'bg-gray-50 dark:bg-black/20 border-gray-200 dark:border-white/5 text-gray-400 dark:text-gray-600 cursor-not-allowed'
                           }`}
                         >
-
                           <div>
                             {name}
                           </div>
-
                         </button>
-
                       );
                     }
                   )}
-
                 </div>
-
               );
             })()}
 
             <div className="text-center">
-
               <button
                 onClick={() =>
                   setYearModal(null)
@@ -1155,27 +979,21 @@ export const AllPhotosPage: React.FC<AllPhotosPageProps> = ({
               >
                 Close
               </button>
-
             </div>
-
           </div>
-
         </div>
-
       )}
 
       {/* Lightbox */}
       {selectedPhoto && (
-
         <div
           className="fixed inset-0 z-[100] bg-black/90 flex items-center justify-center p-4 cursor-pointer"
           onClick={() =>
             setSelectedPhoto(null)
           }
         >
-
           <img
-            src={selectedPhoto}
+            src={selectedPhoto.url}
             alt="Full size"
             className="max-w-full max-h-full object-contain"
           />
@@ -1190,11 +1008,8 @@ export const AllPhotosPage: React.FC<AllPhotosPageProps> = ({
           >
             <X className="w-8 h-8" />
           </button>
-
         </div>
-
       )}
-
     </div>
   );
 };
