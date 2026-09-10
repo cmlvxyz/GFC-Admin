@@ -24,12 +24,14 @@
   .preview .rm { position: absolute; top: 4px; right: 4px; width: 24px; height: 24px; border: none; border-radius: 50%; background: rgba(0,0,0,0.65); color: #fff; font-size: 12px; cursor: pointer; display: flex; align-items: center; justify-content: center; }
   .preview.done { outline: 3px solid #10b981; outline-offset: -2px; }
   .preview.duplicate { outline: 3px solid #ef4444; outline-offset: -2px; }
+  .preview.duplicate .rm { background: #ef4444; }
   .btn { width: 100%; margin-top: 18px; padding: 15px; border: none; border-radius: 16px; font-size: 15px; font-weight: 800; cursor: pointer; background: var(--indigo-500); color: #fff; transition: background 0.15s ease, transform 0.15s ease, opacity 0.2s ease; }
   .btn:hover { background: var(--indigo-600); }
   .btn:active { transform: scale(0.98); }
   .btn:disabled { opacity: 0.5; cursor: not-allowed; }
   #dropzone { display: block; width: 100%; }
   .status { margin-top: 14px; font-size: 13px; font-weight: 600; text-align: center; min-height: 20px; }
+  #status { display: none !important; }
   .status.ok { color: #059669; }
   .status.err { color: #dc2626; }
   .hidden { display: none !important; }
@@ -46,8 +48,8 @@
   .success-gallery .thumb:active .zoom { opacity: 1; }
   .btn-ghost { background: #fff; color: var(--indigo-600); border: 2px solid var(--indigo-500); }
   .btn-ghost:hover { background: #eef0ff; color: var(--indigo-700); }
-  .gallery-page { width: 100%; max-width: 960px; margin: 0 auto; padding: 8px 0 24px; }
-  .gallery-card { background: #fff; border: 1px solid var(--border); border-radius: 24px; padding: 24px 20px; }
+  .gallery-page { width: 100%; max-width: none; margin: 0; padding: 0; }
+  .gallery-card { background: transparent; border: 0; border-radius: 0; padding: 0; }
   .thankyou { text-align: center; padding: 6px 0 20px; border-bottom: 1px solid var(--border); margin-bottom: 20px; }
   .thankyou .big { font-size: 50px; }
   .thankyou h2 { font-size: 20px; font-weight: 800; margin-top: 8px; }
@@ -117,7 +119,6 @@
       <input type="file" id="fileInput" accept="image/*" multiple style="display:none;" />
       <div class="previews" id="previews"></div>
       <button class="btn hidden" id="uploadBtn"><span id="uploadBtnLabel">Upload Photos</span></button>
-      <div class="status" id="status"></div>
     </div>
 
     <div id="viewSuccess" class="hidden gallery-page">
@@ -142,8 +143,6 @@
               <select id="galleryYear"></select>
             </div>
           </div>
-
-          <div class="gallery-summary" id="gallerySummary"></div>
         </div>
 
         <div id="galleryGroups" class="gallery-groups"></div>
@@ -181,5 +180,6 @@
     </div>
   </div>
 <script src="/upload.js"></script>
+<script src="/duplicate-check.js"></script>
 </body>
 </html>
