@@ -1,7 +1,12 @@
 (function () {
   var params = new URLSearchParams(location.search);
   var eventId = (params.get('event') || '').trim();
-  var dateIndex = parseInt(params.get('date') || '0', 10) || 0;
+  // The QR code now uses the ACTUAL selected date value (e.g. "August 30")
+  // as the date parameter. Old QR codes used a numeric dateEntries index
+  // (e.g. "1"). Keep supporting the numeric format for old QR codes.
+  var dateParam = (params.get('date') || '').trim();
+  var isNumericDate = /^\d+$/.test(dateParam);
+  var dateIndex = dateParam === '' ? 0 : (isNumericDate ? (parseInt(dateParam, 10) || 0) : -1);
   var isAllPhotosMode = !eventId;
 
   var MONTH_NAMES = ['January','February','March','April','May','June','July','August','September','October','November','December'];
@@ -308,7 +313,26 @@
       var event = (data.events || []).find(function (e) { return String(e.id) === String(eventId); });
       if (!event) throw new Error('not found');
       var entries = Array.isArray(event.dateEntries) ? event.dateEntries : [];
-      var entry = entries[dateIndex];
+      var entry = null;
+      if (dateIndex >= 0) {
+        entry = entries[dateIndex] || null;
+      } else if (dateParam) {
+        // Match the ACTUAL selected date string against the date entries
+        // (single source of truth). Never fall back to an arbitrary index.
+        for (var j = 0; j < entries.length; j++) {
+          if (String(entries[j].date).trim() === dateParam) {
+            dateIndex = j;
+            entry = entries[j];
+            break;
+          }
+        }
+      }
+      if (!entry && dateParam && !isNumericDate) {
+        errorTitle.textContent = 'Hindi mahanap ang date album';
+        errorText.innerHTML = 'Mukhang hindi balido ang QR code na ito.<br/>Subukan muli o i-contact ang church admin.';
+        show(viewError);
+        return;
+      }
       document.title = 'Photo Upload | ' + event.title;
       eventTitle.textContent = event.title;
       eventDate.textContent = entry && entry.date ? entry.date : (event.date || '');

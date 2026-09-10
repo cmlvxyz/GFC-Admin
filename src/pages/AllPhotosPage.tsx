@@ -548,9 +548,11 @@ export const AllPhotosPage: React.FC<AllPhotosPageProps> = ({
     // Build URL with selected month and year
     let qrUrl = `${GFC_BASE}/upload`;
     
-    // Add month parameter if selected
+    // Add month parameter if selected.
+    // NOTE: Use calendar month (1-12), NOT the zero-based index,
+    // so February = 2 and August = 8 in the URL.
     if (selectedMonth !== '') {
-      qrUrl += `?month=${selectedMonth}`;
+      qrUrl += `?month=${selectedMonth + 1}`;
     }
     
     // Add year parameter if selected
@@ -611,11 +613,13 @@ export const AllPhotosPage: React.FC<AllPhotosPageProps> = ({
     return counts;
   };
 
-  // Helper function to build dynamic URL for display
+  // Helper function to build dynamic URL for display.
+  // NOTE: month is emitted as a calendar month (1-12), never the
+  // zero-based filter index, so February = 2 and August = 8.
   const getUploadUrl = () => {
     let url = `${GFC_BASE}/upload`;
     if (selectedMonth !== '') {
-      url += `?month=${selectedMonth}`;
+      url += `?month=${selectedMonth + 1}`;
     }
     if (selectedYear !== '') {
       url += selectedMonth !== '' ? `&year=${selectedYear}` : `?year=${selectedYear}`;

@@ -514,6 +514,25 @@ app.get('/api/activities/stream', async (req, res) => {
   });
 });
 
+// Get all activities
+app.get('/api/activities', async (req, res, next) => {
+  try {
+    res.json({ activities: await dbGetActivities() });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// Clear activity log
+app.delete('/api/activities', async (req, res, next) => {
+  try {
+    await dbSetCollection('activities', []);
+    res.status(204).end();
+  } catch (error) {
+    next(error);
+  }
+});
+
 // ============================================
 // ALL-PHOTOS UPLOAD
 // ============================================
