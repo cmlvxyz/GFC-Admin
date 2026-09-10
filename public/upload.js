@@ -21,6 +21,7 @@
   var retryBtn = document.getElementById('retryBtn');
   var viewUpload = document.getElementById('viewUpload');
   var viewSuccess = document.getElementById('viewSuccess');
+  var viewBye = document.getElementById('viewBye');
   var eventTitle = document.getElementById('eventTitle');
   var eventDate = document.getElementById('eventDate');
   var dropzone = document.getElementById('dropzone');
@@ -59,6 +60,7 @@
     viewUpload.classList.add('hidden');
     viewSuccess.classList.add('hidden');
     viewPicker.classList.add('hidden');
+    viewBye.classList.add('hidden');
     view.classList.remove('hidden');
   }
 
@@ -435,10 +437,12 @@
     renderSuccessGallery();
   });
 
-  // 🔥 NEW: Exit - go back to the page the user was on before scanning the QR
-  // or opening the link (no navigation to a hardcoded domain).
+  // 🔥 NEW: Exit - leave the upload page completely.
+  // 1) Return to the page the user was on before scanning the QR / opening link
+  // 2) Fall back to the browser's previous page
+  // 3) Otherwise show a simple goodbye (never re-enter the upload/picker views)
   function exitToPreviousPage() {
-    var ref = document.referrer;
+    var ref = (document.referrer || '').trim();
     if (ref && /^https?:/i.test(ref)) {
       location.href = ref;
       return;
@@ -447,8 +451,7 @@
       history.back();
       return;
     }
-    // No referrer and no history - just return to a fresh upload screen.
-    location.reload();
+    show(viewBye);
   }
 
   exitBtn.addEventListener('click', exitToPreviousPage);

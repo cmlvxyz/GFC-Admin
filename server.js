@@ -796,6 +796,28 @@ app.post('/api/uploads', async (req, res, next) => {
     await dbSetCollection('events', events);
     await logActivity({ collection: 'events', action: 'photo', record: event, actor: 'public' });
 
+    /*
+     * ALSO save to All Photos so every upload (event mode included) shows up
+     * in the church's All Photos gallery — same behavior as the admin upload
+     * and the All Photos upload.
+     */
+    const now = new Date();
+    const m = now.getMonth();
+    const y = now.getFullYear();
+    const label = String(entry.date || '').trim() || `${m + 1}/${y}`;
+
+    const albumList = await dbGetCollection('allPhotos');
+    let bucket = albumList.find(a => String(a.month) === String(m) && String(a.year) === String(y) && String(a.date || '').trim() === label);
+    if (!bucket) {
+      bucket = { month: m, year: y, date: label, photos: [] };
+      albumList.push(bucket);
+    }
+    bucket.photos = Array.isArray(bucket.photos) ? bucket.photos : [];
+    bucket.photos.push(image);
+
+    await dbSetCollection('allPhotos', albumList);
+    await logActivity({ collection: 'allPhotos', action: 'photo', record: bucket, actor: 'public' });
+
     console.log(`✅ Photo uploaded to ${event.title} - ${entry.date} (${entry.photos.length} photos)`);
 
     res.status(201).json({ 
