@@ -188,7 +188,7 @@ export const QRCodePage: React.FC<
 
     return typeof window !== 'undefined'
       ? window.location.origin
-      : 'https://gfc-admin-rosy.vercel.app';
+      : 'https://gfc-lime.vercel.app';
   })();
 
   // ==========================================================

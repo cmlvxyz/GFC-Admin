@@ -54,13 +54,14 @@ const MONTH_NAMES = [
 ];
 
 const GFC_BASE = (() => {
-  const fromEnv = (import.meta.env.VITE_GFC_URL as string | undefined)?.trim();
+  const fromEnv =
+    (import.meta.env.VITE_ADMIN_URL as string | undefined)?.trim();
 
   if (fromEnv) {
     return fromEnv.replace(/\/+$/, '');
   }
 
-  return 'https://gfc-admin-rosy.vercel.app';
+  return 'https://gfc-admin-psi.vercel.app';
 })();
 
 const SITE_BASE = (() => {
