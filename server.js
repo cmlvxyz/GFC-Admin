@@ -553,6 +553,23 @@ app.post('/api/uploads/all', async (req, res, next) => {
   }
 });
 
+// Normalizes a photo URL so a stored relative path such as
+// "/uploads/photo.jpg" can be matched even if the fully resolved
+// URL (e.g. "https://domain.com/uploads/photo.jpg") was sent.
+function normalizePhotoUrl(u) {
+  if (typeof u !== 'string') return '';
+  const trimmed = u.trim();
+  if (!trimmed) return '';
+  if (/^https?:\/\//i.test(trimmed)) {
+    try {
+      return new URL(trimmed).pathname;
+    } catch {
+      return trimmed;
+    }
+  }
+  return trimmed;
+}
+
 app.delete('/api/events/photo/delete', async (req, res, next) => {
   try {
     const { eventId, dateEntryIndex, photoUrl } = req.body;
@@ -590,24 +607,36 @@ app.delete('/api/events/photo/delete', async (req, res, next) => {
     }
 
     const entry = entries[dateEntryIndex];
+    const photos = Array.isArray(entry.photos)
+      ? entry.photos
+      : [];
 
-    // Find photo by exact raw URL match
-    const photoIndex = entry.photos
-      ? entry.photos.findIndex(
-          p => p === photoUrl
-        )
-      : -1;
+    // Match against the ORIGINAL database value first.
+    // Fall back to normalized comparison in case the resolved
+    // URL was sent instead of the stored value.
+    const target = normalizePhotoUrl(photoUrl);
+
+    const photoIndex = photos.findIndex(p => {
+      const stored = typeof p === 'string' ? p : '';
+      return (
+        stored === photoUrl ||
+        normalizePhotoUrl(stored) === target
+      );
+    });
     
     if (photoIndex === -1) {
       return res.status(404).json({
         message: 'Photo not found in this date entry.',
         requestedUrl: photoUrl,
-        availablePhotos: entry.photos || []
+        availablePhotos: photos
       });
     }
 
-    // Remove photo from array
-    entry.photos.splice(photoIndex, 1);
+    // Remove the photo from the array.
+    // NOTE: The date entry itself is intentionally KEPT even if it
+    // ends up with zero photos afterwards.
+    photos.splice(photoIndex, 1);
+    entry.photos = photos;
 
     // Save back to database
     await dbSetCollection('events', events);
@@ -619,11 +648,10 @@ app.delete('/api/events/photo/delete', async (req, res, next) => {
       record: {
         eventId,
         dateEntryIndex,
-        photoIndex,
-        photoUrl
+        photoIndex
       },
       actor: 'admin',
-      message: `Photo "${photoUrl}" deleted from event "${event.title}"`
+      message: `Photo deleted from event "${event.title}"`
     });
 
     res.status(200).json({
@@ -637,6 +665,75 @@ app.delete('/api/events/photo/delete', async (req, res, next) => {
   } catch (error) {
     console.error(
       'Delete event photo error:',
+      error
+    );
+
+    next(error);
+  }
+});
+
+app.delete('/api/allPhotos/delete', async (req, res, next) => {
+  try {
+    const { albumIndex, photoIndex } = req.body;
+
+    // Validate required fields
+    if (albumIndex === undefined || photoIndex === undefined) {
+      return res.status(400).json({
+        message: 'Album index and photo index are required.'
+      });
+    }
+
+    const list = await dbGetCollection('allPhotos');
+
+    const album = Array.isArray(list)
+      ? list[albumIndex]
+      : undefined;
+
+    if (!album || !Array.isArray(album.photos)) {
+      return res.status(404).json({
+        message: 'All Photos album not found.'
+      });
+    }
+
+    if (
+      photoIndex < 0 ||
+      photoIndex >= album.photos.length
+    ) {
+      return res.status(404).json({
+        message: 'Photo not found in this album.',
+        requestedIndex: photoIndex,
+        availablePhotos: album.photos
+      });
+    }
+
+    // Remove the photo from the album.
+    // NOTE: The album/bucket itself is intentionally KEPT even if
+    // it ends up with zero photos afterwards.
+    album.photos.splice(photoIndex, 1);
+
+    await dbSetCollection('allPhotos', list);
+
+    await logActivity({
+      collection: 'allPhotos',
+      action: 'delete',
+      record: {
+        albumIndex,
+        photoIndex
+      },
+      actor: 'admin',
+      message: `Photo deleted from All Photos album "${album.date || 'Untitled'}"`
+    });
+
+    res.status(200).json({
+      success: true,
+      message: 'Photo deleted successfully.',
+      albumIndex,
+      photoIndex
+    });
+
+  } catch (error) {
+    console.error(
+      'Delete all-photos photo error:',
       error
     );
 

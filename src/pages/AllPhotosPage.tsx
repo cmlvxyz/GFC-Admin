@@ -18,6 +18,7 @@ interface AllPhotosPageProps {
   events: ChurchEvent[];
   allPhotos?: AllPhotoAlbum[];
   onAllPhotosUpdated?: () => void;
+  onEventsUpdated?: () => void;
 }
 
 interface PhotoItem {
@@ -152,7 +153,8 @@ const YEAR_RANGE = Array.from(
 export const AllPhotosPage: React.FC<AllPhotosPageProps> = ({
   events,
   allPhotos = [],
-  onAllPhotosUpdated
+  onAllPhotosUpdated,
+  onEventsUpdated
 }) => {
   const [selectedMonth, setSelectedMonth] =
     useState<number | ''>('');
@@ -508,9 +510,15 @@ export const AllPhotosPage: React.FC<AllPhotosPageProps> = ({
         return next;
       });
 
-      // Refresh parent data (background sync)
+      // Refresh parent data (background sync). Events are also
+      // refreshed so a deleted event photo does not reappear when
+      // navigating away from the page and back.
       if (onAllPhotosUpdated) {
         onAllPhotosUpdated();
+      }
+
+      if (photo.source === 'event' && onEventsUpdated) {
+        onEventsUpdated();
       }
 
     } catch (error) {

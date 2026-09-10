@@ -324,6 +324,7 @@ export default function App() {
           events={data.events} 
           allPhotos={data.allPhotos}
           onAllPhotosUpdated={refreshAllPhotos}
+          onEventsUpdated={refreshEvents}
         />
       );
     }
