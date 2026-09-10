@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import { Bell, Menu, ArrowLeft, LayoutDashboard, Calendar as CalendarIcon, Video, Megaphone, Heart, Users, MessageSquare, Settings, Shield, Trash2, X, QrCode, Images } from 'lucide-react';
-import type { Activity, ChurchEvent, Collection, RecordMap } from './types';
-import { API_URL, clearActivities, createRecord, deleteRecord as apiDeleteRecord, getActivities, getActivityStream, listCollection, resetRemoteData, updateRecord as apiUpdateRecord } from './api';
+import type { Activity, Announcement, Attendee, AllPhotoAlbum, ChurchEvent, Collection, Member, PrayerRequest, RecordMap, Sermon, Testimonial } from './types';
+import { API_URL, clearActivities, createRecord, deleteRecord as apiDeleteRecord, getActivities, getActivityStream, getContent, listCollection, resetRemoteData, updateRecord as apiUpdateRecord } from './api';
 import { Sidebar } from './components/Sidebar';
 import { ToastHost, ToastItem, ToastType } from './components/ToastHost';
 import { ConfirmDialog, ConfirmState } from './components/ConfirmDialog';
@@ -66,35 +66,24 @@ export default function App() {
   const [dataLoadedOnce, setDataLoadedOnce] = useState(false);
   const loadAll = useCallback(async () => {
     try {
-      const [events, sermons, prayers, attendees, members, announcements, testimonials, allPhotos] = await Promise.all([
-        listCollection('events'), listCollection('sermons'), listCollection('prayers'), listCollection('attendees'),
-        listCollection('members'), listCollection('announcements'), listCollection('testimonials'), listCollection('allPhotos')
-      ]);
+      // Single /api/content request so the app is populated reliably
+      // (avoid 8 concurrent serverless invocations on a cold start).
+      const content = await getContent();
       setData({
-        events: events.events || [],
-        sermons: sermons.sermons || [],
-        prayers: prayers.prayers || [],
-        attendees: attendees.attendees || [],
-        members: members.members || [],
-        announcements: announcements.announcements || [],
-        testimonials: testimonials.testimonials || [],
-        allPhotos: allPhotos.allPhotos || []
+        events: (content.events || []) as ChurchEvent[],
+        sermons: (content.sermons || []) as Sermon[],
+        prayers: (content.prayers || []) as PrayerRequest[],
+        attendees: (content.attendees || []) as Attendee[],
+        members: (content.members || []) as Member[],
+        announcements: (content.announcements || []) as Announcement[],
+        testimonials: (content.testimonials || []) as Testimonial[],
+        allPhotos: (content.allPhotos || []) as AllPhotoAlbum[]
       });
       setDataLoadedOnce(true);
     } catch (error) {
       console.error('Failed to load data:', error);
-      // If error, still show empty data
-      setData({
-        events: [],
-        sermons: [],
-        prayers: [],
-        attendees: [],
-        members: [],
-        announcements: [],
-        testimonials: [],
-        allPhotos: []
-      });
-      setDataLoadedOnce(true);
+      // Do NOT mark as loaded: the auto-retry effect keeps trying
+      // so the app does not stay stuck with empty data.
     } finally {
       setLoading(false);
     }
@@ -161,19 +150,21 @@ export default function App() {
       getActivities()
         .then(res => { if (!disposed) { setActivitiesMerged(res.activities || []); setActivitiesLoading(false); } })
         .catch(() => { if (!disposed) setActivitiesLoading(false); });
+      // Re-sync photo collections so new uploads/deletes appear
+      // automatically (no manual refresh needed).
+      void refreshAllPhotos();
+      void refreshEvents();
     };
     refresh();
     void getActivityStream(activity => {
       if (!disposed) {
         setActivities(prev => prev.some(a => a.id === activity.id) ? prev : [activity, ...prev].slice(0, 300));
 
-        if (activity.type === 'allPhotos' && activity.action === 'photo') {
-          void refreshAllPhotos();
-        }
-
-        if (activity.type === 'events' && activity.action === 'photo') {
-          void refreshEvents();
-          void refreshAllPhotos();
+        if (activity.type === 'allPhotos' || activity.type === 'events') {
+          if (['photo', 'created', 'updated', 'deleted'].includes(activity.action)) {
+            void refreshAllPhotos();
+            if (activity.type === 'events') void refreshEvents();
+          }
         }
       }
     }).then(close => { if (disposed) close(); else closeStream = close; });
@@ -325,6 +316,7 @@ export default function App() {
           allPhotos={data.allPhotos}
           onAllPhotosUpdated={refreshAllPhotos}
           onEventsUpdated={refreshEvents}
+          onError={(message) => showToast(message, 'error')}
         />
       );
     }

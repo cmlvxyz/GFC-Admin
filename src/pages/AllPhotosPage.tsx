@@ -20,6 +20,7 @@ interface AllPhotosPageProps {
   allPhotos?: AllPhotoAlbum[];
   onAllPhotosUpdated?: () => void;
   onEventsUpdated?: () => void;
+  onError?: (message: string) => void;
 }
 
 interface PhotoItem {
@@ -155,7 +156,8 @@ export const AllPhotosPage: React.FC<AllPhotosPageProps> = ({
   events,
   allPhotos = [],
   onAllPhotosUpdated,
-  onEventsUpdated
+  onEventsUpdated,
+  onError
 }) => {
   const [selectedMonth, setSelectedMonth] =
     useState<number | ''>('');
@@ -395,13 +397,14 @@ export const AllPhotosPage: React.FC<AllPhotosPageProps> = ({
   };
 
   /*
-   * DELETE PHOTO - FIXED VERSION
+   * DELETE PHOTO - OPTIMISTIC VERSION
    *
    * - No confirmation
-   * - Immediately calls backend
-   * - Uses ORIGINAL database URL
-   * - Removes from UI immediately after success
-   * - Refreshes parent data
+   * - Hides the photo IMMEDIATELY (only this photo, via its key)
+   * - Fires the delete to the backend in the background
+   * - Uses the ORIGINAL database URL (rawUrl)
+   * - Re-shows the photo + reports an error IF the delete fails
+   * - Refreshes parent data after a successful delete
    */
   const deletePhoto = async (
     photo: PhotoItem,
@@ -416,7 +419,15 @@ export const AllPhotosPage: React.FC<AllPhotosPageProps> = ({
       return;
     }
 
+    // Mark THIS photo as in-flight (spinner on its button)
     setDeletingKeys(prev => {
+      const next = new Set(prev);
+      next.add(photoKey);
+      return next;
+    });
+
+    // Hide the photo instantly so the UI does not wait/lag.
+    setDeletedPhotoKeys(prev => {
       const next = new Set(prev);
       next.add(photoKey);
       return next;
@@ -506,22 +517,15 @@ export const AllPhotosPage: React.FC<AllPhotosPageProps> = ({
       }
 
       // ==========================================
-      // SUCCESS - OPTIMISTIC UI UPDATE
+      // SUCCESS - BACKGROUND SYNC
       // ==========================================
 
       // Remove from lightbox immediately
       setSelectedPhoto(null);
 
-      // Hide photo immediately from UI
-      setDeletedPhotoKeys(prev => {
-        const next = new Set(prev);
-        next.add(photoKey);
-        return next;
-      });
-
-      // Refresh parent data (background sync). Events are also
-      // refreshed so a deleted event photo does not reappear when
-      // navigating away from the page and back.
+      // The photo is already hidden via deletedPhotoKeys.
+      // Sync the parent data in the background so the change
+      // persists and does not reappear after navigating.
       if (onAllPhotosUpdated) {
         onAllPhotosUpdated();
       }
@@ -535,11 +539,23 @@ export const AllPhotosPage: React.FC<AllPhotosPageProps> = ({
         'Error deleting photo:',
         error
       );
-      
-      // On error, do NOT add to deletedPhotoKeys
-      // Photo remains visible in UI
+
+      // The delete was NOT confirmed by the server: bring the
+      // photo back so the user can see it and retry.
+      setDeletedPhotoKeys(prev => {
+        const next = new Set(prev);
+        next.delete(photoKey);
+        return next;
+      });
+
+      onError?.(
+        error instanceof Error
+          ? error.message
+          : 'Failed to delete the photo.'
+      );
 
     } finally {
+      // Clear the in-flight spinner for THIS photo
       setDeletingKeys(prev => {
         const next = new Set(prev);
         next.delete(photoKey);
