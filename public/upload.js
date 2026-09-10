@@ -221,16 +221,38 @@
   // albums, no delete button) so the user can browse the church's photos.
   // The screen stays until the user clicks "Upload More Photos" or "Exit".
   var galleryAlbums = []; // cached albums from /api/content
+  var galleryEvents = []; // cached events from /api/content (photos live there too)
   var galleryState = { month: '', year: '', expanded: null };
+
+  // Replicate the admin's photo URL resolution (SITE_BASE) so path-based
+  // photos (e.g. seed images) load the same way they do in the admin.
+  function resolvePhotoUrlPublic(u) {
+    if (u.indexOf('data:') === 0 || /^https?:\/\//i.test(u)) return u;
+    var host = (location.hostname || '');
+    var isLocal = !host || host === 'localhost' || host === '127.0.0.1' || /^\d{1,3}(\.\d{1,3}){3}$/.test(host);
+    var base = isLocal ? 'http://' + host + ':3002' : location.origin;
+    return base + (u.indexOf('/') === 0 ? '' : '/') + u;
+  }
+
+  // Replicate the admin's parseEntryDate: "June 14" -> month = 5, year = current.
+  function parseEntryDatePublic(value) {
+    if (!value) return null;
+    var hasYear = /\d{4}/.test(value);
+    var d = new Date(hasYear ? value : (value + ', ' + currentYear));
+    if (isNaN(d.getTime())) return null;
+    return { month: d.getMonth(), year: d.getFullYear() };
+  }
 
   function showSuccessWithGallery() {
     show(viewSuccess);
     // Always re-fetch so newly uploaded photos appear immediately.
     galleryAlbums = [];
+    galleryEvents = [];
     fetch('/api/content')
       .then(function (res) { return res.json(); })
       .then(function (data) {
         galleryAlbums = Array.isArray(data.allPhotos) ? data.allPhotos : [];
+        galleryEvents = Array.isArray(data.events) ? data.events : [];
         galleryMonth.value = String(galleryState.month);
         galleryYear.value = String(galleryState.year);
         renderSuccessGallery();
@@ -242,14 +264,28 @@
 
   function galleryItems() {
     var items = [];
+    // Photos from events (same as the admin's All Photos page)
+    galleryEvents.forEach(function (ev) {
+      if (!Array.isArray(ev.dateEntries)) return;
+      ev.dateEntries.forEach(function (entry) {
+        var parsed = parseEntryDatePublic(entry.date);
+        var m = parsed ? parsed.month : -1;
+        var y = parsed ? parsed.year : -1;
+        var date = String(entry.date || '');
+        (Array.isArray(entry.photos) ? entry.photos : []).forEach(function (url) {
+          items.push({ url: resolvePhotoUrlPublic(String(url)), month: m, year: y, date: date });
+        });
+      });
+    });
+    // Photos from the All Photos album
     galleryAlbums.forEach(function (album) {
       var m = typeof album.month === 'number' ? album.month : -1;
       var y = typeof album.year === 'number' ? album.year : -1;
-      var date = String(album.date || '');
-      (Array.isArray(album.photos) ? album.photos : []).forEach(function (url) {
-        items.push({ url: url, month: m, year: y, date: date });
+var date = String(album.date || '');
+        (Array.isArray(album.photos) ? album.photos : []).forEach(function (url) {
+          items.push({ url: resolvePhotoUrlPublic(String(url)), month: m, year: y, date: date });
+        });
       });
-    });
     return items;
   }
 
@@ -360,7 +396,7 @@
 
       if (expanded) {
         group.photos.forEach(function (photo) {
-          grid.appendChild(makeGalleryThumb(photo, photo.date || group.label, function () {
+          grid.appendChild(makeGalleryThumb(photo, photo.date || group.label, false, function () {
             openLightbox(photo.url);
           }));
         });
