@@ -552,7 +552,9 @@ app.post('/api/uploads/all', async (req, res, next) => {
     const label = String(date || '').trim() || `${m + 1}/${y}`;
 
     const list = await dbGetCollection('allPhotos');
-    let bucket = list.find(a => String(a.month) === String(m) && String(a.year) === String(y) && String(a.date || '').trim() === label);
+    // Match by month + year only (never by the date label) so uploads
+    // with a different label always land in the SAME bucket per month.
+    let bucket = list.find(a => String(a.month) === String(m) && String(a.year) === String(y));
     if (!bucket) {
       bucket = { month: m, year: y, date: label, photos: [] };
       list.push(bucket);
@@ -763,6 +765,102 @@ app.delete('/api/allPhotos/delete', async (req, res, next) => {
 // ============================================
 // PHOTO UPLOADS (public - for QR upload page)
 // ============================================
+app.post('/api/photos/delete', async (req, res, next) => {
+  try {
+    // Delete EVERY occurrence of the given photo URL(s) across all
+    // events AND all Photos albums. Uses the stored value (or a
+    // normalized version of it) so stale indices are never a problem.
+    const { photos: requested } = req.body || {};
+
+    const urls = (Array.isArray(requested) ? requested : [String(requested || '')])
+      .filter(u => typeof u === 'string' && u.trim().length > 0);
+
+    if (urls.length === 0) {
+      return res.status(400).json({ message: 'Photo URL is required.' });
+    }
+
+    const matches = (stored, target) =>
+      String(stored) === target ||
+      normalizePhotoUrl(String(stored)) === normalizePhotoUrl(target);
+
+    let removed = 0;
+    const touched = [];
+
+    // 1) Remove from every EVENT date entry.
+    const events = await dbGetCollection('events');
+    let eventsChanged = false;
+
+    events.forEach(ev => {
+      if (!Array.isArray(ev.dateEntries)) return;
+
+      ev.dateEntries.forEach(entry => {
+        if (!Array.isArray(entry.photos) || entry.photos.length === 0) return;
+
+        const before = entry.photos.length;
+        entry.photos = entry.photos.filter(p => !urls.some(u => matches(p, u)));
+
+        if (entry.photos.length !== before) {
+          eventsChanged = true;
+          removed += before - entry.photos.length;
+          touched.push(`${ev.title} / ${entry.date}`);
+        }
+      });
+    });
+
+    if (eventsChanged) {
+      await dbSetCollection('events', events);
+    }
+
+    // 2) Remove from every All Photos bucket.
+    const list = await dbGetCollection('allPhotos');
+    let albumsChanged = false;
+
+    list.forEach(album => {
+      if (!Array.isArray(album.photos) || album.photos.length === 0) return;
+
+      const before = album.photos.length;
+      album.photos = album.photos.filter(p => !urls.some(u => matches(p, u)));
+
+      if (album.photos.length !== before) {
+        albumsChanged = true;
+        removed += before - album.photos.length;
+        touched.push(`${album.date || 'Untitled'} (${album.month !== undefined ? Number(album.month) + 1 : '?'}/${album.year || '?'})`);
+      }
+    });
+
+    if (albumsChanged) {
+      await dbSetCollection('allPhotos', list);
+    }
+
+    if (removed === 0) {
+      return res.status(404).json({
+        message: 'Photo not found in any album.',
+        requestedUrls: urls
+      });
+    }
+
+    await logActivity({
+      collection: 'photos',
+      action: 'delete',
+      record: { removed, urls },
+      actor: 'admin',
+      message: `Deleted ${removed} photo(s)` + (touched.length ? ` from ${touched.join(', ')}` : '')
+    });
+
+    res.status(200).json({
+      success: true,
+      removed,
+      message: `Deleted ${removed} photo(s).`
+    });
+  } catch (error) {
+    console.error('Delete photos error:', error);
+    next(error);
+  }
+});
+
+// ============================================
+// PHOTO UPLOADS (public - for QR upload page)
+// ============================================
 app.post('/api/uploads', async (req, res, next) => {
   try {
     const { image, eventId, dateIndex } = req.body || {};
@@ -795,28 +893,6 @@ app.post('/api/uploads', async (req, res, next) => {
     console.log(`💾 Saving to database: events (${entry.photos.length} photos)`);
     await dbSetCollection('events', events);
     await logActivity({ collection: 'events', action: 'photo', record: event, actor: 'public' });
-
-    /*
-     * ALSO save to All Photos so every upload (event mode included) shows up
-     * in the church's All Photos gallery — same behavior as the admin upload
-     * and the All Photos upload.
-     */
-    const now = new Date();
-    const m = now.getMonth();
-    const y = now.getFullYear();
-    const label = String(entry.date || '').trim() || `${m + 1}/${y}`;
-
-    const albumList = await dbGetCollection('allPhotos');
-    let bucket = albumList.find(a => String(a.month) === String(m) && String(a.year) === String(y) && String(a.date || '').trim() === label);
-    if (!bucket) {
-      bucket = { month: m, year: y, date: label, photos: [] };
-      albumList.push(bucket);
-    }
-    bucket.photos = Array.isArray(bucket.photos) ? bucket.photos : [];
-    bucket.photos.push(image);
-
-    await dbSetCollection('allPhotos', albumList);
-    await logActivity({ collection: 'allPhotos', action: 'photo', record: bucket, actor: 'public' });
 
     console.log(`✅ Photo uploaded to ${event.title} - ${entry.date} (${entry.photos.length} photos)`);
 

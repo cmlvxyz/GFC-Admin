@@ -23,6 +23,16 @@ interface AllPhotosPageProps {
   onError?: (message: string) => void;
 }
 
+interface PhotoOccurrence {
+  source: 'event' | 'allPhotos';
+  rawUrl: string;
+  albumIndex?: number;
+  photoIndex?: number;
+  eventId?: string;
+  dateEntryIndex?: number;
+  photoEntryIndex?: number;
+}
+
 interface PhotoItem {
   url: string;
   rawUrl: string;
@@ -30,12 +40,13 @@ interface PhotoItem {
   year: number;
   eventTitle: string;
   date: string;
+  source: 'event' | 'allPhotos';
+  occurrences?: PhotoOccurrence[];
   albumIndex?: number;
   photoIndex?: number;
   eventId?: string;
   dateEntryIndex?: number;
   photoEntryIndex?: number;
-  source: 'event' | 'allPhotos';
 }
 
 const MONTH_NAMES = [
@@ -193,28 +204,48 @@ export const AllPhotosPage: React.FC<AllPhotosPageProps> = ({
     useState<Set<string>>(new Set());
 
   // Generate a stable key for optimistic deletion
+  /*
+   * Photo identity = year + month + stored content.
+   * The same photo saved in BOTH an event and a bucket is ONE display
+   * entry, so a "deleted" key hides every copy of it at once and the
+   * photo can never "come back" from the other location.
+   */
   const getPhotoKey = (photo: PhotoItem): string => {
-    if (photo.source === 'event') {
-      return [
-        'event',
-        photo.eventId ?? '',
-        photo.dateEntryIndex ?? '',
-        photo.photoEntryIndex ?? '',
-        photo.rawUrl
-      ].join('|');
-    }
-
     return [
-      'allPhotos',
-      photo.albumIndex ?? '',
-      photo.photoIndex ?? '',
-      photo.rawUrl
+      photo.year ?? '',
+      photo.month ?? '',
+      String(photo.rawUrl ?? '').trim()
     ].join('|');
   };
 
-  // Build all photos list with metadata
+  // Build the deduped all-photos list. Each unique photo (by content,
+  // within its month/year) appears once; all its locations are tracked in
+  // `occurrences` so deletion removes every copy at the same time.
   const allPhotosList = useMemo<PhotoItem[]>(() => {
     const list: PhotoItem[] = [];
+    const byContent = new Map<string, PhotoItem>();
+
+    const add = (
+      item: PhotoItem,
+      occurrence: PhotoOccurrence
+    ) => {
+      const key = [
+        item.year ?? '',
+        item.month ?? '',
+        String(item.rawUrl ?? '').trim()
+      ].join('|');
+
+      const existing = byContent.get(key);
+
+      if (existing) {
+        existing.occurrences.push(occurrence);
+        return;
+      }
+
+      item.occurrences = [occurrence];
+      byContent.set(key, item);
+      list.push(item);
+    };
 
     // Photos from events
     for (const ev of events) {
@@ -249,23 +280,29 @@ export const AllPhotosPage: React.FC<AllPhotosPageProps> = ({
         ) {
           const url = entry.photos[urlIndex];
 
-          list.push({
-            // URL used by the browser
-            url: resolvePhotoUrl(url),
+          add(
+            {
+              // URL used by the browser
+              url: resolvePhotoUrl(url),
 
-            // IMPORTANT:
-            // Keep original database value for DELETE
-            rawUrl: url,
+              // IMPORTANT:
+              // Keep original database value for DELETE
+              rawUrl: url,
 
-            month,
-            year,
-            eventTitle: ev.title,
-            date: entry.date,
-            eventId: ev.id,
-            dateEntryIndex: entryIndex,
-            photoEntryIndex: urlIndex,
-            source: 'event'
-          });
+              month,
+              year,
+              eventTitle: ev.title,
+              date: entry.date,
+              source: 'event'
+            },
+            {
+              source: 'event',
+              rawUrl: url,
+              eventId: ev.id,
+              dateEntryIndex: entryIndex,
+              photoEntryIndex: urlIndex
+            }
+          );
         }
       }
     }
@@ -299,21 +336,27 @@ export const AllPhotosPage: React.FC<AllPhotosPageProps> = ({
       ) {
         const rawUrl = album.photos[photoIndex];
 
-        list.push({
-          // URL used by browser
-          url: resolvePhotoUrl(rawUrl),
+        add(
+          {
+            // URL used by browser
+            url: resolvePhotoUrl(rawUrl),
 
-          // Original database value
-          rawUrl,
+            // Original database value
+            rawUrl,
 
-          month,
-          year,
-          eventTitle: 'All Photos',
-          date: album.date || '',
-          albumIndex,
-          photoIndex,
-          source: 'allPhotos'
-        });
+            month,
+            year,
+            eventTitle: 'All Photos',
+            date: album.date || '',
+            source: 'allPhotos'
+          },
+          {
+            source: 'allPhotos',
+            rawUrl,
+            albumIndex,
+            photoIndex
+          }
+        );
       }
     }
 
@@ -443,67 +486,29 @@ export const AllPhotosPage: React.FC<AllPhotosPageProps> = ({
     });
 
     try {
-      let response: Response;
+      // Send every stored copy of this photo (an event copy AND an album
+      // copy are the SAME photo) so deleting it removes it everywhere and
+      // it can never come back from the other location.
+      const occurrenceUrls =
+        (photo.occurrences || []).map(o => o.rawUrl);
 
-      // ==========================================
-      // DELETE FROM ALL PHOTOS
-      // ==========================================
-      if (
-        photo.source === 'allPhotos' &&
-        photo.albumIndex !== undefined &&
-        photo.photoIndex !== undefined
-      ) {
-        response = await fetch(
-          `${API_URL}/api/allPhotos/delete`,
-          {
-            method: 'DELETE',
-            headers: {
-              'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({
-              albumIndex: photo.albumIndex,
-              photoIndex: photo.photoIndex
-            })
-          }
-        );
-      }
+      const urls =
+        occurrenceUrls.length > 0
+          ? occurrenceUrls
+          : [photo.rawUrl];
 
-      // ==========================================
-      // DELETE FROM EVENT
-      // ==========================================
-      else if (
-        photo.source === 'event' &&
-        photo.eventId !== undefined &&
-        photo.dateEntryIndex !== undefined
-      ) {
-        response = await fetch(
-          `${API_URL}/api/events/photo/delete`,
-          {
-            method: 'DELETE',
-            headers: {
-              'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({
-              eventId: photo.eventId,
-              dateEntryIndex: photo.dateEntryIndex,
-              /*
-               * IMPORTANT:
-               * Send raw database URL, NOT resolved URL.
-               *
-               * Database: /uploads/photo.jpg
-               * NOT: https://domain.com/uploads/photo.jpg
-               */
-              photoUrl: photo.rawUrl
-            })
-          }
-        );
-      }
-
-      else {
-        throw new Error(
-          'Unable to identify photo source for deletion.'
-        );
-      }
+      const response = await fetch(
+        `${API_URL}/api/photos/delete`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            photos: urls
+          })
+        }
+      );
 
       // Check backend response
       if (!response.ok) {
@@ -539,7 +544,7 @@ export const AllPhotosPage: React.FC<AllPhotosPageProps> = ({
         onAllPhotosUpdated();
       }
 
-      if (photo.source === 'event' && onEventsUpdated) {
+      if (onEventsUpdated) {
         onEventsUpdated();
       }
 

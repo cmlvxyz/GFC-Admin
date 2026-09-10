@@ -654,6 +654,10 @@ export const QRCodePage: React.FC<QRCodePageProps> = ({
 
       /*
        * Upload to All Photos.
+       *
+       * One at a time (NEVER parallel): the server saves the whole album
+       * collection per request, so parallel saves overwrite each other and
+       * photos get silently lost. Sequential = every photo is kept.
        */
       const now = new Date();
 
@@ -667,55 +671,52 @@ export const QRCodePage: React.FC<QRCodePageProps> = ({
         event.dateEntries[targetIndex]?.date ||
         `${currentMonth + 1}/${currentYear}`;
 
-      const uploadPromises =
-        newPhotos.map(
-          (photoData, index) => {
-            return fetch(
-              `${GFC_BASE}/api/uploads/all`,
-              {
-                method: 'POST',
-                headers: {
-                  'Content-Type':
-                    'application/json'
-                },
-                body: JSON.stringify({
-                  image: photoData,
-                  month: currentMonth,
-                  year: currentYear,
-                  date: dateLabel
-                })
-              }
-            )
-              .then(response => {
-                setUploadProgress(
-                  Math.round(
-                    ((index + 1) /
-                      newPhotos.length) *
-                      100
-                  )
-                );
+      for (
+        let index = 0;
+        index < newPhotos.length;
+        index++
+      ) {
+        const photoData = newPhotos[index];
 
-                if (!response.ok) {
-                  console.warn(
-                    'Failed to save photo to All Photos:',
-                    response.status
-                  );
-                }
-
-                return response;
-              })
-              .catch(err => {
-                console.warn(
-                  'Error saving photo to All Photos:',
-                  err
-                );
-              });
-          }
+        setUploadProgress(
+          Math.round(
+            ((index + 1) /
+              newPhotos.length) *
+              100
+          )
         );
 
-      await Promise.all(
-        uploadPromises
-      );
+        try {
+          const response = await fetch(
+            `${GFC_BASE}/api/uploads/all`,
+            {
+              method: 'POST',
+              headers: {
+                'Content-Type':
+                  'application/json'
+              },
+              body: JSON.stringify({
+                image: photoData,
+                month: currentMonth,
+                year: currentYear,
+                date: dateLabel
+              })
+            }
+          );
+
+          if (!response.ok) {
+            console.warn(
+              'Failed to save photo to All Photos:',
+              response.status
+            );
+          }
+        } catch (err) {
+          console.warn(
+            'Error saving photo to All Photos:',
+            err
+          );
+        }
+      }
 
       if (onAllPhotosUpdated) {
         onAllPhotosUpdated();

@@ -147,7 +147,9 @@
     fileInput.value = '';
   }
 
-  // 🔥 OPTIMIZED: Parallel uploads with progress
+  // Uploads run ONE AT A TIME (never in parallel). The server saves the
+  // whole collection per request, so parallel uploads overwrite each other
+  // and photos get silently LOST. Sequential = each request sees fresh data.
   async function uploadAll() {
     if (uploading || photos.length === 0) return;
     uploading = true;
@@ -159,44 +161,31 @@
     var ok = 0;
     var failed = [];
     
-    // Upload all photos in parallel (Promise.all)
-    var uploadPromises = [];
-    var progressUpdate = function(index) {
-      setStatus('📤 Uploading ' + (index + 1) + ' of ' + total + '...');
-    };
-    
     for (var i = 0; i < total; i++) {
-      var photo = photos[i];
-      var promise = (function(idx, p) {
-        return (async function() {
-          try {
-            var body;
-            if (isAllPhotosMode) {
-              body = { image: p.url, month: allMonth, year: allYear, date: allDate };
-            } else {
-              body = { image: p.url, eventId: eventId, dateIndex: dateIndex };
-            }
-            var res = await fetch('/api/uploads' + (isAllPhotosMode ? '/all' : ''), {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify(body)
-            });
-            var data = await res.json();
-            if (!res.ok) throw new Error(data.message || 'Upload failed');
-            p.done = true;
-            ok++;
-            renderPreviews();
-            setStatus('📤 Uploaded ' + ok + ' of ' + total);
-          } catch (err) {
-            failed.push({ index: idx, error: err });
-          }
-        })();
-      })(i, photo);
-      uploadPromises.push(promise);
+      var p = photos[i];
+      setStatus('📤 Uploading ' + (i + 1) + ' of ' + total + '...');
+      try {
+        var body;
+        if (isAllPhotosMode) {
+          body = { image: p.url, month: allMonth, year: allYear, date: allDate };
+        } else {
+          body = { image: p.url, eventId: eventId, dateIndex: dateIndex };
+        }
+        var res = await fetch('/api/uploads' + (isAllPhotosMode ? '/all' : ''), {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body)
+        });
+        var data = await res.json();
+        if (!res.ok) throw new Error(data.message || 'Upload failed');
+        p.done = true;
+        ok++;
+        renderPreviews();
+        setStatus('📤 Uploaded ' + ok + ' of ' + total);
+      } catch (err) {
+        failed.push({ index: i, error: err });
+      }
     }
-    
-    // Wait for all uploads to complete
-    await Promise.all(uploadPromises);
     
     uploading = false;
     uploadBtn.disabled = false;
@@ -264,6 +253,16 @@
 
   function galleryItems() {
     var items = [];
+    // Dedupe by month + year + stored content so the same photo saved in
+    // BOTH an event and a bucket is only shown ONCE (same as the admin).
+    var seen = {};
+    function push(url, m, y, date) {
+      var stored = String(url);
+      var key = m + '|' + y + '|' + stored;
+      if (seen[key]) return;
+      seen[key] = true;
+      items.push({ url: resolvePhotoUrlPublic(stored), month: m, year: y, date: date });
+    }
     // Photos from events (same as the admin's All Photos page)
     galleryEvents.forEach(function (ev) {
       if (!Array.isArray(ev.dateEntries)) return;
@@ -273,7 +272,7 @@
         var y = parsed ? parsed.year : -1;
         var date = String(entry.date || '');
         (Array.isArray(entry.photos) ? entry.photos : []).forEach(function (url) {
-          items.push({ url: resolvePhotoUrlPublic(String(url)), month: m, year: y, date: date });
+          push(url, m, y, date);
         });
       });
     });
@@ -281,11 +280,11 @@
     galleryAlbums.forEach(function (album) {
       var m = typeof album.month === 'number' ? album.month : -1;
       var y = typeof album.year === 'number' ? album.year : -1;
-var date = String(album.date || '');
-        (Array.isArray(album.photos) ? album.photos : []).forEach(function (url) {
-          items.push({ url: resolvePhotoUrlPublic(String(url)), month: m, year: y, date: date });
-        });
+      var date = String(album.date || '');
+      (Array.isArray(album.photos) ? album.photos : []).forEach(function (url) {
+        push(url, m, y, date);
       });
+    });
     return items;
   }
 
