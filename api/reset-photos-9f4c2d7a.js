@@ -5,47 +5,32 @@ const DATABASE_URL = (process.env.DATABASE_URL || '').trim();
 const IS_LIBSQL = /^(libsql:\/\/|wss:\/\/|ws:\/\/|file:)/.test(DATABASE_URL);
 
 export default async function handler(req, res) {
-  if (req.method !== 'GET') {
-    return res.status(405).json({ message: 'Method not allowed.' });
-  }
+  if (req.method !== 'GET') return res.status(405).json({ message: 'Method not allowed.' });
+  if (!DATABASE_URL) return res.status(500).json({ message: 'DATABASE_URL is not configured.' });
 
-  if (!DATABASE_URL) {
-    return res.status(500).json({ message: 'DATABASE_URL is not configured.' });
-  }
-
+  let db;
   try {
-    let db;
     let snapshot;
 
     if (IS_LIBSQL) {
-      db = createClient({
-        url: DATABASE_URL,
-        authToken: process.env.TURSO_AUTH_TOKEN || undefined,
-      });
-      const result = await db.execute({
-        sql: 'SELECT value FROM gfc_store WHERE key = ?',
-        args: ['db'],
-      });
-      if (!result.rows.length) {
-        return res.status(404).json({ message: 'Database record not found.' });
-      }
+      db = createClient({ url: DATABASE_URL, authToken: process.env.TURSO_AUTH_TOKEN || undefined });
+      const result = await db.execute({ sql: 'SELECT value FROM gfc_store WHERE key = ?', args: ['db'] });
+      if (!result.rows.length) return res.status(404).json({ message: 'Database record not found.' });
       snapshot = JSON.parse(result.rows[0].value);
     } else {
-      db = new pg.Pool({
-        connectionString: DATABASE_URL,
-        ssl: { rejectUnauthorized: false },
-      });
+      db = new pg.Pool({ connectionString: DATABASE_URL, ssl: { rejectUnauthorized: false } });
       const result = await db.query("SELECT value FROM gfc_store WHERE key = 'db'");
-      if (!result.rows.length) {
-        await db.end();
-        return res.status(404).json({ message: 'Database record not found.' });
-      }
+      if (!result.rows.length) return res.status(404).json({ message: 'Database record not found.' });
       snapshot = result.rows[0].value;
+    }
+
+    if (snapshot.__oneTimePhotoResetCompleted) {
+      if (IS_LIBSQL) db.close(); else await db.end();
+      return res.status(200).json({ success: true, alreadyCompleted: true, message: 'Photo reset was already completed.' });
     }
 
     const events = Array.isArray(snapshot.events) ? snapshot.events : [];
     let eventPhotoCount = 0;
-
     for (const event of events) {
       if (!Array.isArray(event.dateEntries)) continue;
       for (const entry of event.dateEntries) {
@@ -67,7 +52,7 @@ export default async function handler(req, res) {
 
     snapshot.events = events;
     snapshot.allPhotos = allPhotoAlbums;
-
+    snapshot.__oneTimePhotoResetCompleted = new Date().toISOString();
     const nextSnapshot = JSON.stringify(snapshot);
 
     if (IS_LIBSQL) {
@@ -86,13 +71,9 @@ export default async function handler(req, res) {
       await db.end();
     }
 
-    return res.status(200).json({
-      success: true,
-      message: 'One-time photo reset completed.',
-      eventsPhotosCleared: eventPhotoCount,
-      allPhotosCleared: allPhotoCount,
-    });
+    return res.status(200).json({ success: true, message: 'One-time photo reset completed.', eventsPhotosCleared: eventPhotoCount, allPhotosCleared: allPhotoCount });
   } catch (error) {
+    try { if (db && !IS_LIBSQL) await db.end(); } catch {}
     console.error('One-time photo reset error:', error);
     return res.status(500).json({ message: error.message || 'Reset failed.' });
   }
