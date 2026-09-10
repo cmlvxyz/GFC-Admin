@@ -319,8 +319,10 @@
       } else if (dateParam) {
         // Match the ACTUAL selected date string against the date entries
         // (single source of truth). Never fall back to an arbitrary index.
+        // Matching is whitespace-insensitive so the QR value "August30"
+        // matches the entry date "August 30".
         for (var j = 0; j < entries.length; j++) {
-          if (String(entries[j].date).trim() === dateParam) {
+          if (String(entries[j].date).replace(/\s+/g, '') === dateParam.replace(/\s+/g, '')) {
             dateIndex = j;
             entry = entries[j];
             break;

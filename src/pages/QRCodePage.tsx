@@ -63,19 +63,23 @@ export const QRCodePage: React.FC<QRCodePageProps> = ({
   /*
    * IMPORTANT:
    * The QR URL must use the ACTUAL DATE VALUE, not the array index.
+   * No re-encoding trick - the month must not be converted.
    *
    * Example:
    * selectedDateIndex = 11
    * selected entry = { date: "August 30", photos: [...] }
    *
    * QR URL:
-   * /upload?event=sunday&date=August%2030
+   * /upload?event=sunday&date=August30
    *
    * NOT:
    * /upload?event=sunday&date=11
+   *
+   * Spaces are removed so the URL has no %20 encoding:
+   * "August 30" -> "August30"
    */
   const getUploadUrl = (eventId: string, dateValue: string) =>
-    `${GFC_BASE}/upload?event=${encodeURIComponent(eventId)}&date=${encodeURIComponent(dateValue)}`;
+    `${GFC_BASE}/upload?event=${encodeURIComponent(eventId)}&date=${encodeURIComponent(dateValue.replace(/\s+/g, ''))}`;
 
   const [selectedEventId, setSelectedEventId] = useState<string>('');
   const [uploadedPhotos, setUploadedPhotos] = useState<string[]>([]);

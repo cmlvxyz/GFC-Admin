@@ -8,6 +8,7 @@ import {
   CalendarDays,
   Images,
   Trash2,
+  Loader2,
   ChevronDown,
   ChevronUp
 } from 'lucide-react';
@@ -174,8 +175,12 @@ export const AllPhotosPage: React.FC<AllPhotosPageProps> = ({
   const [expandedMonth, setExpandedMonth] =
     useState<string | null>(null);
 
-  const [isDeleting, setIsDeleting] =
-    useState(false);
+  /*
+   * Tracks which photos are currently being deleted so each
+   * delete button shows its own spinner (no global lock).
+   */
+  const [deletingKeys, setDeletingKeys] =
+    useState<Set<string>>(new Set());
 
   /*
    * Keeps successfully deleted photos hidden immediately
@@ -404,14 +409,18 @@ export const AllPhotosPage: React.FC<AllPhotosPageProps> = ({
   ) => {
     e.stopPropagation();
 
-    if (isDeleting) {
+    // Store the photo key for optimistic update + per-photo loading
+    const photoKey = getPhotoKey(photo);
+
+    if (deletingKeys.has(photoKey)) {
       return;
     }
 
-    setIsDeleting(true);
-
-    // Store the photo key for optimistic update
-    const photoKey = getPhotoKey(photo);
+    setDeletingKeys(prev => {
+      const next = new Set(prev);
+      next.add(photoKey);
+      return next;
+    });
 
     try {
       let response: Response;
@@ -531,7 +540,11 @@ export const AllPhotosPage: React.FC<AllPhotosPageProps> = ({
       // Photo remains visible in UI
 
     } finally {
-      setIsDeleting(false);
+      setDeletingKeys(prev => {
+        const next = new Set(prev);
+        next.delete(photoKey);
+        return next;
+      });
     }
   };
 
@@ -936,12 +949,16 @@ export const AllPhotosPage: React.FC<AllPhotosPageProps> = ({
                                       e
                                     )
                                   }
-                                  disabled={isDeleting}
+                                  disabled={deletingKeys.has(getPhotoKey(photo))}
                                   className="absolute top-1 right-1 p-1.5 bg-red-500 hover:bg-red-600 text-white rounded-full opacity-0 group-hover:opacity-100 transition-all shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
                                   title="Delete photo permanently"
                                   aria-label="Delete photo"
                                 >
-                                  <Trash2 className="w-3.5 h-3.5" />
+                                  {deletingKeys.has(getPhotoKey(photo)) ? (
+                                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                  ) : (
+                                    <Trash2 className="w-3.5 h-3.5" />
+                                  )}
                                 </button>
 
                               </div>
