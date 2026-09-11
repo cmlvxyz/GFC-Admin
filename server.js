@@ -983,20 +983,32 @@ async function resolveFacebookImages(rawUrl, page) {
 // - Otherwise: saves to All Photos only.
 app.post('/api/facebook/import', async (req, res, next) => {
   try {
-    const { url, eventId, dateIndex } = req.body || {};
-    if (!url || typeof url !== 'string') {
+    const { url: rawInput, eventId, dateIndex } = req.body || {};
+    if (!rawInput || typeof rawInput !== 'string') {
       return res.status(400).json({ message: 'Facebook URL is required.' });
     }
 
     let parsed;
     try {
-      parsed = new URL(url.trim());
+      parsed = new URL(rawInput.trim());
     } catch {
       return res.status(400).json({ message: 'Please enter a valid Facebook URL.' });
     }
-    if (!/(^|\.)facebook\.com$/i.test(parsed.hostname)) {
+    if (!/(^|\.)facebook\.com$/i.test(parsed.hostname) && !/fb\.watch$/i.test(parsed.hostname)) {
       return res.status(400).json({ message: 'Only facebook.com URLs are supported.' });
     }
+
+    // Reject bare page/profile URLs — they don't point at a post.
+    if (/\/profile\.php$/i.test(parsed.pathname)) {
+      return res.status(400).json({
+        message: 'That is a Page profile link, not a post. Please open the specific post and copy its direct link (or use the Share → Copy link option).'
+      });
+    }
+
+    // Expand /share/... short links to their real destination.
+    const { url: expandedUrl, expanded } = await expandFacebookShareUrl(rawInput.trim());
+    const url = expandedUrl;
+    console.log(`📘 Facebook import: "${rawInput}"${expanded ? ` → "${url}"` : ''}`);
 
     const pages = getFacebookPages();
     if (pages.length === 0) {
@@ -1016,7 +1028,6 @@ app.post('/api/facebook/import', async (req, res, next) => {
     if (page) {
       resolved = await resolveFacebookImages(url, page);
     } else {
-      // Try each configured Page
       let lastErr = null;
       for (const p of pages) {
         try {
