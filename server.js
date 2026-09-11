@@ -350,6 +350,7 @@ function validCollection(req, res, next) {
 }
 
 const app = express();
+app.set('trust proxy', 1);
 
 // ============================================
 // CORS
@@ -449,10 +450,17 @@ app.get('/api/config', (req, res) => {
   });
 });
 
+// The request's public origin (forwarded by the platform's TLS proxy).
+function reqOrigin(req) {
+  const proto = (req.get('x-forwarded-proto') || 'https').split(',')[0].trim();
+  const host = req.get('host') || 'gfc-admin.up.railway.app';
+  return `${proto}://${host}`;
+}
+
 // Get all content
 app.get('/api/content', async (req, res) => {
   const initialized = await dbIsInitialized();
-  const origin = `${req.protocol}://${req.get('host')}`;
+  const origin = reqOrigin(req);
   const content = { version: 1, initialized };
   for (const key of collections) content[key] = await dbGetCollection(key);
   content.activities = await dbGetActivities();
@@ -1635,7 +1643,7 @@ app.post('/api/uploads', async (req, res, next) => {
 // ============================================
 app.get('/api/:collection', validCollection, async (req, res, next) => { 
   try { 
-    const origin = `${req.protocol}://${req.get('host')}`;
+    const origin = reqOrigin(req);
     const data = await dbGetCollection(req.params.collection);
     if (req.params.collection === 'events') proxyizeEvents(data, origin);
     if (req.params.collection === 'allPhotos') proxyizeAllPhotoBuckets(data, origin);
