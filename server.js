@@ -1743,7 +1743,7 @@ app.get(['/', '/index.html'], (req, res) => {
 // ============================================
 app.use((error, req, res, next) => { 
   console.error('Server error:', error); 
-  res.status(500).json({ message: error.message || 'Internal server error.' }); 
+  res.status(500).json({ message: 'Internal server error.' }); 
 });
 
 // ============================================
