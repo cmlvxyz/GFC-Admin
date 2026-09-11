@@ -1239,16 +1239,35 @@ async function resolveFacebookImages(rawUrl, page) {
     // 1b) Post cover
     if (data.full_picture) collected.add(data.full_picture);
 
-    // 1c) Attachments + subattachments (multi-photo posts)
+    // ---- 1c) Attachments + subattachments (multi-photo posts)
+    // Subattachments are paginated by the Graph API (default ~12 per page).
+    // Follow pagination to get ALL photos from a multi-photo post.
     const atts = data.attachments?.data || [];
-    atts.forEach(att => {
+    for (const att of atts) {
       if (att?.media?.image?.src) collected.add(att.media.image.src);
-      const subs = att?.subattachments?.data || [];
-      subs.forEach(s => {
+
+      // Collect all subattachments including paginated pages
+      let page = att?.subattachments?.data || [];
+      let nextUrl = att?.subattachments?.paging?.next || null;
+      let safety = 0;
+      for (const s of page) {
         const src = s?.media?.image?.src || s?.media?.source;
         if (src) collected.add(src);
-      });
-    });
+      }
+      while (nextUrl && safety < 20) {
+        try {
+          const resp = await fetch(nextUrl);
+          const data = await resp.json().catch(() => ({}));
+          const items = data.data || [];
+          for (const s of items) {
+            const src = s?.media?.image?.src || s?.media?.source;
+            if (src) collected.add(src);
+          }
+          nextUrl = data.paging?.next || null;
+          safety++;
+        } catch { break; }
+      }
+    }
 
     if (collected.size > 0) {
       return {
@@ -1315,11 +1334,27 @@ async function resolveFacebookImages(rawUrl, page) {
 
       if (match) {
         if (match.full_picture) collected.add(match.full_picture);
-        const subs = match.attachments?.data?.[0]?.subattachments?.data || [];
-        subs.forEach(s => {
+        const firstAtt = match.attachments?.data?.[0];
+        if (firstAtt?.media?.image?.src) collected.add(firstAtt.media.image.src);
+        let page = firstAtt?.subattachments?.data || [];
+        let nextUrl = firstAtt?.subattachments?.paging?.next || null;
+        let safety = 0;
+        for (const s of page) {
           const src = s?.media?.image?.src || s?.media?.source;
           if (src) collected.add(src);
-        });
+        }
+        while (nextUrl && safety < 20) {
+          try {
+            const resp = await fetch(nextUrl);
+            const d = await resp.json().catch(() => ({}));
+            for (const s of d.data || []) {
+              const src = s?.media?.image?.src || s?.media?.source;
+              if (src) collected.add(src);
+            }
+            nextUrl = d.paging?.next || null;
+            safety++;
+          } catch { break; }
+        }
         if (collected.size > 0) {
           return {
             images: Array.from(collected),
