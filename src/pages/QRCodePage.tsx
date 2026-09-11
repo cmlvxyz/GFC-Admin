@@ -1090,7 +1090,7 @@ useEffect(() => {
                 }}
                 className="w-full px-4 py-2.5 rounded-xl border border-gray-200 dark:border-white/10 bg-gray-50 dark:bg-black/30 text-black dark:text-white text-sm focus:border-indigo-400 dark:focus:border-indigo-400/50 focus:outline-hidden focus:ring-2 focus:ring-indigo-400/20 transition-all"
               >
-                <option value="">-- Select an event --</option>
+                <option value="">Select Event</option>
                 {events.map(event => (
                   <option key={event.id} value={event.id}>{event.title}</option>
                 ))}
@@ -1212,7 +1212,7 @@ useEffect(() => {
           </div>
 
           {/* QR */}
-          <div className="flex flex-col items-center justify-center p-4 bg-gray-50 dark:bg-black/30 rounded-xl border border-gray-200 dark:border-white/10">
+          <div className="flex flex-col items-center justify-center p-4 bg-white dark:bg-black rounded-xl border border-white dark:border-white">
             {selectedEventId && (getSelectedDateEntry() || isGospelNetwork) ? (
               <>
                 <div className="flex items-center gap-2 mb-2">
@@ -1278,22 +1278,21 @@ useEffect(() => {
           {/* IMPORT FROM FACEBOOK */}
           <div className="mt-5 pt-5 border-t border-gray-200 dark:border-white/10">
             <h5 className="text-xs font-bold text-black dark:text-white mb-2 flex items-center gap-2">
-              <Facebook className="w-4 h-4 text-indigo-500" />
-              Or Import from Facebook
+              Import from Facebook
             </h5>
 
             <p className="text-[11px] text-gray-500 dark:text-gray-400 mb-3">
-              Paste a public Facebook post URL.{' '}
+              {' '}
               {isGospelNetwork ? (
                 <>
-                  Each post is saved to its own new album in{' '}
-                  <strong>{getSelectedEvent()?.title}</strong> and All Photos.
+                  {' '}
+                  <strong>{getSelectedEvent()?.title}</strong>
                 </>
               ) : (
                 <>
-                  Photos will be saved to{' '}
+                  {' '}
                   <strong>{getSelectedEvent()?.title}</strong> •{' '}
-                  <strong>{getSelectedDateEntry()?.date}</strong> and All Photos.
+                  <strong>{getSelectedDateEntry()?.date}</strong>
                 </>
               )}
             </p>
@@ -1314,7 +1313,7 @@ useEffect(() => {
                     void handleFacebookImport();
                   }
                 }}
-                placeholder="https://www.facebook.com/..."
+                placeholder="Import Facebook Link"
                 disabled={facebookImporting}
                 className="flex-1 px-4 py-2.5 rounded-xl border border-gray-200 dark:border-white/10 bg-gray-50 dark:bg-black/30 text-black dark:text-white text-sm focus:border-indigo-400 dark:focus:border-indigo-400/50 focus:outline-hidden focus:ring-2 focus:ring-indigo-400/20 transition-all disabled:opacity-50"
               />
@@ -1327,11 +1326,10 @@ useEffect(() => {
                 {facebookImporting ? (
                   <>
                     <Loader2 className="w-4 h-4 animate-spin" />
-                    Importing...
+                    Importing
                   </>
                 ) : (
                   <>
-                    <Facebook className="w-4 h-4" />
                     Import
                   </>
                 )}
@@ -1455,11 +1453,10 @@ useEffect(() => {
               {isUploading ? (
                 <>
                   <Loader2 className="w-4 h-4 animate-spin" />
-                  Uploading...
+                  Uploading
                 </>
               ) : (
                 <>
-                  <Upload className="w-4 h-4" />
                   Save to Event & All Photos
                 </>
               )}
@@ -1468,7 +1465,7 @@ useEffect(() => {
             {uploadStatus === 'success' && (
               <span className="flex items-center gap-1 text-emerald-500 dark:text-emerald-400 text-sm font-bold">
                 <CheckCircle className="w-4 h-4" />
-                Photos saved!
+                Photos Saved!
               </span>
             )}
 
