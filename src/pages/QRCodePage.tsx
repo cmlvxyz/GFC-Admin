@@ -325,7 +325,7 @@ const getUploadUrl = (eventId: string, dateValue: string) => {
     return normalizeEvent(event);
   };
 
-  const isGospelNetwork = selectedEventId === 'gospel-network';
+  const isGospelNetwork = false; // Alisin ang espesyal na handling
 
   // ==========================================================
   // SELECTED DATE
@@ -668,23 +668,20 @@ useEffect(() => {
 
       const isGospel = String(rawEvent.id) === 'gospel-network';
 
-      const targetIndex = isGospel
-        ? -1
-        : selectedDateIndex >= 0 && selectedDateIndex < event.dateEntries.length
+      const targetIndex =
+        selectedDateIndex >= 0 && selectedDateIndex < event.dateEntries.length
           ? selectedDateIndex
           : 0;
 
-      const targetEntry = isGospel ? null : (event.dateEntries[targetIndex] ?? null);
+      const targetEntry = event.dateEntries[targetIndex] ?? null;
 
-      if (!targetEntry && !isGospel) {
+      if (!targetEntry) {
         setErrorMessage('Selected date album was not found.');
         setIsUploading(false);
         return;
       }
 
-      const albumEntry: DateEntry = isGospel
-        ? { date: autoAlbumLabel(event.dateEntries), photos: [] }
-        : targetEntry!;
+      const albumEntry: DateEntry = targetEntry;
 
       const currentPhotos = Array.isArray(albumEntry.photos) ? albumEntry.photos : [];
       const existingPhotoSet = new Set(currentPhotos);
@@ -927,7 +924,7 @@ useEffect(() => {
       return;
     }
 
-    if (!isGospelNetwork && !getSelectedDateEntry()) {
+    if (!getSelectedDateEntry()) {
       setFacebookStatus('error');
       setFacebookMessage('Please select a date album first.');
       return;
@@ -959,9 +956,9 @@ useEffect(() => {
         body: JSON.stringify({
           url,
           eventId: selectedEventId,
-          date: isGospelNetwork ? undefined : getSelectedDateValue(),
-          dateIndex: isGospelNetwork ? undefined : selectedDateIndex,
-          autoCreateAlbum: isGospelNetwork
+          date: getSelectedDateValue(),
+          dateIndex: selectedDateIndex,
+          autoCreateAlbum: false
         })
       });
 
@@ -1098,7 +1095,7 @@ useEffect(() => {
             </div>
 
             {/* DATE ALBUM */}
-            {selectedEventId && !isGospelNetwork && getSelectedEvent() && (() => {
+            {selectedEventId && getSelectedEvent() && (() => {
               const selectedEvent = getSelectedEvent()!;
               const isYearAlbum = isYearAlbumEvent(selectedEvent);
 
@@ -1213,7 +1210,7 @@ useEffect(() => {
 
           {/* QR */}
           <div className="flex flex-col items-center justify-center p-4 bg-gray-50 dark:bg-black rounded-xl border border-white dark:border-white">
-            {selectedEventId && (getSelectedDateEntry() || isGospelNetwork) ? (
+            {selectedEventId && getSelectedDateEntry() ? (
               <>
                 <div className="flex items-center gap-2 mb-2">
                   <QrCode className="w-5 h-5 text-indigo-500" />
@@ -1244,7 +1241,7 @@ useEffect(() => {
       </div>
 
       {/* UPLOAD */}
-      {selectedEventId && (getSelectedDateEntry() || isGospelNetwork) && (
+      {selectedEventId && getSelectedDateEntry() && (
         <div className="bg-white dark:bg-[#14141f]/80 backdrop-blur-sm p-6 rounded-2xl border border-gray-200 dark:border-white/5 shadow-sm">
 
           <h4 className="text-sm font-bold text-black dark:text-white mb-4 flex items-center gap-2">
