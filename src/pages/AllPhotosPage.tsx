@@ -275,8 +275,8 @@ export const AllPhotosPage: React.FC<AllPhotosPageProps> = ({
     if (selectedMonth !== '') qrUrl += `?month=${selectedMonth + 1}`;
     if (selectedYear !== '') qrUrl += selectedMonth !== '' ? `&year=${selectedYear}` : `?year=${selectedYear}`;
     const qr = new QRCodeStyling({
-      width: 240, height: 240, margin: 0, data: qrUrl, image: '/image-circle.png',
-      imageOptions: { imageSize: 0.4, margin: 8, crossOrigin: 'anonymous' },
+      width: 240, height: 240, margin: 16, data: qrUrl, image: '/image-circle.png',
+      imageOptions: { imageSize: 0.15, margin: 6, crossOrigin: 'anonymous' },
       qrOptions: { errorCorrectionLevel: 'H', typeNumber: 0 },
       dotsOptions: { color: '#1a1a2e', type: 'rounded' },
       cornersSquareOptions: { color: '#1a1a2e', type: 'extra-rounded' },

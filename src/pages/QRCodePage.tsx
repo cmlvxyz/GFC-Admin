@@ -689,14 +689,14 @@ export const QRCodePage: React.FC<
   const qr = new QRCodeStyling({
     width: 260,
     height: 260,
-    margin: 0,
+    margin: 16,
     data: uploadUrl,
 
     image: '/image-circle.png',
 
     imageOptions: {
-      imageSize: 0.4,
-      margin: 8,
+      imageSize: 0.15,
+      margin: 6,
       crossOrigin: 'anonymous'
     },
 
