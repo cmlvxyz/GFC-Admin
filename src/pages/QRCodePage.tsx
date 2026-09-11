@@ -141,6 +141,29 @@ const toMonthYear = (value: string): string => {
   return `${MONTH_NAMES[month]} ${year}`;
 };
 
+// ↓↓↓ IDAGDAG ITO ↓↓↓
+const isMonthDayYear = (value: string): boolean => {
+  const match = value.trim().match(/^([A-Za-z]+)[\s.]?(\d{1,2}),\s*(\d{4})$/);
+  if (!match) return false;
+  const monthName = match[1][0].toUpperCase() + match[1].slice(1).toLowerCase();
+  const monthIndex = MONTH_NAMES.indexOf(monthName);
+  if (monthIndex === -1) return false;
+  const parsed = new Date(`${monthName} ${match[2]}, ${match[3]}`);
+  if (Number.isNaN(parsed.getTime())) return false;
+  return (
+    parsed.getFullYear() === parseInt(match[3], 10) &&
+    parsed.getMonth() === monthIndex
+  );
+};
+
+const toMonthDayYear = (value: string): string => {
+  const parsed = new Date(value);
+  const day = parsed.getDate();
+  const month = parsed.getMonth();
+  const year = parsed.getFullYear();
+  return `${MONTH_NAMES[month]} ${day}, ${year}`;
+};
+
 // ============================================================
 // HASH HELPERS
 // ============================================================
@@ -782,26 +805,29 @@ useEffect(() => {
   // ==========================================================
 
   const handleAddDate = async () => {
-    const rawEvent = events.find(e => e.id === selectedEventId);
-    const value = newDateInput.trim();
+  const rawEvent = events.find(e => e.id === selectedEventId);
+  const value = newDateInput.trim();
 
-    if (!rawEvent) {
-      setAddDateError('Please select an event first.');
-      return;
-    }
+  if (!rawEvent) {
+    setAddDateError('Please select an event first.');
+    return;
+  }
 
-    if (!value) {
-      setAddDateError(
-        isYearAlbumEvent(rawEvent)
-          ? 'Please enter a year album name first.'
-          : 'Please enter a date first.'
-      );
-      return;
-    }
+  if (!value) {
+    setAddDateError(
+      isYearAlbumEvent(rawEvent)
+        ? 'Please enter a year album name first.'
+        : 'Please enter a date first.'
+    );
+    return;
+  }
 
-    const isYear = isYearAlbumEvent(rawEvent);
+  const isYear = isYearAlbumEvent(rawEvent);
+  const isGospelNetwork = String(rawEvent.id) === 'gospel-network';
 
-    if (!isYear) {
+  if (!isYear) {
+    if (isGospelNetwork) {
+      // GOSPEL NETWORK: Month Year format ("August 2026")
       if (!isMonthYear(value)) {
         setAddDateError(
           'Please enter a real date as "Month Year" (e.g. August 2026).'
@@ -809,64 +835,79 @@ useEffect(() => {
         return;
       }
     } else {
-      if (isScheduleEntry(value)) {
-        setAddDateError('Please enter a year like "3rd Year Anniversary" (not a schedule).');
-        return;
-      }
-
-      if (isConcreteDate(value)) {
-        setAddDateError('Please enter a year like "1st Year Anniversary" (not a calendar date).');
+      // Iba pang events: Month Day, Year format ("August 14, 2026")
+      if (!isMonthDayYear(value)) {
+        setAddDateError(
+          'Please enter a real date as "Month Day, Year" (e.g. August 14, 2026).'
+        );
         return;
       }
     }
+  } else {
+    if (isScheduleEntry(value)) {
+      setAddDateError('Please enter a year like "3rd Year Anniversary" (not a schedule).');
+      return;
+    }
 
-    const valueDate = isYear ? value : toMonthYear(value);
-    const event = normalizeEvent(rawEvent);
-    const entries = Array.isArray(event.dateEntries) ? event.dateEntries : [];
+    if (isConcreteDate(value)) {
+      setAddDateError('Please enter a year like "1st Year Anniversary" (not a calendar date).');
+      return;
+    }
+  }
 
-    const dateAlreadyExists = entries.some(
-      entry => dateKey(entry.date) === dateKey(valueDate)
+  // Conversion: GOSPEL NETWORK → Month Year; iba pa → Month Day, Year
+  const valueDate = isYear
+    ? value
+    : isGospelNetwork
+      ? toMonthYear(value)
+      : toMonthDayYear(value);
+
+  const event = normalizeEvent(rawEvent);
+  const entries = Array.isArray(event.dateEntries) ? event.dateEntries : [];
+
+  const dateAlreadyExists = entries.some(
+    entry => dateKey(entry.date) === dateKey(valueDate)
+  );
+
+  if (dateAlreadyExists) {
+    setAddDateError(`The album "${value}" already exists in this event.`);
+    return;
+  }
+
+  const updatedEntries = [...entries, { date: valueDate, photos: [] }];
+  const savedDateEntries = mergeDateEntriesIntoRaw(rawEvent.dateEntries, updatedEntries);
+
+  const updatedEvent: ChurchEvent = { ...rawEvent, dateEntries: savedDateEntries };
+
+  setAddingDate(true);
+  setAddDateError('');
+
+  try {
+    await apiUpdateRecord('events', rawEvent.id, { dateEntries: savedDateEntries });
+
+    if (onUpdateEvent) {
+      onUpdateEvent(updatedEvent);
+    }
+
+    setNewDateInput('');
+
+    const savedNormalized = normalizeEvent(updatedEvent);
+    const finalEntries = savedNormalized.dateEntries ?? [];
+    const nextIndex = finalEntries.findIndex(
+      (entry: DateEntry) => dateKey(entry.date) === dateKey(valueDate)
     );
 
-    if (dateAlreadyExists) {
-      setAddDateError(`The album "${value}" already exists in this event.`);
-      return;
-    }
+    setSelectedDateIndex(nextIndex >= 0 ? nextIndex : finalEntries.length - 1);
 
-    const updatedEntries = [...entries, { date: valueDate, photos: [] }];
-    const savedDateEntries = mergeDateEntriesIntoRaw(rawEvent.dateEntries, updatedEntries);
-
-    const updatedEvent: ChurchEvent = { ...rawEvent, dateEntries: savedDateEntries };
-
-    setAddingDate(true);
-    setAddDateError('');
-
-    try {
-      await apiUpdateRecord('events', rawEvent.id, { dateEntries: savedDateEntries });
-
-      if (onUpdateEvent) {
-        onUpdateEvent(updatedEvent);
-      }
-
-      setNewDateInput('');
-
-      const savedNormalized = normalizeEvent(updatedEvent);
-      const finalEntries = savedNormalized.dateEntries ?? [];
-      const nextIndex = finalEntries.findIndex(
-        (entry: DateEntry) => dateKey(entry.date) === dateKey(valueDate)
-      );
-
-      setSelectedDateIndex(nextIndex >= 0 ? nextIndex : finalEntries.length - 1);
-
-    } catch (error) {
-      console.error('Error adding date:', error);
-      setAddDateError('Error adding date. Please try again.');
-      setAddingDate(false);
-      return;
-    }
-
+  } catch (error) {
+    console.error('Error adding date:', error);
+    setAddDateError('Error adding date. Please try again.');
     setAddingDate(false);
-  };
+    return;
+  }
+
+  setAddingDate(false);
+};
 
   // ==========================================================
   // DELETE ALBUM (WHOLE ALBUM)
