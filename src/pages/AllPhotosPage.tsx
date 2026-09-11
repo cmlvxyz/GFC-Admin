@@ -350,70 +350,7 @@ export const AllPhotosPage: React.FC<AllPhotosPageProps> = ({
                           {allPhotosInGroup.map((photo, idx) => (
                             <div key={`${getPhotoKey(photo)}-${idx}`} className="group relative rounded-lg overflow-hidden shadow-sm hover:shadow-md transition-all aspect-square cursor-pointer hover:scale-[1.02]" title={`${photo.eventTitle} — ${photo.date}`} onClick={() => setSelectedPhoto(photo)}>
                               <img src={photo.url} alt={`${photo.eventTitle} - ${photo.date}`} loading="lazy" className="w-full h-full object-cover transition-transform hover:scale-110 duration-500" onError={e => { (e.target as HTMLImageElement).src = 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="100" height="100" viewBox="0 0 100 100"%3E%3Crect fill="%23ddd" width="100%" height="100%"/%3E%3Ctext x="50%" y="50%" text-anchor="middle" dy=".3em" font-family="sans-serif" font-size="12" fill="%23999"%3ENo image%3C/text%3E%3C/svg%3E'; }} />
-                              <div className="absolute bottom-0 left-0 right-0 px-2 py-1 bg-black/50 text-white text-[9px] font-semibold truncate opacity-0 group-hover:opacity-100 transition-opacity">{photo.eventTitle} • {photo.date}</div>
-                              <button onClick={e => deletePhoto(photo, e)} className="absolute top-1 right-1 p-1.5 bg-red-500 hover:bg-red-600 text-white rounded-full opacity-0 group-hover:opacity-100 transition-all shadow-lg" title="Delete photo permanently" aria-label="Delete photo"><Trash2 className="w-3.5 h-3.5" /></button>
-                            </div>
-                          ))}
-                        </div>
-                      ) : (
-                        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
-                          {allPhotosInGroup.slice(0, 1).map((photo, idx) => (
-                            <div key={`${getPhotoKey(photo)}-${idx}`} className="relative rounded-lg overflow-hidden shadow-sm hover:shadow-md transition-all aspect-square cursor-pointer hover:scale-[1.02]" title={`${group.label} - Click to expand`} onClick={() => toggleExpand(group.key)}>
-                              <img src={photo.url} alt={`${group.label} cover`} loading="lazy" className="w-full h-full object-cover transition-transform hover:scale-110 duration-500" onError={e => { (e.target as HTMLImageElement).src = 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="100" height="100" viewBox="0 0 100 100"%3E%3Crect fill="%23ddd" width="100%" height="100%"/%3E%3Ctext x="50%" y="50%" text-anchor="middle" dy=".3em" font-family="sans-serif" font-size="12" fill="%23999"%3ENo image%3C/text%3E%3C/svg%3E'; }} /></div>
-                          ))}
-                          {allPhotosInGroup.length === 0 && <div className="aspect-square rounded-lg bg-gray-100 dark:bg-black/20 flex items-center justify-center text-gray-400 text-xs">No photos</div>}
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                );
-              })
-            )}
-          </div>
-        </div>
-
-        <div className="bg-white dark:bg-[#14141f]/80 backdrop-blur-sm p-6 rounded-2xl border border-gray-200 dark:border-white/5 shadow-sm lg:sticky lg:top-4">
-          <div className="flex items-center gap-2 mb-3"><QrCode className="w-5 h-5 text-indigo-500" /><span className="text-sm font-bold text-black dark:text-white">Upload QR Code</span></div>
-          <div className="flex justify-center bg-gray-50 dark:bg-black/30 rounded-xl border border-gray-200 dark:border-white/10 p-4"><div ref={el => setQrContainerEl(el)} className="bg-white rounded-lg shadow-md" /></div>
-          <a href={getUploadUrl()} target="_blank" rel="noopener noreferrer" className="mt-2 text-[11px] font-mono text-indigo-500 dark:text-indigo-400 underline break-all text-center block hover:text-indigo-600 dark:hover:text-indigo-300">{getUploadUrl()}</a>
-        </div>
-      </div>
-
-      <div className="grid grid-cols-1 lg:grid-cols-[1fr_320px] gap-6 items-start">
-        <div className="space-y-6">
-          <div className="bg-white dark:bg-[#14141f]/80 backdrop-blur-sm p-6 rounded-2xl border border-gray-200 dark:border-white/5 shadow-sm">
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div>
-                <label className="block text-xs font-bold text-gray-700 dark:text-[#A1A1A1] uppercase tracking-wider mb-2">Select Month</label>
-                <div className="flex items-center gap-2"><CalendarDays className="w-4 h-4 text-indigo-400 flex-shrink-0" /><select value={selectedMonth} onChange={e => { setSelectedMonth(e.target.value === '' ? '' : parseInt(e.target.value)); setExpandedMonth(null); }} className="w-full px-4 py-2.5 rounded-xl border border-gray-200 dark:border-white/10 bg-gray-50 dark:bg-black/30 text-black dark:text-white text-sm focus:border-indigo-400 dark:focus:border-indigo-400/50 focus:outline-hidden focus:ring-2 focus:ring-indigo-400/20 transition-all"><option value="">All Months</option>{MONTH_NAMES.map((name, idx) => <option key={name} value={idx}>{name}</option>)}</select></div>
-              </div>
-              <div>
-                <label className="block text-xs font-bold text-gray-700 dark:text-[#A1A1A1] uppercase tracking-wider mb-2">Select Year</label>
-                <div className="flex items-center gap-2"><CalendarDays className="w-4 h-4 text-indigo-400 flex-shrink-0" /><select value={selectedYear} onChange={e => { const year = e.target.value === '' ? '' : parseInt(e.target.value); setSelectedYear(year); setExpandedMonth(null); }} className="w-full px-4 py-2.5 rounded-xl border border-gray-200 dark:border-white/10 bg-gray-50 dark:bg-black/30 text-black dark:text-white text-sm focus:border-indigo-400 dark:focus:border-indigo-400/50 focus:outline-hidden focus:ring-2 focus:ring-indigo-400/20 transition-all"><option value="">All Years</option>{YEAR_RANGE.map(year => <option key={year} value={year}>{year}</option>)}</select></div>
-              </div>
-            </div>
-          </div>
-
-          <div className="space-y-4">
-            {grouped.length === 0 ? (
-              <div className="bg-white dark:bg-[#14141f]/80 backdrop-blur-sm p-10 rounded-2xl border border-gray-200 dark:border-white/5 shadow-sm text-center"><Images className="w-10 h-10 text-gray-300 dark:text-gray-600 mx-auto mb-2" /><p className="text-gray-500 dark:text-gray-400">{selectedMonth === '' && selectedYear === '' ? 'No photos found. Upload some photos using the QR code.' : 'No photos found for the selected filters.'}</p></div>
-            ) : (
-              grouped.map(group => {
-                const isExpanded = expandedMonth === group.key;
-                const allPhotosInGroup = group.photos;
-                return (
-                  <div key={group.key} className="bg-white dark:bg-[#14141f]/80 backdrop-blur-sm rounded-2xl border border-gray-200 dark:border-white/5 shadow-sm overflow-hidden transition-all">
-                    <div className="flex items-center justify-between p-3 cursor-pointer hover:bg-gray-50 dark:hover:bg-white/5 transition-all" onClick={() => toggleExpand(group.key)}>
-                      <div className="flex items-center gap-3"><h4 className="text-sm font-bold text-black dark:text-white">{group.label}</h4></div>
-                      <div className="flex items-center gap-2">{isExpanded ? <ChevronUp className="w-5 h-5 text-gray-400" /> : <ChevronDown className="w-5 h-5 text-gray-400" />}</div>
-                    </div>
-                    <div className="p-3 pt-0">
-                      {isExpanded ? (
-                        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
-                          {allPhotosInGroup.map((photo, idx) => (
-                            <div key={`${getPhotoKey(photo)}-${idx}`} className="group relative rounded-lg overflow-hidden shadow-sm hover:shadow-md transition-all aspect-square cursor-pointer hover:scale-[1.02]" title={`${photo.eventTitle} — ${photo.date}`} onClick={() => setSelectedPhoto(photo)}>
-                              <img src={photo.url} alt={`${photo.eventTitle} - ${photo.date}`} loading="lazy" className="w-full h-full object-cover transition-transform hover:scale-110 duration-500" onError={e => { (e.target as HTMLImageElement).src = 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="100" height="100" viewBox="0 0 100 100"%3E%3Crect fill="%23ddd" width="100%" height="100%"/%3E%3Ctext x="50%" y="50%" text-anchor="middle" dy=".3em" font-family="sans-serif" font-size="12" fill="%23999"%3ENo image%3C/text%3E%3C/svg%3E'; }} />
-                              <div className="absolute bottom-0 left-0 right-0 px-2 py-1 bg-black/50 text-white text-[9px] font-semibold truncate opacity-0 group-hover:opacity-100 transition-opacity">{photo.eventTitle} • {photo.date}</div>
+                              {photo.source === 'event' && <div className="absolute bottom-0 left-0 right-0 px-2 py-1 bg-black/50 text-white text-[9px] font-semibold truncate opacity-0 group-hover:opacity-100 transition-opacity">{photo.eventTitle} • {photo.date}</div>}
                               <button onClick={e => deletePhoto(photo, e)} className="absolute top-1 right-1 p-1.5 bg-red-500 hover:bg-red-600 text-white rounded-full opacity-0 group-hover:opacity-100 transition-all shadow-lg" title="Delete photo permanently" aria-label="Delete photo"><Trash2 className="w-3.5 h-3.5" /></button>
                             </div>
                           ))}
