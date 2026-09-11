@@ -834,68 +834,108 @@ async function graphGet(pathname, params) {
   return data;
 }
 
-// Given a Facebook URL and a Page config, resolve to a list of image URLs.
 async function resolveFacebookImages(rawUrl, page) {
   const token = page.token;
   const collected = new Set();
-  let lastFbError = null;
 
-  // ---- 1) Try direct ID candidates from the URL (/posts/123, ?fbid=123)
-  const idCandidates = [];
-  try {
-    const u = new URL(rawUrl);
-    const m1 = u.pathname.match(/\/(?:posts|photos|videos)\/(\d+)/i);
-    if (m1) idCandidates.push(m1[1]);
-    const fbid = u.searchParams.get('fbid');
-    if (fbid) idCandidates.push(fbid);
-  } catch (e) { if (e?.fb) lastFbError = e; }
+  // Known page IDs (Graph API id + URL-based ids) that map to this page.
+  // The URL often uses a different id than the Graph API id.
+  const PAGE_ID_ALIASES = {
+    gfc: ['1074232749116315', '61590579395623'],
+    nextgen: ['1085336628004750', '1085336628004750']
+  };
+  const aliases = (PAGE_ID_ALIASES[page.key] || []).concat([page.id]);
+  const knownPageIds = Array.from(new Set(aliases.map(String)));
 
-  for (const id of idCandidates) {
-    try {
-      // Modern endpoint: fetch the post with attachments + images fields.
-      const data = await graphGet(id, {
-        fields: 'id,message,created_time,permalink_url,full_picture,attachments{media,subattachments,title,description},images',
-        access_token: token
-      });
-
-      // 1) Largest from images[]
-      if (Array.isArray(data.images) && data.images.length > 0) {
-        const best = data.images.reduce(
-          (a, b) => (Number(a?.width || 0) >= Number(b?.width || 0) ? a : b),
-          data.images[0]
-        );
-        if (best?.source) collected.add(best.source);
-      }
-
-      // 2) Post cover image
-      if (data.full_picture) collected.add(data.full_picture);
-
-      // 3) Attachments + subattachments
-      const atts = data.attachments?.data || [];
-      atts.forEach(att => {
-        if (att?.media?.image?.src) collected.add(att.media.image.src);
-        const subs = att?.subattachments?.data || [];
-        subs.forEach(s => {
-          const src = s?.media?.image?.src || s?.media?.source;
-          if (src) collected.add(src);
-        });
-      });
-
-      if (collected.size > 0) {
-        return {
-          images: Array.from(collected),
-          caption: data.message || '',
-          permalink: data.permalink_url || rawUrl
-        };
-      }
-    } catch (e) {
-      console.warn(`Post ${id} lookup failed:`, e.message);
+  // ---- 0) pfbid / permalink.php → resolve to numeric id first
+  let workingUrl = rawUrl;
+  if (/story_fbid=pfbid/i.test(rawUrl) || /\/permalink\.php/i.test(rawUrl)) {
+    const resolved = await resolvePfbidToNumericId(rawUrl);
+    if (resolved.id) {
+      workingUrl = `https://www.facebook.com/${resolved.id}`;
+      console.log(`🔗 pfbid resolved to numeric id ${resolved.id}`);
     }
   }
 
-  // ---- 2) Album URL: /media/set/?set=a.123  OR  /{page}/albums/123
+  // ---- 1) Try direct ID candidates from the URL
+  const idCandidates = [];
   try {
-    const u = new URL(rawUrl);
+    const u = new URL(workingUrl);
+    const m1 = u.pathname.match(/\/(?:posts|photos|videos)\/(\d+)/i);
+    if (m1) idCandidates.push(m1[1]);
+    const fbid = u.searchParams.get('fbid');
+    if (fbid && /^\d+$/.test(fbid)) idCandidates.push(fbid);
+    const storyFbid = u.searchParams.get('story_fbid');
+    if (storyFbid && /^\d+$/.test(storyFbid)) idCandidates.push(storyFbid);
+  } catch { /* ignore */ }
+
+  // Also try the URL-owner / numeric page id as prefix
+  const urlOwner = extractFacebookOwner(workingUrl);
+
+  for (const bareId of idCandidates) {
+    // Build candidates: full "pageid_postid" first, then bare id.
+    const candidates = [];
+    // If the bare id already contains an underscore it's a full id.
+    if (bareId.includes('_')) {
+      candidates.push(bareId);
+    } else {
+      // Prefix with every known page id (alias + graph id).
+      for (const pid of knownPageIds) {
+        candidates.push(`${pid}_${bareId}`);
+      }
+      candidates.push(bareId);
+    }
+
+    let data = null;
+    for (const candidateId of candidates) {
+      try {
+        data = await graphGet(candidateId, {
+          fields: 'id,message,created_time,permalink_url,full_picture,attachments{media,subattachments},images',
+          access_token: token
+        });
+        break;
+      } catch (e) {
+        // Try next candidate
+      }
+    }
+
+    if (!data) continue;
+
+    // 1a) Largest from images[]
+    if (Array.isArray(data.images) && data.images.length > 0) {
+      const best = data.images.reduce(
+        (a, b) => (Number(a?.width || 0) >= Number(b?.width || 0) ? a : b),
+        data.images[0]
+      );
+      if (best?.source) collected.add(best.source);
+    }
+
+    // 1b) Post cover
+    if (data.full_picture) collected.add(data.full_picture);
+
+    // 1c) Attachments + subattachments (multi-photo posts)
+    const atts = data.attachments?.data || [];
+    atts.forEach(att => {
+      if (att?.media?.image?.src) collected.add(att.media.image.src);
+      const subs = att?.subattachments?.data || [];
+      subs.forEach(s => {
+        const src = s?.media?.image?.src || s?.media?.source;
+        if (src) collected.add(src);
+      });
+    });
+
+    if (collected.size > 0) {
+      return {
+        images: Array.from(collected),
+        caption: data.message || '',
+        permalink: data.permalink_url || rawUrl
+      };
+    }
+  }
+
+  // ---- 2) Album URL
+  try {
+    const u = new URL(workingUrl);
     const set = u.searchParams.get('set') || '';
     const albumIdMatch = set.match(/a\.(\d+)/);
     const albumPathMatch = u.pathname.match(/\/albums\/(\d+)/);
@@ -921,23 +961,32 @@ async function resolveFacebookImages(rawUrl, page) {
         return { images: Array.from(collected), caption: '', permalink: rawUrl };
       }
     }
-  } catch (e) { if (e?.fb) lastFbError = e; }
+  } catch { /* fall through */ }
 
-  // ---- 3) Fallback: pull recent posts from the configured page and match by id/permalink
+  // ---- 3) Fallback: match a recent post from the page
   try {
-    const owner = extractFacebookOwner(rawUrl);
-    if (owner && (owner === page.id || owner.toLowerCase() === page.id.toLowerCase())) {
+    const ownerMatches = urlOwner && knownPageIds.some(
+      id => id.toLowerCase() === String(urlOwner).toLowerCase()
+    );
+    if (ownerMatches || !urlOwner) {
       const data = await graphGet(`${page.id}/posts`, {
         fields: 'id,message,permalink_url,full_picture,attachments{media,subattachments}',
         limit: 100,
         access_token: token
       });
       const posts = data.data || [];
-      const cleanUrl = rawUrl.split('?')[0];
-      const match = posts.find(p =>
-        rawUrl.includes(p.id) ||
-        (p.permalink_url && p.permalink_url.split('?')[0] === cleanUrl)
-      );
+      const cleanUrl = workingUrl.split('?')[0];
+      // Try matching by post id suffix (e.g. "122142378597352646")
+      const suffixMatch = cleanUrl.match(/\/posts\/(\d+)/);
+      const postSuffix = suffixMatch ? suffixMatch[1] : null;
+
+      const match = posts.find(p => {
+        if (p.permalink_url && p.permalink_url.split('?')[0] === cleanUrl) return true;
+        if (postSuffix && p.id && p.id.endsWith(`_${postSuffix}`)) return true;
+        if (postSuffix && p.permalink_url && p.permalink_url.includes(postSuffix)) return true;
+        return false;
+      });
+
       if (match) {
         if (match.full_picture) collected.add(match.full_picture);
         const subs = match.attachments?.data?.[0]?.subattachments?.data || [];
@@ -954,12 +1003,16 @@ async function resolveFacebookImages(rawUrl, page) {
         }
       }
     }
-  } catch (e) { if (e?.fb) lastFbError = e; }
+  } catch (e) {
+    console.warn('Fallback (recent posts) failed:', e.message);
+  }
 
-  // ---- 4) Last resort: if URL owner matches a configured page, pull the page's recent photos
+  // ---- 4) Last resort: page's recent photos
   try {
-    const owner = extractFacebookOwner(rawUrl);
-    if (owner && (owner === page.id || owner.toLowerCase() === page.id.toLowerCase())) {
+    const ownerMatches = urlOwner && knownPageIds.some(
+      id => id.toLowerCase() === String(urlOwner).toLowerCase()
+    );
+    if (ownerMatches || !urlOwner) {
       const data = await graphGet(`${page.id}/photos`, {
         fields: 'images,source,created_time',
         limit: 50,
@@ -980,10 +1033,8 @@ async function resolveFacebookImages(rawUrl, page) {
         return { images: Array.from(collected), caption: '', permalink: rawUrl };
       }
     }
-  } catch (e) { if (e?.fb) lastFbError = e; }
-
-  if (lastFbError) {
-    throw lastFbError;
+  } catch (e) {
+    console.warn('Fallback (recent photos) failed:', e.message);
   }
 
   throw new Error(
