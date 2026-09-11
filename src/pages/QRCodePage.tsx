@@ -575,7 +575,10 @@ export const QRCodePage: React.FC<
     }
 
     // Old event only has `date`
-    if (event.date) {
+    if (
+      event.date &&
+      !isScheduleEntry(event.date)
+    ) {
       return {
         ...event,
         dateEntries: [
