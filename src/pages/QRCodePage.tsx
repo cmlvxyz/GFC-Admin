@@ -472,9 +472,9 @@ export const QRCodePage: React.FC<
   ] = useState('');
 
   const [
-    editAlbumTarget,
-    setEditAlbumTarget
-  ] = useState<number | null>(null);
+    editAlbumTargetKey,
+    setEditAlbumTargetKey
+  ] = useState<string | null>(null);
 
   const [
     editAlbumInput,
@@ -939,7 +939,7 @@ export const QRCodePage: React.FC<
   // Reset the rename panel when switching events.
   useEffect(() => {
 
-    setEditAlbumTarget(null);
+    setEditAlbumTargetKey(null);
     setEditAlbumInput('');
     setEditAlbumError('');
 
@@ -1864,23 +1864,27 @@ export const QRCodePage: React.FC<
       events.find(e => e.id === selectedEventId)
     );
     const list = norm?.dateEntries;
-    if (!list || selectedDateIndex >= list.length) {
+    const entry = list && selectedDateIndex < list.length
+      ? list[selectedDateIndex]
+      : null;
+    if (!entry) {
+      setEditAlbumError('Album not found. Please select an album first.');
       return;
     }
     setEditAlbumError('');
-    setEditAlbumTarget(selectedDateIndex);
-    setEditAlbumInput(String(list[selectedDateIndex].date));
+    setEditAlbumTargetKey(dateKey(String(entry.date)));
+    setEditAlbumInput(String(entry.date));
   };
 
   const handleCancelEditAlbum = () => {
-    setEditAlbumTarget(null);
+    setEditAlbumTargetKey(null);
     setEditAlbumInput('');
     setEditAlbumError('');
   };
 
   const handleRenameAlbum =
     async () => {
-      if (editAlbumTarget === null) {
+      if (editAlbumTargetKey === null) {
         return;
       }
 
@@ -1939,33 +1943,48 @@ export const QRCodePage: React.FC<
         ? value
         : toMonthDayYear(value);
 
-      const event =
-        normalizeEvent(
-          rawEvent
-        );
-
-      const list =
+      const rawEntries =
         Array.isArray(
-          event.dateEntries
+          rawEvent.dateEntries
         )
-          ? event.dateEntries
+          ? rawEvent.dateEntries
           : [];
 
+      const targetRawIndex =
+        rawEntries.findIndex(
+          rawEntry =>
+            dateKey(
+              rawEntry.date
+            ) ===
+            editAlbumTargetKey
+        );
+
       if (
-        editAlbumTarget >=
-        list.length
+        targetRawIndex < 0
       ) {
         setEditAlbumError(
-          'Album not found.'
+          'Album not found. Please select the album again and retry.'
         );
 
         return;
       }
 
-      if (list.some((entry, i) =>
-        i !== editAlbumTarget &&
-        dateKey(entry.date) === dateKey(valueDate)
-      )) {
+      if (
+        rawEntries.some(
+          (
+            rawEntry,
+            index
+          ) =>
+            index !==
+              targetRawIndex &&
+            dateKey(
+              rawEntry.date
+            ) ===
+              dateKey(
+                valueDate
+              )
+        )
+      ) {
         setEditAlbumError(
           `The album "${value}" already exists in this event.`
         );
@@ -1973,21 +1992,29 @@ export const QRCodePage: React.FC<
         return;
       }
 
-      const updatedEntries =
-        list.map(
-          (entry, i) =>
-            i === editAlbumTarget
-              ? {
-                  ...entry,
-                  date: valueDate
-                }
-              : entry
-        );
-
+      // Rename the raw entry directly by key so the new date
+      // replaces the old one (no duplicate album is created and
+      // every other album is kept untouched).
       const savedDateEntries =
-        mergeDateEntriesIntoRaw(
-          rawEvent.dateEntries,
-          updatedEntries
+        rawEntries.map(
+          (
+            rawEntry,
+            index
+          ) =>
+            index ===
+              targetRawIndex
+              ? {
+                  ...rawEntry,
+                  date:
+                    valueDate,
+                  photos:
+                    Array.isArray(
+                      rawEntry.photos
+                    )
+                      ? rawEntry.photos
+                      : []
+                }
+              : rawEntry
         );
 
       const updatedEvent:
@@ -2038,7 +2065,7 @@ export const QRCodePage: React.FC<
                 )
             );
 
-        setEditAlbumTarget(null);
+        setEditAlbumTargetKey(null);
         setEditAlbumInput('');
         setEditAlbumError('');
         setSelectedDateIndex(
@@ -2428,7 +2455,7 @@ export const QRCodePage: React.FC<
                           ✏️ Edit Selected Album
                         </button>
 
-                        {editAlbumTarget !== null && (
+                        {editAlbumTargetKey !== null && (
                           <div className="mt-3 rounded-xl border border-indigo-200 dark:border-indigo-400/30 bg-indigo-50/60 dark:bg-indigo-500/5 p-3">
 
                             <label className="block text-xs font-bold text-gray-700 dark:text-[#A1A1A1] uppercase tracking-wider mb-2">
