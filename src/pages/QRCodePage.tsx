@@ -114,26 +114,22 @@ const mergeDateEntriesIntoRaw = (
   return merged;
 };
 
-const isMonthDayYear = (value: string): boolean => {
-  const match = value.trim().match(/^([A-Za-z]+)[\s.]?(\d{1,2}),\s*(\d{4})$/);
+const isMonthYear = (value: string): boolean => {
+  const match = value.trim().match(/^([A-Za-z]+)\s+(\d{4})$/);
   if (!match) return false;
   const monthName = match[1][0].toUpperCase() + match[1].slice(1).toLowerCase();
   const monthIndex = MONTH_NAMES.indexOf(monthName);
   if (monthIndex === -1) return false;
-  const parsed = new Date(`${monthName} ${match[2]}, ${match[3]}`);
+  const parsed = new Date(`${monthName} 1, ${match[2]}`);
   if (Number.isNaN(parsed.getTime())) return false;
-  return (
-    parsed.getFullYear() === parseInt(match[3], 10) &&
-    parsed.getMonth() === monthIndex
-  );
+  return parsed.getFullYear() === parseInt(match[2], 10);
 };
 
-const toMonthDayYear = (value: string): string => {
-  const parsed = new Date(value);
-  const day = parsed.getDate();
+const toMonthYear = (value: string): string => {
+  const parsed = new Date(`${value} 1`);
   const month = parsed.getMonth();
   const year = parsed.getFullYear();
-  return `${MONTH_NAMES[month]} ${day}, ${year}`;
+  return `${MONTH_NAMES[month]} ${year}`;
 };
 
 // ============================================================
@@ -793,9 +789,9 @@ useEffect(() => {
     const isYear = isYearAlbumEvent(rawEvent);
 
     if (!isYear) {
-      if (!isMonthDayYear(value)) {
+      if (!isMonthYear(value)) {
         setAddDateError(
-          'Please enter a real date as "Month Day, Year" (e.g. August 30, 2026).'
+          'Please enter a real date as "Month Year" (e.g. August 2026).'
         );
         return;
       }
@@ -811,7 +807,7 @@ useEffect(() => {
       }
     }
 
-    const valueDate = isYear ? value : toMonthDayYear(value);
+    const valueDate = isYear ? value : toMonthYear(value);
     const event = normalizeEvent(rawEvent);
     const entries = Array.isArray(event.dateEntries) ? event.dateEntries : [];
 
