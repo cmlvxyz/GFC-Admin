@@ -16,6 +16,7 @@ export interface ChurchEvent {
   defaultVerseRef?: string;
   image?: string;
   dateEntries?: DateEntry[];
+  albumType?: 'date' | 'year';
 }
 
 export interface Sermon {

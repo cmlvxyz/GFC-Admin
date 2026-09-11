@@ -1055,7 +1055,7 @@ async function expandFacebookShareUrl(rawUrl) {
 // - Otherwise: saves to All Photos only.
 app.post('/api/facebook/import', async (req, res, next) => {
   try {
-    const { url: rawInput, eventId, dateIndex } = req.body || {};
+    const { url: rawInput, eventId, dateIndex, date } = req.body || {};
     if (!rawInput || typeof rawInput !== 'string') {
       return res.status(400).json({ message: 'Facebook URL is required.' });
     }
@@ -1133,10 +1133,21 @@ app.post('/api/facebook/import', async (req, res, next) => {
       }
       const ev = events[evIndex];
       const entries = Array.isArray(ev.dateEntries) ? ev.dateEntries : [];
-      const di = Number(dateIndex) || 0;
-      const entry = entries[di];
+
+      // Prefer matching by the album label (safe for year albums like
+      // "1st Year Anniversary"); fall back to the numeric index.
+      let entry = null;
+      if (typeof date === 'string' && date.trim()) {
+        const target = date.trim().toLowerCase().replace(/\s+/g, '');
+        entry = entries.find(e =>
+          String(e.date || '').trim().toLowerCase().replace(/\s+/g, '') === target
+        ) || null;
+      } else {
+        const di = Number(dateIndex) || 0;
+        entry = entries[di] || null;
+      }
       if (!entry) {
-        return res.status(400).json({ message: 'Date album not found for this event.' });
+        return res.status(400).json({ message: 'Album not found for this event.' });
       }
 
       entry.photos = Array.isArray(entry.photos) ? entry.photos : [];
@@ -1317,9 +1328,9 @@ app.post('/api/photos/delete', async (req, res, next) => {
 // ============================================
 app.post('/api/uploads', async (req, res, next) => {
   try {
-    const { image, eventId, dateIndex } = req.body || {};
+    const { image, eventId, dateIndex, date } = req.body || {};
     
-    console.log('📸 Upload request received:', { eventId, dateIndex, imageLength: image?.length });
+    console.log('📸 Upload request received:', { eventId, dateIndex, date, imageLength: image?.length });
 
     if (!image || typeof image !== 'string') {
       return res.status(400).json({ message: 'Image data is required.' });
@@ -1335,10 +1346,22 @@ app.post('/api/uploads', async (req, res, next) => {
     }
 
     const entries = Array.isArray(event.dateEntries) ? event.dateEntries : [];
-    const di = Number(dateIndex) || 0;
-    const entry = entries[di];
+
+    // Prefer matching by the album label (safe for year albums like
+    // "1st Year Anniversary"); fall back to the numeric index.
+    let entry = null;
+    if (typeof date === 'string' && date.trim()) {
+      const target = date.trim().toLowerCase().replace(/\s+/g, '');
+      entry = entries.find(e =>
+        String(e.date || '').trim().toLowerCase().replace(/\s+/g, '') === target
+      ) || null;
+    } else {
+      const di = Number(dateIndex) || 0;
+      entry = entries[di] || null;
+    }
+
     if (!entry) {
-      return res.status(400).json({ message: 'Date album not found for this event.' });
+      return res.status(400).json({ message: 'Album not found for this event.' });
     }
 
     entry.photos = entry.photos || [];

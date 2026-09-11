@@ -70,20 +70,89 @@ const isConcreteDate = (
 };
 
 /**
- * Merge an updated list of concrete date entries back into the
- * original dateEntries array, preserving recurring schedule
- * entries that are never shown in the date selector.
+ * A "schedule" entry describes a recurring meeting (e.g.
+ * "Every Wednesday 7:00 PM"). Schedules are never albums and
+ * must never appear in the album selector.
+ */
+const isScheduleEntry = (
+  value: unknown
+): boolean => {
+
+  const s = String(value ?? '').trim();
+
+  if (/^every\b/i.test(s)) {
+    return true;
+  }
+
+  if (/\b(Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday)\b/i.test(s)) {
+    return true;
+  }
+
+  return false;
+};
+
+/**
+ * Anniversary-style events use YEAR albums ("1st Year
+ * Anniversary") instead of calendar date albums. They are
+ * detected either by an explicit albumType flag or by the
+ * legacy anniversary event id.
+ */
+const isYearAlbumEvent = (
+  event?: ChurchEvent | null
+): boolean => {
+
+  if (event?.albumType === 'year') {
+    return true;
+  }
+
+  return String(event?.id) === 'anniversary';
+};
+
+/**
+ * Leading ordinal number of a label, e.g. "3rd Year Anniversary"
+ * → 3. Used to sort year albums from earliest to latest.
+ */
+const ordinalOf = (
+  value: unknown
+): number => {
+
+  const match = String(value ?? '')
+    .trim()
+    .match(/^(\d+)/);
+
+  return match
+    ? parseInt(match[1], 10)
+    : Number.MAX_SAFE_INTEGER;
+};
+
+/**
+ * Comparable key for an album label/dates, ignoring spaces and
+ * letter case so "1st Year Anniversary" matches "1stYearAnniversary".
+ */
+const dateKey = (
+  value: unknown
+): string =>
+  String(value ?? '')
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, '');
+
+/**
+ * Merge an updated list of albums back into the original
+ * dateEntries array, preserving recurring schedule entries that
+ * are never shown in the selector. Existing albums are matched by
+ * label (works for both date and year albums).
  */
 const mergeDateEntriesIntoRaw = (
   rawEntries: DateEntry[] | null | undefined,
-  updatedConcrete: DateEntry[]
+  updatedEntries: DateEntry[]
 ): DateEntry[] => {
 
   const raw = Array.isArray(rawEntries)
     ? rawEntries
     : [];
 
-  const concreteQueue = updatedConcrete.map(entry => ({
+  const queue = updatedEntries.map(entry => ({
     ...entry,
     date: String(entry.date ?? '').trim(),
     photos: Array.isArray(entry.photos)
@@ -95,27 +164,23 @@ const mergeDateEntriesIntoRaw = (
 
   for (const entry of raw) {
 
-    const date = String(entry.date ?? '').trim();
+    const key = dateKey(entry.date);
 
-    if (isConcreteDate(date)) {
+    const index = queue.findIndex(
+      candidate =>
+        dateKey(candidate.date) === key
+    );
 
-      const index = concreteQueue.findIndex(
-        candidate =>
-          candidate.date.toLowerCase() ===
-            date.toLowerCase()
-      );
+    if (index >= 0) {
 
-      if (index >= 0) {
-
-        merged.push(concreteQueue[index]);
-        concreteQueue.splice(index, 1);
-      }
+      merged.push(queue[index]);
+      queue.splice(index, 1);
 
     } else {
 
       merged.push({
         ...entry,
-        date,
+        date: String(entry.date ?? '').trim(),
         photos: Array.isArray(entry.photos)
           ? entry.photos
           : []
@@ -123,7 +188,7 @@ const mergeDateEntriesIntoRaw = (
     }
   }
 
-  merged.push(...concreteQueue);
+  merged.push(...queue);
 
   return merged;
 };
@@ -457,31 +522,55 @@ export const QRCodePage: React.FC<
     event: ChurchEvent
   ): ChurchEvent => {
 
+    const isYear =
+      isYearAlbumEvent(event);
+
     // Already has dateEntries
     if (
       Array.isArray(event.dateEntries) &&
       event.dateEntries.length > 0
     ) {
+      const sorted =
+        event.dateEntries.map(
+          (entry: DateEntry) => ({
+            ...entry,
+            date: String(
+              entry.date ?? ''
+            ).trim(),
+            photos:
+              Array.isArray(entry.photos)
+                ? entry.photos
+                : []
+          })
+        ).filter(entry =>
+          isYear
+            ? !isScheduleEntry(entry.date)
+            : isConcreteDate(entry.date)
+        );
+
+      sorted.sort(
+        isYear
+          ? (
+              a,
+              b
+            ) =>
+            ordinalOf(a.date) -
+              ordinalOf(b.date) ||
+            String(a.date)
+              .localeCompare(
+                String(b.date)
+              )
+          : (
+              a,
+              b
+            ) =>
+            new Date(a.date).getTime() -
+              new Date(b.date).getTime()
+      );
+
       return {
         ...event,
-        dateEntries:
-          event.dateEntries.map(
-            (entry: DateEntry) => ({
-              ...entry,
-              date: String(
-                entry.date ?? ''
-              ).trim(),
-              photos:
-                Array.isArray(entry.photos)
-                  ? entry.photos
-                  : []
-            })
-          ).filter(entry => isConcreteDate(entry.date))
-            .sort(
-              (a, b) =>
-                new Date(a.date).getTime() -
-                new Date(b.date).getTime()
-            )
+        dateEntries: sorted
       };
     }
 
@@ -1566,23 +1655,52 @@ export const QRCodePage: React.FC<
       if (!value) {
 
         setAddDateError(
-          'Please enter a date first.'
+          isYearAlbumEvent(rawEvent)
+            ? 'Please enter a year album name first.'
+            : 'Please enter a date first.'
         );
 
         return;
       }
 
-      if (!isMonthDayYear(value)) {
+      const isYear =
+        isYearAlbumEvent(rawEvent);
 
-        setAddDateError(
-          'Please enter a real date as "Month Day, Year" (e.g. August 30, 2026).'
-        );
+      if (!isYear) {
 
-        return;
+        if (!isMonthDayYear(value)) {
+
+          setAddDateError(
+            'Please enter a real date as "Month Day, Year" (e.g. August 30, 2026).'
+          );
+
+          return;
+        }
+
+      } else {
+
+        if (isScheduleEntry(value)) {
+
+          setAddDateError(
+            'Please enter a year like "3rd Year Anniversary" (not a schedule).'
+          );
+
+          return;
+        }
+
+        if (isConcreteDate(value)) {
+
+          setAddDateError(
+            'Please enter a year like "1st Year Anniversary" (not a calendar date).'
+          );
+
+          return;
+        }
       }
 
-      const valueDate =
-        toMonthDayYear(value);
+      const valueDate = isYear
+        ? value
+        : toMonthDayYear(value);
 
       // Normalize old event
       const event =
@@ -1597,18 +1715,12 @@ export const QRCodePage: React.FC<
           ? event.dateEntries
           : [];
 
-      // Case-insensitive duplicate date check
+      // Case-insensitive duplicate check
       const dateAlreadyExists =
         entries.some(
           entry =>
-            String(
-              entry.date
-            )
-              .trim()
-              .toLowerCase() ===
-            valueDate
-              .trim()
-              .toLowerCase()
+            dateKey(entry.date) ===
+            dateKey(valueDate)
         );
 
       if (
@@ -1616,7 +1728,7 @@ export const QRCodePage: React.FC<
       ) {
 
         setAddDateError(
-          `The date "${value}" already exists in this event.`
+          `The album "${value}" already exists in this event.`
         );
 
         return;
@@ -1668,9 +1780,28 @@ export const QRCodePage: React.FC<
 
         setNewDateInput('');
 
-        // Automatically select newly added date
+        // Automatically select the newly added album (it is
+        // re-sorted on display, so find its actual position).
+        const savedNormalized =
+          normalizeEvent(
+            updatedEvent
+          );
+
+        const nextIndex =
+          savedNormalized
+            .dateEntries
+            .findIndex(
+              entry =>
+                dateKey(entry.date) ===
+                dateKey(valueDate)
+            );
+
         setSelectedDateIndex(
-          updatedEntries.length - 1
+          nextIndex >= 0
+            ? nextIndex
+            : savedNormalized
+                .dateEntries
+                .length - 1
         );
 
       } catch (error) {
@@ -1733,6 +1864,7 @@ export const QRCodePage: React.FC<
         body: JSON.stringify({
           url,
           eventId: selectedEventId,
+          date: getSelectedDateValue(),
           dateIndex: selectedDateIndex
         })
       });
@@ -1960,6 +2092,26 @@ export const QRCodePage: React.FC<
                 const selectedEvent =
                   getSelectedEvent()!;
 
+                const isYearAlbum =
+                  isYearAlbumEvent(
+                    selectedEvent
+                  );
+
+                const albumLabel =
+                  isYearAlbum
+                    ? 'Year Album'
+                    : 'Date Album';
+
+                const albumAddLabel =
+                  isYearAlbum
+                    ? 'Add Year Album'
+                    : 'Add Date Album';
+
+                const albumPlaceholder =
+                  isYearAlbum
+                    ? 'e.g. 1st Year Anniversary'
+                    : 'e.g. August 18, 2026';
+
                 const hasDates =
                   Array.isArray(
                     selectedEvent.dateEntries
@@ -1977,7 +2129,10 @@ export const QRCodePage: React.FC<
 
                         <label className="block text-xs font-bold text-gray-700 dark:text-[#A1A1A1] uppercase tracking-wider mb-2">
 
-                          Select Date Album (for upload)
+                          Select{' '}
+                          {albumLabel}
+                          {' '}
+                          (for upload)
 
                         </label>
 
@@ -2034,7 +2189,7 @@ export const QRCodePage: React.FC<
 
                       <label className="block text-xs font-bold text-gray-700 dark:text-[#A1A1A1] uppercase tracking-wider mb-2">
 
-                        Add Date Album
+                        {albumAddLabel}
 
                       </label>
 
@@ -2068,7 +2223,9 @@ export const QRCodePage: React.FC<
                             }
 
                           }}
-                          placeholder="e.g. August 18, 2026"
+                          placeholder={
+                            albumPlaceholder
+                          }
                           className="flex-1 px-4 py-2.5 rounded-xl border border-gray-200 dark:border-white/10 bg-gray-50 dark:bg-black/30 text-black dark:text-white text-sm focus:border-indigo-400 dark:focus:border-indigo-400/50 focus:outline-hidden focus:ring-2 focus:ring-indigo-400/20 transition-all"
                         />
 
@@ -2088,7 +2245,9 @@ export const QRCodePage: React.FC<
                             <CalendarPlus className="w-4 h-4" />
                           )}
 
-                          Add Date
+                          {isYearAlbum
+                            ? 'Add Year'
+                            : 'Add Date'}
 
                         </button>
 
