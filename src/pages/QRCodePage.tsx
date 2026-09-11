@@ -1212,7 +1212,7 @@ useEffect(() => {
           </div>
 
           {/* QR */}
-          <div className="flex flex-col items-center justify-center p-4 bg-white dark:bg-black rounded-xl border border-white dark:border-white">
+          <div className="flex flex-col items-center justify-center p-4 bg-gray-50 dark:bg-black rounded-xl border border-white dark:border-white">
             {selectedEventId && (getSelectedDateEntry() || isGospelNetwork) ? (
               <>
                 <div className="flex items-center gap-2 mb-2">
@@ -1236,7 +1236,7 @@ useEffect(() => {
             ) : (
               <div className="text-center py-6">
                 <QrCode className="w-12 h-12 text-gray-300 dark:text-gray-600 mx-auto mb-2" />
-                <p className="text-xs text-gray-400">Select an event and date.</p>
+                <p className="text-xs text-gray-400">Select Event & Date</p>
               </div>
             )}
           </div>
