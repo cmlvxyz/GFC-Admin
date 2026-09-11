@@ -45,6 +45,15 @@ const isConcreteDate = (value: unknown): boolean => {
   if (!s) return false;
   if (/^every\b/i.test(s)) return false;
   if (/\b(Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday)\b/i.test(s)) return false;
+
+  // Tanggapin ang "Month Year" format (halimbawa "August 2026")
+  const monthYearMatch = s.match(/^([A-Za-z]+)\s+(\d{4})$/);
+  if (monthYearMatch) {
+    const monthName = monthYearMatch[1][0].toUpperCase() + monthYearMatch[1].slice(1).toLowerCase();
+    return MONTH_NAMES.indexOf(monthName) !== -1;
+  }
+
+  // Tanggapin ang "Month Day, Year" format (halimbawa "August 30, 2026")
   const parsed = new Date(s);
   return !Number.isNaN(parsed.getTime());
 };
@@ -295,7 +304,11 @@ const getUploadUrl = (eventId: string, dateValue: string) => {
       sorted.sort(
         isYear
           ? (a, b) => ordinalOf(a.date) - ordinalOf(b.date) || String(a.date).localeCompare(String(b.date))
-          : (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()
+          : (a, b) => {
+            const dateA = new Date(a.date).getTime() || 0;
+            const dateB = new Date(b.date).getTime() || 0;
+            return dateA - dateB;
+          }
       );
 
       return { ...event, dateEntries: sorted };
