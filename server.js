@@ -1312,7 +1312,7 @@ async function resolveFacebookImages(rawUrl, page) {
     if (ownerMatches || !urlOwner) {
       const data = await graphGet(`${page.id}/posts`, {
         fields: 'id,message,permalink_url,full_picture,attachments{media,subattachments}',
-        limit: 200,
+        limit: 99,
         access_token: token
       });
       const posts = data.data || [];
