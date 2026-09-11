@@ -2494,9 +2494,10 @@ export const QRCodePage: React.FC<
 
                 </div>
 
-                <div
-                  ref={setQrContainerEl}
-                  className="bg-white rounded-xl shadow-md"
+                <img
+                  src="/qr-code.png"
+                  alt="GFC QR Code"
+                  className="w-[240px] h-[240px] object-contain bg-white rounded-xl shadow-md"
                 />
 
                 <a

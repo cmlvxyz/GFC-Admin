@@ -447,7 +447,7 @@ export const AllPhotosPage: React.FC<AllPhotosPageProps> = ({
 
         <div className="bg-white dark:bg-[#14141f]/80 backdrop-blur-sm p-6 rounded-2xl border border-gray-200 dark:border-white/5 shadow-sm lg:sticky lg:top-4">
           <div className="flex items-center gap-2 mb-3"><QrCode className="w-5 h-5 text-indigo-500" /><span className="text-sm font-bold text-black dark:text-white">Upload QR Code</span></div>
-          <div className="flex justify-center bg-gray-50 dark:bg-black/30 rounded-xl border border-gray-200 dark:border-white/10 p-4"><div ref={el => setQrContainerEl(el)} className="bg-white rounded-lg shadow-md" /></div>
+          <div className="flex justify-center bg-gray-50 dark:bg-black/30 rounded-xl border border-gray-200 dark:border-white/10 p-4"><img src="/qr-code.png" alt="GFC QR Code" className="w-[240px] h-[240px] object-contain bg-white rounded-lg shadow-md" /></div>
           <a href={getUploadUrl()} target="_blank" rel="noopener noreferrer" className="mt-2 text-[11px] font-mono text-indigo-500 dark:text-indigo-400 underline break-all text-center block hover:text-indigo-600 dark:hover:text-indigo-300">{getUploadUrl()}</a>
         </div>
       </div>
