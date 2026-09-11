@@ -31,6 +31,157 @@ const nextPhotoId = (): string =>
   `photo-${Date.now()}-${photoIdSeed++}`;
 
 // ============================================================
+// DATE HELPERS
+// ============================================================
+
+const MONTH_NAMES = [
+  'January', 'February', 'March', 'April', 'May', 'June',
+  'July', 'August', 'September', 'October', 'November', 'December'
+];
+
+/**
+ * A "concrete" date album is a real calendar date like
+ * "August 30, 2026".
+ *
+ * Recurring schedules like "Every Sunday 8:30 AM" are NOT
+ * date albums and must never appear in the date selector.
+ */
+const isConcreteDate = (
+  value: unknown
+): boolean => {
+
+  const s = String(value ?? '').trim();
+
+  if (!s) {
+    return false;
+  }
+
+  if (/^every\b/i.test(s)) {
+    return false;
+  }
+
+  if (/\b(Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday)\b/i.test(s)) {
+    return false;
+  }
+
+  const parsed = new Date(s);
+
+  return !Number.isNaN(parsed.getTime());
+};
+
+/**
+ * Merge an updated list of concrete date entries back into the
+ * original dateEntries array, preserving recurring schedule
+ * entries that are never shown in the date selector.
+ */
+const mergeDateEntriesIntoRaw = (
+  rawEntries: DateEntry[] | null | undefined,
+  updatedConcrete: DateEntry[]
+): DateEntry[] => {
+
+  const raw = Array.isArray(rawEntries)
+    ? rawEntries
+    : [];
+
+  const concreteQueue = updatedConcrete.map(entry => ({
+    ...entry,
+    date: String(entry.date ?? '').trim(),
+    photos: Array.isArray(entry.photos)
+      ? entry.photos
+      : []
+  }));
+
+  const merged: DateEntry[] = [];
+
+  for (const entry of raw) {
+
+    const date = String(entry.date ?? '').trim();
+
+    if (isConcreteDate(date)) {
+
+      const index = concreteQueue.findIndex(
+        candidate =>
+          candidate.date.toLowerCase() ===
+            date.toLowerCase()
+      );
+
+      if (index >= 0) {
+
+        merged.push(concreteQueue[index]);
+        concreteQueue.splice(index, 1);
+      }
+
+    } else {
+
+      merged.push({
+        ...entry,
+        date,
+        photos: Array.isArray(entry.photos)
+          ? entry.photos
+          : []
+      });
+    }
+  }
+
+  merged.push(...concreteQueue);
+
+  return merged;
+};
+
+/**
+ * Validate a date typed in the "Add Date Album" input.
+ * Accepted format: "Month Day, Year" (e.g. "August 30, 2026").
+ */
+const isMonthDayYear = (
+  value: string
+): boolean => {
+
+  const match = value
+    .trim()
+    .match(/^([A-Za-z]+)[\s.]?(\d{1,2}),\s*(\d{4})$/);
+
+  if (!match) {
+    return false;
+  }
+
+  const monthName =
+    match[1][0].toUpperCase() +
+    match[1].slice(1).toLowerCase();
+
+  const monthIndex =
+    MONTH_NAMES.indexOf(monthName);
+
+  if (monthIndex === -1) {
+    return false;
+  }
+
+  const parsed = new Date(
+    `${monthName} ${match[2]}, ${match[3]}`
+  );
+
+  if (Number.isNaN(parsed.getTime())) {
+    return false;
+  }
+
+  return (
+    parsed.getFullYear() === parseInt(match[3], 10) &&
+    parsed.getMonth() === monthIndex
+  );
+};
+
+const toMonthDayYear = (
+  value: string
+): string => {
+
+  const parsed = new Date(value);
+  const day = parsed.getDate();
+  const month = parsed.getMonth();
+  const year = parsed.getFullYear();
+
+  return `${MONTH_NAMES[month]} ${day}, ${year}`;
+};
+
+// ============================================================
 // HASH HELPERS
 // ============================================================
 
@@ -325,7 +476,7 @@ export const QRCodePage: React.FC<
                   ? entry.photos
                   : []
             })
-          )
+          ).filter(entry => isConcreteDate(entry.date))
       };
     }
 
@@ -1206,11 +1357,17 @@ export const QRCodePage: React.FC<
         // This prevents old website code from breaking.
         // ====================================================
 
+        const finalEntries =
+          mergeDateEntriesIntoRaw(
+            rawEvent.dateEntries,
+            updatedEntries
+          );
+
         const updatedEvent:
           ChurchEvent = {
             ...rawEvent,
             dateEntries:
-              updatedEntries
+              finalEntries
           };
 
         // ====================================================
@@ -1222,7 +1379,7 @@ export const QRCodePage: React.FC<
           rawEvent.id,
           {
             dateEntries:
-              updatedEntries
+              finalEntries
           }
         );
 
@@ -1410,6 +1567,18 @@ export const QRCodePage: React.FC<
         return;
       }
 
+      if (!isMonthDayYear(value)) {
+
+        setAddDateError(
+          'Please enter a real date as "Month Day, Year" (e.g. August 30, 2026).'
+        );
+
+        return;
+      }
+
+      const valueDate =
+        toMonthDayYear(value);
+
       // Normalize old event
       const event =
         normalizeEvent(
@@ -1432,7 +1601,7 @@ export const QRCodePage: React.FC<
             )
               .trim()
               .toLowerCase() ===
-            value
+            valueDate
               .trim()
               .toLowerCase()
         );
@@ -1452,16 +1621,22 @@ export const QRCodePage: React.FC<
         [
           ...entries,
           {
-            date: value,
+            date: valueDate,
             photos: []
           }
         ];
+
+      const savedDateEntries =
+        mergeDateEntriesIntoRaw(
+          rawEvent.dateEntries,
+          updatedEntries
+        );
 
       const updatedEvent:
         ChurchEvent = {
           ...rawEvent,
           dateEntries:
-            updatedEntries
+            savedDateEntries
         };
 
       setAddingDate(true);
@@ -1475,7 +1650,7 @@ export const QRCodePage: React.FC<
           rawEvent.id,
           {
             dateEntries:
-              updatedEntries
+              savedDateEntries
           }
         );
 
