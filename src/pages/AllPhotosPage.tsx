@@ -55,13 +55,34 @@ const MONTH_NAMES = [
 
 const GFC_BASE = (() => {
   const fromEnv =
-    (import.meta.env.VITE_ADMIN_URL as string | undefined)?.trim();
+    (import.meta.env.VITE_GFC_URL as string | undefined)?.trim();
 
   if (fromEnv) {
     return fromEnv.replace(/\/+$/, '');
   }
 
-  return 'https://gfc-admin-psi.vercel.app';
+  const host =
+    typeof window !== 'undefined'
+      ? window.location.hostname
+      : '';
+
+  const isLocalhost =
+    !host ||
+    host === 'localhost' ||
+    host === '127.0.0.1';
+
+  const isLanIp =
+    /^\d{1,3}(\.\d{1,3}){3}$/.test(host);
+
+  if (isLocalhost || isLanIp) {
+    return host
+      ? `http://${host}:4000`
+      : 'http://localhost:4000';
+  }
+
+  return typeof window !== 'undefined'
+    ? window.location.origin
+    : 'https://gfc-admin.up.railway.app';
 })();
 
 const SITE_BASE = (() => {

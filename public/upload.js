@@ -2,6 +2,8 @@
   var params = new URLSearchParams(location.search);
   var eventId = (params.get('event') || '').trim();
   var dateParam = (params.get('date') || '').trim();
+  var urlMonth = (params.get('month') || '').trim();
+  var urlYear = (params.get('year') || '').trim();
   var isNumericDate = /^\d+$/.test(dateParam);
   var dateIndex = dateParam === '' ? 0 : (isNumericDate ? (parseInt(dateParam, 10) || 0) : -1);
   var isAllPhotosMode = !eventId;
@@ -545,6 +547,22 @@
     pickerMonth.focus();
   }
 
+  function startAllPhotos() {
+    var validMonth = urlMonth !== '' && /^(1[0-2]|[1-9])$/.test(urlMonth);
+    var validYear = urlYear !== '' && /^\d{4}$/.test(urlYear);
+    if (validMonth && validYear) {
+      allMonth = parseInt(urlMonth, 10) - 1;
+      allYear = parseInt(urlYear, 10);
+      allDate = MONTH_NAMES[allMonth] + ' ' + allYear;
+      eventTitle.textContent = MONTH_NAMES[allMonth] + ' ' + allYear;
+      eventDate.textContent = allDate;
+      document.title = 'Photo Upload | ' + allDate;
+      show(viewUpload);
+    } else {
+      showAllPhotosPicker();
+    }
+  }
+
   pickerGo.addEventListener('click', function () {
     var m = pickerMonth.value;
     var y = pickerYear.value;
@@ -617,7 +635,7 @@
   });
 
   if (isAllPhotosMode) {
-    showAllPhotosPicker();
+    startAllPhotos();
   } else {
     loadEvent();
   }
