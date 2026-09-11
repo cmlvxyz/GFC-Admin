@@ -838,6 +838,7 @@ async function graphGet(pathname, params) {
 async function resolveFacebookImages(rawUrl, page) {
   const token = page.token;
   const collected = new Set();
+  let lastFbError = null;
 
   // ---- 1) Try direct ID candidates from the URL (/posts/123, ?fbid=123)
   const idCandidates = [];
@@ -847,7 +848,7 @@ async function resolveFacebookImages(rawUrl, page) {
     if (m1) idCandidates.push(m1[1]);
     const fbid = u.searchParams.get('fbid');
     if (fbid) idCandidates.push(fbid);
-  } catch { /* ignore */ }
+  } catch (e) { if (e?.fb) lastFbError = e; }
 
   for (const id of idCandidates) {
     try {
@@ -880,7 +881,7 @@ async function resolveFacebookImages(rawUrl, page) {
           permalink: data.permalink_url || rawUrl
         };
       }
-    } catch { /* try next id */ }
+    } catch (e) { if (e?.fb) lastFbError = e; }
   }
 
   // ---- 2) Album URL: /media/set/?set=a.123  OR  /{page}/albums/123
@@ -911,7 +912,7 @@ async function resolveFacebookImages(rawUrl, page) {
         return { images: Array.from(collected), caption: '', permalink: rawUrl };
       }
     }
-  } catch { /* fall through */ }
+  } catch (e) { if (e?.fb) lastFbError = e; }
 
   // ---- 3) Fallback: pull recent posts from the configured page and match by id/permalink
   try {
@@ -944,7 +945,7 @@ async function resolveFacebookImages(rawUrl, page) {
         }
       }
     }
-  } catch { /* ignore */ }
+  } catch (e) { if (e?.fb) lastFbError = e; }
 
   // ---- 4) Last resort: if URL owner matches a configured page, pull the page's recent photos
   try {
@@ -970,7 +971,11 @@ async function resolveFacebookImages(rawUrl, page) {
         return { images: Array.from(collected), caption: '', permalink: rawUrl };
       }
     }
-  } catch { /* ignore */ }
+  } catch (e) { if (e?.fb) lastFbError = e; }
+
+  if (lastFbError) {
+    throw lastFbError;
+  }
 
   throw new Error(
     'Could not resolve photos from that Facebook link. Make sure the post belongs to one of the configured Pages and is public.'
