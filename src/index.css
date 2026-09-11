@@ -46,7 +46,7 @@
 .bg-white.rounded-xl.shadow-md:has(canvas) {
   width: 260px;
   height: 260px;
-  background: #fff url('/qr-code.png') center / contain no-repeat !important;
+  background: url('/qr-code.png') center / contain no-repeat !important;
   box-shadow: none !important;
 }
 
@@ -58,6 +58,6 @@
 .bg-white.rounded-lg.shadow-md:has(canvas) {
   width: 240px;
   height: 240px;
-  background: #fff url('/qr-code.png') center / contain no-repeat !important;
+  background: url('/qr-code.png') center / contain no-repeat !important;
   box-shadow: none !important;
 }
