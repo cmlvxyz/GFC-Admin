@@ -457,39 +457,6 @@ function reqOrigin(req) {
   return `${proto}://${host}`;
 }
 
-// TEMPORARY: one-time full-data restore helper (to be removed once the
-// service has persistent storage and the snapshot has been restored).
-app.post('/api/restore', async (req, res, next) => {
-  try {
-    const body = req.body || {};
-    if (!Array.isArray(body.events)) {
-      return res.status(400).json({ message: 'Body must contain an events array.' });
-    }
-    const ids = body.events.map((e) => e && e.id).filter(Boolean);
-    if (!ids.includes('sunday')) {
-      return res.status(400).json({ message: 'events must include the "sunday" event.' });
-    }
-    fileDatabase = emptyDatabase();
-    for (const key of Object.keys(body)) fileDatabase[key] = body[key];
-    for (const key of collections) {
-      if (!Array.isArray(fileDatabase[key])) fileDatabase[key] = [];
-    }
-    if (!Array.isArray(fileDatabase.activities)) fileDatabase.activities = [];
-    await dbPersist();
-    await dbSetInitialized(true);
-    const total = (fileDatabase.events || []).reduce(
-      (t, e) => t + (e.dateEntries || []).reduce((t2, d) => t2 + (d.photos || []).length, 0), 0);
-    res.json({
-      success: true,
-      events: fileDatabase.events.length,
-      allPhotosBuckets: (fileDatabase.allPhotos || []).length,
-      totalPhotos: total
-    });
-  } catch (error) {
-    next(error);
-  }
-});
-
 // Get all content
 app.get('/api/content', async (req, res) => {
   const initialized = await dbIsInitialized();
