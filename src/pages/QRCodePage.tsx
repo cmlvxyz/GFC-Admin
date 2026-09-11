@@ -477,6 +477,11 @@ export const QRCodePage: React.FC<
                   : []
             })
           ).filter(entry => isConcreteDate(entry.date))
+            .sort(
+              (a, b) =>
+                new Date(a.date).getTime() -
+                new Date(b.date).getTime()
+            )
       };
     }
 
