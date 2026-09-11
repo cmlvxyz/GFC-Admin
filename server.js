@@ -384,6 +384,50 @@ app.use(express.json({ limit: '12mb' }));
 // API ROUTES
 // ============================================
 
+// Image proxy: serves Facebook CDN photos through this server so they
+// render reliably in every browser/network (FB hotlinking is sometimes
+// blocked). Only proxies URLs on Facebook's photo CDNs (no open proxy).
+const photoProxyCache = new Map();
+
+app.get('/api/photo', async (req, res, next) => {
+  const u = String(req.query.u || '');
+  if (!isFacebookCdnUrl(u)) {
+    return res.status(400).json({ message: 'Only Facebook CDN photo URLs can be proxied.' });
+  }
+
+  const cached = photoProxyCache.get(u);
+  if (cached) {
+    res.set('Content-Type', cached.type);
+    res.set('Cache-Control', 'public, max-age=604800');
+    return res.send(cached.body);
+  }
+
+  try {
+    const upstream = await fetch(u, {
+      headers: {
+        'User-Agent':
+          'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0 Safari/537.36 GFC-PhotoProxy/1.0',
+        Accept: 'image/avif,image/webp,image/jpeg,image/png,*/*;q=0.8'
+      },
+      redirect: 'follow'
+    });
+
+    const body = Buffer.from(await upstream.arrayBuffer());
+    if (!upstream.ok) {
+      return res.status(upstream.status).end();
+    }
+    if (photoProxyCache.size > 800) photoProxyCache.clear();
+
+    const type = upstream.headers.get('content-type') || 'image/jpeg';
+    photoProxyCache.set(u, { body, type });
+    res.set('Content-Type', type);
+    res.set('Cache-Control', 'public, max-age=604800');
+    return res.send(body);
+  } catch (error) {
+    return next(error);
+  }
+});
+
 // Health check
 app.get('/api/health', async (req, res) => { 
   res.json({ 
@@ -408,9 +452,12 @@ app.get('/api/config', (req, res) => {
 // Get all content
 app.get('/api/content', async (req, res) => {
   const initialized = await dbIsInitialized();
+  const origin = `${req.protocol}://${req.get('host')}`;
   const content = { version: 1, initialized };
   for (const key of collections) content[key] = await dbGetCollection(key);
   content.activities = await dbGetActivities();
+  if (Array.isArray(content.events)) content.events = proxyizeEvents(content.events, origin);
+  if (Array.isArray(content.allPhotos)) content.allPhotos = proxyizeAllPhotoBuckets(content.allPhotos, origin);
   res.json(content);
 });
 
@@ -634,14 +681,15 @@ app.delete('/api/events/photo/delete', async (req, res, next) => {
 
     // Match against the ORIGINAL database value first.
     // Fall back to normalized comparison in case the resolved
-    // URL was sent instead of the stored value.
-    const target = normalizePhotoUrl(photoUrl);
+    // URL (or a proxied copy) was sent instead of the stored value.
+    const target = photoUrl;
 
     const photoIndex = photos.findIndex(p => {
       const stored = typeof p === 'string' ? p : '';
       return (
         stored === photoUrl ||
-        normalizePhotoUrl(stored) === target
+        normalizePhotoUrl(stored) === normalizePhotoUrl(photoUrl) ||
+        photoKeysMatch(stored, target)
       );
     });
     
@@ -954,6 +1002,69 @@ function pushUniquePhotos(target, images) {
     }
   }
   return added;
+}
+
+// Some networks/browsers cannot hotlink Facebook CDN images (fbcdn.net),
+// so remote FB URLs are rewritten to this server's own /api/photo proxy.
+// The proxy fetches the image from the CDN once and serves it locally.
+function unwrapProxyUrl(value) {
+  const s = String(value || '');
+  const m = /\/api\/photo\?u=([^&]+)/.exec(s);
+  if (m) {
+    try {
+      return decodeURIComponent(m[1]);
+    } catch {
+      return s;
+    }
+  }
+  return s;
+}
+
+// True when two photo URLs point at the same underlying image, even if one
+// is a proxied copy and the other the original signed FB URL.
+function photoKeysMatch(a, b) {
+  const A = unwrapProxyUrl(a);
+  const B = unwrapProxyUrl(b);
+  if (A === B) return true;
+  return canonicalPhotoKey(A) === canonicalPhotoKey(B);
+}
+
+function photoProxyUrl(url, origin) {
+  if (typeof origin === 'string' && origin && isFacebookCdnUrl(url)) {
+    return (
+      origin.replace(/\/$/, '') +
+      '/api/photo?u=' +
+      encodeURIComponent(url)
+    );
+  }
+  return url;
+}
+
+function proxyizePhotos(photos, origin) {
+  return (Array.isArray(photos) ? photos : []).map((url) =>
+    photoProxyUrl(url, origin)
+  );
+}
+
+function proxyizeEvents(events, origin) {
+  (Array.isArray(events) ? events : []).forEach((ev) => {
+    if (!Array.isArray(ev.dateEntries)) return;
+    ev.dateEntries.forEach((entry) => {
+      if (Array.isArray(entry.photos)) {
+        entry.photos = proxyizePhotos(entry.photos, origin);
+      }
+    });
+  });
+  return events;
+}
+
+function proxyizeAllPhotoBuckets(buckets, origin) {
+  (Array.isArray(buckets) ? buckets : []).forEach((bucket) => {
+    if (Array.isArray(bucket.photos)) {
+      bucket.photos = proxyizePhotos(bucket.photos, origin);
+    }
+  });
+  return buckets;
 }
 
 async function graphGet(pathname, params) {
@@ -1372,7 +1483,8 @@ app.post('/api/photos/delete', async (req, res, next) => {
 
     const matches = (stored, target) =>
       String(stored) === target ||
-      normalizePhotoUrl(String(stored)) === normalizePhotoUrl(target);
+      normalizePhotoUrl(String(stored)) === normalizePhotoUrl(target) ||
+      photoKeysMatch(stored, target);
 
     let removed = 0;
     const touched = [];
@@ -1523,7 +1635,11 @@ app.post('/api/uploads', async (req, res, next) => {
 // ============================================
 app.get('/api/:collection', validCollection, async (req, res, next) => { 
   try { 
-    res.json({ [req.params.collection]: await dbGetCollection(req.params.collection) }); 
+    const origin = `${req.protocol}://${req.get('host')}`;
+    const data = await dbGetCollection(req.params.collection);
+    if (req.params.collection === 'events') proxyizeEvents(data, origin);
+    if (req.params.collection === 'allPhotos') proxyizeAllPhotoBuckets(data, origin);
+    res.json({ [req.params.collection]: data }); 
   } catch (error) { 
     next(error); 
   } 
