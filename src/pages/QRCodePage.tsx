@@ -250,7 +250,7 @@ const getUploadUrl = (eventId: string, dateValue: string) => {
   return (
     `${GFC_BASE}/upload` +
     `?event=${encodeURIComponent(eventId)}` +
-    `&date=${encodeURIComponent(dateValue.replace(/\s+/g, ''))}`
+    `&date=${encodeURI(dateValue.replace(/\s+/g, ''))}`
   );
 };
 
@@ -477,7 +477,7 @@ useEffect(() => {
     data: uploadUrl,
 
     // ↓↓↓ CHURCH WEB LOGO — palitan ang path kung iba ang file name ↓↓↓
-    image: '/image-circle.png',
+    image: '/image.png',
 
     imageOptions: {
       imageSize: 0.15,       // 15% ng QR code ang laki ng logo
