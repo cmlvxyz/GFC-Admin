@@ -40,210 +40,99 @@ const MONTH_NAMES = [
   'July', 'August', 'September', 'October', 'November', 'December'
 ];
 
-/**
- * A "concrete" date album is a real calendar date like
- * "August 30, 2026".
- *
- * Recurring schedules like "Every Sunday 8:30 AM" are NOT
- * date albums and must never appear in the date selector.
- */
-const isConcreteDate = (
-  value: unknown
-): boolean => {
-
+const isConcreteDate = (value: unknown): boolean => {
   const s = String(value ?? '').trim();
-
-  if (!s) {
-    return false;
-  }
-
-  if (/^every\b/i.test(s)) {
-    return false;
-  }
-
-  if (/\b(Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday)\b/i.test(s)) {
-    return false;
-  }
-
+  if (!s) return false;
+  if (/^every\b/i.test(s)) return false;
+  if (/\b(Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday)\b/i.test(s)) return false;
   const parsed = new Date(s);
-
   return !Number.isNaN(parsed.getTime());
 };
 
-/**
- * A "schedule" entry describes a recurring meeting (e.g.
- * "Every Wednesday 7:00 PM"). Schedules are never albums and
- * must never appear in the album selector.
- */
-const isScheduleEntry = (
-  value: unknown
-): boolean => {
-
+const isScheduleEntry = (value: unknown): boolean => {
   const s = String(value ?? '').trim();
-
-  if (/^every\b/i.test(s)) {
-    return true;
-  }
-
-  if (/\b(Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday)\b/i.test(s)) {
-    return true;
-  }
-
+  if (/^every\b/i.test(s)) return true;
+  if (/\b(Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday)\b/i.test(s)) return true;
   return false;
 };
 
-/**
- * Anniversary-style events use YEAR albums ("1st Year
- * Anniversary") instead of calendar date albums. They are
- * detected either by an explicit albumType flag or by the
- * legacy anniversary event id.
- */
-const isYearAlbumEvent = (
-  event?: ChurchEvent | null
-): boolean => {
-
-  if (event?.albumType === 'year') {
-    return true;
-  }
-
+const isYearAlbumEvent = (event?: ChurchEvent | null): boolean => {
+  if (event?.albumType === 'year') return true;
   return String(event?.id) === 'anniversary';
 };
 
-/**
- * Leading ordinal number of a label, e.g. "3rd Year Anniversary"
- * → 3. Used to sort year albums from earliest to latest.
- */
-const ordinalOf = (
-  value: unknown
-): number => {
-
-  const match = String(value ?? '')
-    .trim()
-    .match(/^(\d+)/);
-
-  return match
-    ? parseInt(match[1], 10)
-    : Number.MAX_SAFE_INTEGER;
+const ordinalOf = (value: unknown): number => {
+  const match = String(value ?? '').trim().match(/^(\d+)/);
+  return match ? parseInt(match[1], 10) : Number.MAX_SAFE_INTEGER;
 };
 
-/**
- * Comparable key for an album label/dates, ignoring spaces and
- * letter case so "1st Year Anniversary" matches "1stYearAnniversary".
- */
-const dateKey = (
-  value: unknown
-): string =>
-  String(value ?? '')
-    .trim()
-    .toLowerCase()
-    .replace(/\s+/g, '');
+const dateKey = (value: unknown): string =>
+  String(value ?? '').trim().toLowerCase().replace(/\s+/g, '');
 
-/**
- * Merge an updated list of albums back into the original
- * dateEntries array, preserving recurring schedule entries that
- * are never shown in the selector. Existing albums are matched by
- * label (works for both date and year albums).
- */
+const autoAlbumLabel = (existing: DateEntry[] | null | undefined): string => {
+  const base = new Date().toLocaleDateString('en-US', {
+    month: 'long', day: 'numeric', year: 'numeric'
+  });
+  const keys = new Set((existing || []).map(e => dateKey(e.date)));
+  let label = base;
+  let n = 2;
+  while (keys.has(dateKey(label))) {
+    label = `${base} (${n++})`;
+  }
+  return label;
+};
+
 const mergeDateEntriesIntoRaw = (
   rawEntries: DateEntry[] | null | undefined,
   updatedEntries: DateEntry[]
 ): DateEntry[] => {
-
-  const raw = Array.isArray(rawEntries)
-    ? rawEntries
-    : [];
-
+  const raw = Array.isArray(rawEntries) ? rawEntries : [];
   const queue = updatedEntries.map(entry => ({
     ...entry,
     date: String(entry.date ?? '').trim(),
-    photos: Array.isArray(entry.photos)
-      ? entry.photos
-      : []
+    photos: Array.isArray(entry.photos) ? entry.photos : []
   }));
 
   const merged: DateEntry[] = [];
 
   for (const entry of raw) {
-
     const key = dateKey(entry.date);
-
-    const index = queue.findIndex(
-      candidate =>
-        dateKey(candidate.date) === key
-    );
-
+    const index = queue.findIndex(candidate => dateKey(candidate.date) === key);
     if (index >= 0) {
-
       merged.push(queue[index]);
       queue.splice(index, 1);
-
     } else {
-
       merged.push({
         ...entry,
         date: String(entry.date ?? '').trim(),
-        photos: Array.isArray(entry.photos)
-          ? entry.photos
-          : []
+        photos: Array.isArray(entry.photos) ? entry.photos : []
       });
     }
   }
 
   merged.push(...queue);
-
   return merged;
 };
 
-/**
- * Validate a date typed in the "Add Date Album" input.
- * Accepted format: "Month Day, Year" (e.g. "August 30, 2026").
- */
-const isMonthDayYear = (
-  value: string
-): boolean => {
-
-  const match = value
-    .trim()
-    .match(/^([A-Za-z]+)[\s.]?(\d{1,2}),\s*(\d{4})$/);
-
-  if (!match) {
-    return false;
-  }
-
-  const monthName =
-    match[1][0].toUpperCase() +
-    match[1].slice(1).toLowerCase();
-
-  const monthIndex =
-    MONTH_NAMES.indexOf(monthName);
-
-  if (monthIndex === -1) {
-    return false;
-  }
-
-  const parsed = new Date(
-    `${monthName} ${match[2]}, ${match[3]}`
-  );
-
-  if (Number.isNaN(parsed.getTime())) {
-    return false;
-  }
-
+const isMonthDayYear = (value: string): boolean => {
+  const match = value.trim().match(/^([A-Za-z]+)[\s.]?(\d{1,2}),\s*(\d{4})$/);
+  if (!match) return false;
+  const monthName = match[1][0].toUpperCase() + match[1].slice(1).toLowerCase();
+  const monthIndex = MONTH_NAMES.indexOf(monthName);
+  if (monthIndex === -1) return false;
+  const parsed = new Date(`${monthName} ${match[2]}, ${match[3]}`);
+  if (Number.isNaN(parsed.getTime())) return false;
   return (
     parsed.getFullYear() === parseInt(match[3], 10) &&
     parsed.getMonth() === monthIndex
   );
 };
 
-const toMonthDayYear = (
-  value: string
-): string => {
-
+const toMonthDayYear = (value: string): string => {
   const parsed = new Date(value);
   const day = parsed.getDate();
   const month = parsed.getMonth();
   const year = parsed.getFullYear();
-
   return `${MONTH_NAMES[month]} ${day}, ${year}`;
 };
 
@@ -255,37 +144,24 @@ const stringHashCache = new Map<string, string | null>();
 const pathHashCache = new Map<string, string | null>();
 
 function bytesToHex(bytes: Uint8Array): string {
-  return Array.from(bytes)
-    .map(b => b.toString(16).padStart(2, '0'))
-    .join('');
+  return Array.from(bytes).map(b => b.toString(16).padStart(2, '0')).join('');
 }
 
-async function sha256String(
-  text: string
-): Promise<string | null> {
+async function sha256String(text: string): Promise<string | null> {
   const cached = stringHashCache.get(text);
-
-  if (cached !== undefined) {
-    return cached;
-  }
+  if (cached !== undefined) return cached;
 
   try {
     if (!globalThis.crypto?.subtle) {
       stringHashCache.set(text, null);
       return null;
     }
-
     const digest = await globalThis.crypto.subtle.digest(
       'SHA-256',
       new TextEncoder().encode(text)
     );
-
-    const hash = bytesToHex(
-      new Uint8Array(digest)
-    );
-
+    const hash = bytesToHex(new Uint8Array(digest));
     stringHashCache.set(text, hash);
-
     return hash;
   } catch {
     stringHashCache.set(text, null);
@@ -293,48 +169,27 @@ async function sha256String(
   }
 }
 
-async function sha256Bytes(
-  bytes: ArrayBuffer
-): Promise<string | null> {
+async function sha256Bytes(bytes: ArrayBuffer): Promise<string | null> {
   try {
-    if (!globalThis.crypto?.subtle) {
-      return null;
-    }
-
-    const digest = await globalThis.crypto.subtle.digest(
-      'SHA-256',
-      bytes
-    );
-
-    return bytesToHex(
-      new Uint8Array(digest)
-    );
+    if (!globalThis.crypto?.subtle) return null;
+    const digest = await globalThis.crypto.subtle.digest('SHA-256', bytes);
+    return bytesToHex(new Uint8Array(digest));
   } catch {
     return null;
   }
 }
 
-async function hashRemoteResource(
-  url: string
-): Promise<string | null> {
-  if (pathHashCache.has(url)) {
-    return pathHashCache.get(url) ?? null;
-  }
-
+async function hashRemoteResource(url: string): Promise<string | null> {
+  if (pathHashCache.has(url)) return pathHashCache.get(url) ?? null;
   try {
     const res = await fetch(url);
-
     if (!res.ok) {
       pathHashCache.set(url, null);
       return null;
     }
-
     const bytes = await res.arrayBuffer();
-
     const hash = await sha256Bytes(bytes);
-
     pathHashCache.set(url, hash);
-
     return hash;
   } catch {
     pathHashCache.set(url, null);
@@ -348,9 +203,7 @@ async function hashRemoteResource(
 
 interface QRCodePageProps {
   events: ChurchEvent[];
-  onUpdateEvent?: (
-    updatedEvent: ChurchEvent
-  ) => void;
+  onUpdateEvent?: (updatedEvent: ChurchEvent) => void;
   onReload?: () => void;
   allPhotos?: AllPhotoAlbum[];
   onAllPhotosUpdated?: () => void;
@@ -360,9 +213,7 @@ interface QRCodePageProps {
 // PAGE
 // ============================================================
 
-export const QRCodePage: React.FC<
-  QRCodePageProps
-> = ({
+export const QRCodePage: React.FC<QRCodePageProps> = ({
   events,
   onUpdateEvent,
   onReload,
@@ -375,54 +226,31 @@ export const QRCodePage: React.FC<
   // ==========================================================
 
   const GFC_BASE = (() => {
-    const fromEnv =
-      (
-        import.meta.env
-          .VITE_GFC_URL as string | undefined
-      )?.trim();
+    const fromEnv = (import.meta.env.VITE_SITE_URL as string | undefined)?.trim();
+    if (fromEnv) return fromEnv.replace(/\/+$/, '');
 
-    if (fromEnv) {
-      return fromEnv;
-    }
-
-    const host =
-      typeof window !== 'undefined'
-        ? window.location.hostname
-        : '';
-
-    const isLocalhost =
-      !host ||
-      host === 'localhost' ||
-      host === '127.0.0.1';
-
-    const isLanIp =
-      /^\d{1,3}(\.\d{1,3}){3}$/.test(host);
+    const host = typeof window !== 'undefined' ? window.location.hostname : '';
+    const isLocalhost = !host || host === 'localhost' || host === '127.0.0.1';
+    const isLanIp = /^\d{1,3}(\.\d{1,3}){3}$/.test(host);
 
     if (isLocalhost || isLanIp) {
-      return host
-        ? `http://${host}:4000`
-        : 'http://localhost:4000';
+      return host ? `http://${host}:3002` : 'http://localhost:3002';
     }
 
     return typeof window !== 'undefined'
       ? window.location.origin
-      : 'https://gfc-lime.vercel.app';
+      : 'https://gfc-admin-rosy.vercel.app';
   })();
 
   // ==========================================================
   // QR URL
   // ==========================================================
 
-  const getUploadUrl = (
-    eventId: string,
-    dateValue: string
-  ) => {
+  const getUploadUrl = (eventId: string, dateValue: string) => {
     return (
       `${GFC_BASE}/upload` +
       `?event=${encodeURIComponent(eventId)}` +
-      `&date=${encodeURIComponent(
-        dateValue.replace(/\s+/g, '')
-      )}`
+      `&date=${encodeURIComponent(dateValue.replace(/\s+/g, ''))}`
     );
   };
 
@@ -430,1543 +258,656 @@ export const QRCodePage: React.FC<
   // STATE
   // ==========================================================
 
-  const [
-    selectedEventId,
-    setSelectedEventId
-  ] = useState<string>('');
+  const [selectedEventId, setSelectedEventId] = useState<string>('');
+  const [uploadedPhotos, setUploadedPhotos] = useState<UploadedPhoto[]>([]);
+  const [isUploading, setIsUploading] = useState(false);
+  const [uploadStatus, setUploadStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
+  const [errorMessage, setErrorMessage] = useState('');
+  const [selectedDateIndex, setSelectedDateIndex] = useState<number>(0);
+  const [newDateInput, setNewDateInput] = useState('');
+  const [addDateError, setAddDateError] = useState('');
+  const [deletingDate, setDeletingDate] = useState(false);
+  const [addingDate, setAddingDate] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
 
-  const [
-    uploadedPhotos,
-    setUploadedPhotos
-  ] = useState<UploadedPhoto[]>([]);
+  const photoFileInputRef = useRef<HTMLInputElement>(null);
+  const [qrContainerEl, setQrContainerEl] = useState<HTMLDivElement | null>(null);
+  const qrStylingRef = useRef<QRCodeStyling | null>(null);
 
-  const [
-    isUploading,
-    setIsUploading
-  ] = useState(false);
-
-  const [
-    uploadStatus,
-    setUploadStatus
-  ] = useState<
-    'idle' | 'loading' | 'success' | 'error'
-  >('idle');
-
-  const [
-    errorMessage,
-    setErrorMessage
-  ] = useState('');
-
-  const [
-    selectedDateIndex,
-    setSelectedDateIndex
-  ] = useState<number>(0);
-
-  const [
-    newDateInput,
-    setNewDateInput
-  ] = useState('');
-
-  const [
-    addDateError,
-    setAddDateError
-  ] = useState('');
-
-  const [
-    deletingDate,
-    setDeletingDate
-  ] = useState(false);
-
-  const [
-    addingDate,
-    setAddingDate
-  ] = useState(false);
-
-  const [
-    uploadProgress,
-    setUploadProgress
-  ] = useState(0);
-
-  const photoFileInputRef =
-    useRef<HTMLInputElement>(null);
-
-  const [
-    qrContainerEl,
-    setQrContainerEl
-  ] = useState<HTMLDivElement | null>(null);
-
-  const qrStylingRef =
-    useRef<QRCodeStyling | null>(null);
-
-  // ==========================================================
-  // FACEBOOK IMPORT STATE
-  // ==========================================================
+  // Facebook Import State
   const [facebookUrl, setFacebookUrl] = useState('');
   const [facebookImporting, setFacebookImporting] = useState(false);
   const [facebookStatus, setFacebookStatus] = useState<'idle' | 'success' | 'error'>('idle');
   const [facebookMessage, setFacebookMessage] = useState('');
 
   // ==========================================================
-  // IMPORTANT:
-  //
-  // OLD EVENTS:
-  // {
-  //   title: "Worship Night",
-  //   date: "July 31, 2026"
-  // }
-  //
-  // NEW EVENTS:
-  // {
-  //   title: "Worship Night",
-  //   dateEntries: [...]
-  // }
-  //
-  // We support BOTH.
+  // NORMALIZE EVENT
   // ==========================================================
 
-  const normalizeEvent = (
-    event: ChurchEvent
-  ): ChurchEvent => {
+  const normalizeEvent = (event: ChurchEvent): ChurchEvent => {
+    const isYear = isYearAlbumEvent(event);
 
-    const isYear =
-      isYearAlbumEvent(event);
-
-    // Already has dateEntries
-    if (
-      Array.isArray(event.dateEntries) &&
-      event.dateEntries.length > 0
-    ) {
-      const sorted =
-        event.dateEntries.map(
-          (entry: DateEntry) => ({
-            ...entry,
-            date: String(
-              entry.date ?? ''
-            ).trim(),
-            photos:
-              Array.isArray(entry.photos)
-                ? entry.photos
-                : []
-          })
-        ).filter(entry =>
-          isYear
-            ? !isScheduleEntry(entry.date)
-            : isConcreteDate(entry.date)
-        );
+    if (Array.isArray(event.dateEntries) && event.dateEntries.length > 0) {
+      const sorted = event.dateEntries
+        .map((entry: DateEntry) => ({
+          ...entry,
+          date: String(entry.date ?? '').trim(),
+          photos: Array.isArray(entry.photos) ? entry.photos : []
+        }))
+        .filter(entry => (isYear ? !isScheduleEntry(entry.date) : isConcreteDate(entry.date)));
 
       sorted.sort(
         isYear
-          ? (
-              a,
-              b
-            ) =>
-            ordinalOf(a.date) -
-              ordinalOf(b.date) ||
-            String(a.date)
-              .localeCompare(
-                String(b.date)
-              )
-          : (
-              a,
-              b
-            ) =>
-            new Date(a.date).getTime() -
-              new Date(b.date).getTime()
+          ? (a, b) => ordinalOf(a.date) - ordinalOf(b.date) || String(a.date).localeCompare(String(b.date))
+          : (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()
       );
 
+      return { ...event, dateEntries: sorted };
+    }
+
+    if (event.date && !isScheduleEntry(event.date)) {
       return {
         ...event,
-        dateEntries: sorted
+        dateEntries: [{ date: String(event.date).trim(), photos: [] }]
       };
     }
 
-    // Old event only has `date`
-    if (
-      event.date &&
-      !isScheduleEntry(event.date)
-    ) {
-      return {
-        ...event,
-        dateEntries: [
-          {
-            date: String(event.date).trim(),
-            photos: []
-          }
-        ]
-      };
-    }
-
-    // No date at all
-    return {
-      ...event,
-      dateEntries: []
-    };
+    return { ...event, dateEntries: [] };
   };
 
   // ==========================================================
   // SELECTED EVENT
   // ==========================================================
 
-  const getSelectedEvent =
-    (): ChurchEvent | undefined => {
+  const getSelectedEvent = (): ChurchEvent | undefined => {
+    const event = events.find(e => e.id === selectedEventId);
+    if (!event) return undefined;
+    return normalizeEvent(event);
+  };
 
-      const event = events.find(
-        e => e.id === selectedEventId
-      );
-
-      if (!event) {
-        return undefined;
-      }
-
-      return normalizeEvent(event);
-    };
+  const isGospelNetwork = selectedEventId === 'gospel-network';
 
   // ==========================================================
   // SELECTED DATE
   // ==========================================================
 
-  const getSelectedDateEntry =
-    (): DateEntry | null => {
+  const getSelectedDateEntry = (): DateEntry | null => {
+    const event = getSelectedEvent();
+    if (
+      !event ||
+      !Array.isArray(event.dateEntries) ||
+      selectedDateIndex < 0 ||
+      selectedDateIndex >= event.dateEntries.length
+    ) {
+      return null;
+    }
+    return event.dateEntries[selectedDateIndex] ?? null;
+  };
 
-      const event =
-        getSelectedEvent();
+  const getSelectedDateValue = (): string => {
+    const entry = getSelectedDateEntry();
+    return entry?.date ? String(entry.date).trim() : '';
+  };
 
-      if (
-        !event ||
-        !Array.isArray(
-          event.dateEntries
-        ) ||
-        selectedDateIndex < 0 ||
-        selectedDateIndex >=
-          event.dateEntries.length
-      ) {
-        return null;
-      }
-
-      return (
-        event.dateEntries[
-          selectedDateIndex
-        ] ?? null
-      );
-    };
-
-  const getSelectedDateValue =
-    (): string => {
-
-      const entry =
-        getSelectedDateEntry();
-
-      return entry?.date
-        ? String(entry.date).trim()
-        : '';
-    };
-
-  const getSelectedUploadUrl =
-    (): string => {
-
-      return getUploadUrl(
-        selectedEventId || 'none',
-        getSelectedDateValue()
-      );
-    };
+  const getSelectedUploadUrl = (): string => {
+    return getUploadUrl(selectedEventId || 'none', getSelectedDateValue());
+  };
 
   // ==========================================================
   // COLLECT ALL EXISTING PHOTOS
   // ==========================================================
 
-  const collectExistingPhotoRefs =
-    (): {
-      resource: string;
-      location: string;
-    }[] => {
+  const collectExistingPhotoRefs = (): { resource: string; location: string }[] => {
+    const refs: { resource: string; location: string }[] = [];
 
-      const refs: {
-        resource: string;
-        location: string;
-      }[] = [];
+    for (const ev of events) {
+      const normalized = normalizeEvent(ev);
+      if (!Array.isArray(normalized.dateEntries)) continue;
 
-      for (const ev of events) {
+      normalized.dateEntries.forEach(entry => {
+        (entry.photos || []).forEach((photo: string) => {
+          refs.push({
+            resource: photo,
+            location: `${normalized.title} • ${entry.date}`
+          });
+        });
+      });
+    }
 
-        const normalized =
-          normalizeEvent(ev);
+    for (const album of allPhotos) {
+      if (!Array.isArray(album?.photos)) continue;
 
-        if (
-          !Array.isArray(
-            normalized.dateEntries
-          )
-        ) {
-          continue;
-        }
+      const monthName = new Date(0, album.month).toLocaleString('default', { month: 'long' });
+      const albumLocation = `All Photos • ${monthName} ${album.year}`;
 
-        normalized.dateEntries.forEach(
-          entry => {
+      album.photos.forEach((photo: string) => {
+        refs.push({ resource: photo, location: albumLocation });
+      });
+    }
 
-            (
-              entry.photos || []
-            ).forEach(
-              (photo: string) => {
-
-                refs.push({
-                  resource: photo,
-                  location:
-                    `${normalized.title} • ${entry.date}`
-                });
-
-              }
-            );
-          }
-        );
-      }
-
-      for (const album of allPhotos) {
-
-        if (
-          !Array.isArray(
-            album?.photos
-          )
-        ) {
-          continue;
-        }
-
-        const monthName =
-          new Date(
-            0,
-            album.month
-          ).toLocaleString(
-            'default',
-            {
-              month: 'long'
-            }
-          );
-
-        const albumLocation =
-          `All Photos • ${monthName} ${album.year}`;
-
-        album.photos.forEach(
-          (photo: string) => {
-
-            refs.push({
-              resource: photo,
-              location: albumLocation
-            });
-
-          }
-        );
-      }
-
-      return refs;
-    };
+    return refs;
+  };
 
   // ==========================================================
   // DUPLICATE CHECK
   // ==========================================================
 
-  const checkDuplicateForNewPhoto =
-    async (
-      dataUrl: string,
-      hash: string | null
-    ): Promise<{
-      isDuplicate: boolean;
-      location: string | null;
-    }> => {
+  const checkDuplicateForNewPhoto = async (
+    dataUrl: string,
+    hash: string | null
+  ): Promise<{ isDuplicate: boolean; location: string | null }> => {
 
-      const refs =
-        collectExistingPhotoRefs();
+    const refs = collectExistingPhotoRefs();
 
-      // Exact match
-      const exact =
-        refs.find(
-          r => r.resource === dataUrl
-        );
+    const exact = refs.find(r => r.resource === dataUrl);
+    if (exact) return { isDuplicate: true, location: exact.location };
+    if (!hash) return { isDuplicate: false, location: null };
 
-      if (exact) {
-        return {
-          isDuplicate: true,
-          location: exact.location
-        };
+    for (const ref of refs) {
+      if (!ref.resource.startsWith('data:')) continue;
+      const refHash = await sha256String(ref.resource);
+      if (refHash && refHash === hash) {
+        return { isDuplicate: true, location: ref.location };
       }
+    }
 
-      if (!hash) {
-        return {
-          isDuplicate: false,
-          location: null
-        };
+    for (const ref of refs) {
+      if (ref.resource.startsWith('data:')) continue;
+      const resolved = ref.resource.startsWith('http')
+        ? ref.resource
+        : GFC_BASE + (ref.resource.startsWith('/') ? ref.resource : '/' + ref.resource);
+
+      const refHash = await hashRemoteResource(resolved);
+      if (refHash && refHash === hash) {
+        return { isDuplicate: true, location: ref.location };
       }
+    }
 
-      // Data URLs
-      for (const ref of refs) {
-
-        if (
-          !ref.resource.startsWith(
-            'data:'
-          )
-        ) {
-          continue;
-        }
-
-        const refHash =
-          await sha256String(
-            ref.resource
-          );
-
-        if (
-          refHash &&
-          refHash === hash
-        ) {
-          return {
-            isDuplicate: true,
-            location: ref.location
-          };
-        }
-      }
-
-      // Remote/path photos
-      for (const ref of refs) {
-
-        if (
-          ref.resource.startsWith(
-            'data:'
-          )
-        ) {
-          continue;
-        }
-
-        const resolved =
-          ref.resource.startsWith(
-            'http'
-          )
-            ? ref.resource
-            : GFC_BASE +
-              (
-                ref.resource.startsWith('/')
-                  ? ref.resource
-                  : '/' + ref.resource
-              );
-
-        const refHash =
-          await hashRemoteResource(
-            resolved
-          );
-
-        if (
-          refHash &&
-          refHash === hash
-        ) {
-          return {
-            isDuplicate: true,
-            location: ref.location
-          };
-        }
-      }
-
-      return {
-        isDuplicate: false,
-        location: null
-      };
-    };
+    return { isDuplicate: false, location: null };
+  };
 
   // ==========================================================
   // AUTO SELECT EVENT
   // ==========================================================
 
   useEffect(() => {
-
-    if (
-      !selectedEventId &&
-      events.length > 0
-    ) {
-
+    if (!selectedEventId && events.length > 0) {
       const eventToSelect =
         events.find(event => {
-
-          const normalized =
-            normalizeEvent(event);
-
-          return (
-            normalized.dateEntries &&
-            normalized.dateEntries.length > 0
-          );
-
+          const normalized = normalizeEvent(event);
+          return normalized.dateEntries && normalized.dateEntries.length > 0;
         }) || events[0];
 
-      setSelectedEventId(
-        eventToSelect.id
-      );
-
+      setSelectedEventId(eventToSelect.id);
       setSelectedDateIndex(0);
     }
-
-  }, [
-    events,
-    selectedEventId
-  ]);
+  }, [events, selectedEventId]);
 
   // ==========================================================
   // IF CURRENT EVENT DISAPPEARED
   // ==========================================================
 
   useEffect(() => {
-
-    if (
-      selectedEventId &&
-      !events.some(
-        e => e.id === selectedEventId
-      )
-    ) {
-
+    if (selectedEventId && !events.some(e => e.id === selectedEventId)) {
       setSelectedEventId('');
-
       setSelectedDateIndex(0);
-
       handleResetUpload();
-
     }
-
-  }, [
-    events,
-    selectedEventId
-  ]);
+  }, [events, selectedEventId]);
 
   // ==========================================================
   // QR CODE
   // ==========================================================
 
   useEffect(() => {
-  if (!qrContainerEl) {
-    return;
-  }
+    if (!qrContainerEl) return;
 
-  qrContainerEl.innerHTML = '';
-
-  const uploadUrl = getSelectedUploadUrl();
-
-  const qr = new QRCodeStyling({
-    width: 260,
-    height: 260,
-    margin: 16,
-    data: uploadUrl,
-
-    image: '/image-circle.png',
-
-    imageOptions: {
-      imageSize: 0.15,
-      margin: 6,
-      crossOrigin: 'anonymous'
-    },
-
-    qrOptions: {
-      errorCorrectionLevel: 'H',
-      typeNumber: 0
-    },
-
-    dotsOptions: {
-      color: '#1a1a2e',
-      type: 'rounded'
-    },
-
-    cornersSquareOptions: {
-      color: '#1a1a2e',
-      type: 'extra-rounded'
-    },
-
-    backgroundOptions: {
-      color: '#ffffff',
-      round: 8
-    }
-  });
-
-  qr.append(qrContainerEl);
-
-  qrStylingRef.current = qr;
-
-  return () => {
-    qrStylingRef.current = null;
     qrContainerEl.innerHTML = '';
-  };
-}, [
-  qrContainerEl,
-  selectedEventId,
-  selectedDateIndex,
-  events
-]);
+
+    const uploadUrl = getSelectedUploadUrl();
+
+    const qr = new QRCodeStyling({
+      width: 260,
+      height: 260,
+      margin: 16,
+      data: uploadUrl,
+      image: '/image-circle.png',
+      imageOptions: {
+        imageSize: 0.15,
+        margin: 6,
+        crossOrigin: 'anonymous'
+      },
+      qrOptions: {
+        errorCorrectionLevel: 'H',
+        typeNumber: 0
+      },
+      dotsOptions: {
+        color: '#1a1a2e',
+        type: 'rounded'
+      },
+      cornersSquareOptions: {
+        color: '#1a1a2e',
+        type: 'extra-rounded'
+      },
+      backgroundOptions: {
+        color: '#ffffff',
+        round: 8
+      }
+    });
+
+    qr.append(qrContainerEl);
+    qrStylingRef.current = qr;
+
+    return () => {
+      qrStylingRef.current = null;
+      qrContainerEl.innerHTML = '';
+    };
+  }, [qrContainerEl, selectedEventId, selectedDateIndex, events]);
 
   // ==========================================================
   // UPDATE QR
   // ==========================================================
 
   useEffect(() => {
-
-    if (
-      !qrStylingRef.current ||
-      !selectedEventId
-    ) {
-      return;
-    }
-
-    qrStylingRef.current.update({
-      data:
-        getSelectedUploadUrl()
-    });
-
-  }, [
-    selectedEventId,
-    selectedDateIndex,
-    events,
-    qrContainerEl
-  ]);
+    if (!qrStylingRef.current || !selectedEventId) return;
+    qrStylingRef.current.update({ data: getSelectedUploadUrl() });
+  }, [selectedEventId, selectedDateIndex, events, qrContainerEl]);
 
   // ==========================================================
   // RESIZE IMAGE
   // ==========================================================
 
-  const resizeImage = (
-    file: File
-  ): Promise<string> =>
-    new Promise(
-      (resolve, reject) => {
+  const resizeImage = (file: File): Promise<string> =>
+    new Promise((resolve, reject) => {
+      const img = new window.Image();
+      const reader = new FileReader();
 
-        const img =
-          new window.Image();
+      reader.onload = () => {
+        img.onload = () => {
+          const MAX = 1200;
+          const scale = Math.min(1, MAX / Math.max(img.width, img.height));
+          const w = Math.round(img.width * scale);
+          const h = Math.round(img.height * scale);
 
-        const reader =
-          new FileReader();
+          const canvas = document.createElement('canvas');
+          canvas.width = w;
+          canvas.height = h;
 
-        reader.onload = () => {
+          const ctx = canvas.getContext('2d');
+          if (!ctx) {
+            reject(new Error('Canvas not supported'));
+            return;
+          }
 
-          img.onload = () => {
+          ctx.fillStyle = '#ffffff';
+          ctx.fillRect(0, 0, w, h);
+          ctx.drawImage(img, 0, 0, w, h);
 
-            const MAX = 1200;
-
-            const scale =
-              Math.min(
-                1,
-                MAX /
-                  Math.max(
-                    img.width,
-                    img.height
-                  )
-              );
-
-            const w =
-              Math.round(
-                img.width * scale
-              );
-
-            const h =
-              Math.round(
-                img.height * scale
-              );
-
-            const canvas =
-              document.createElement(
-                'canvas'
-              );
-
-            canvas.width = w;
-            canvas.height = h;
-
-            const ctx =
-              canvas.getContext(
-                '2d'
-              );
-
-            if (!ctx) {
-              reject(
-                new Error(
-                  'Canvas not supported'
-                )
-              );
-              return;
-            }
-
-            ctx.fillStyle =
-              '#ffffff';
-
-            ctx.fillRect(
-              0,
-              0,
-              w,
-              h
-            );
-
-            ctx.drawImage(
-              img,
-              0,
-              0,
-              w,
-              h
-            );
-
-            resolve(
-              canvas.toDataURL(
-                'image/jpeg',
-                0.75
-              )
-            );
-          };
-
-          img.onerror = reject;
-
-          img.src =
-            reader.result as string;
+          resolve(canvas.toDataURL('image/jpeg', 0.75));
         };
 
-        reader.onerror = reject;
+        img.onerror = reject;
+        img.src = reader.result as string;
+      };
 
-        reader.readAsDataURL(
-          file
-        );
-      }
-    );
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
 
   // ==========================================================
   // PHOTO SELECTION
   // ==========================================================
 
-  const handlePhotoUpload =
-    async (
-      e: React.ChangeEvent<HTMLInputElement>
-    ) => {
+  const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files) return;
 
-      const files =
-        e.target.files;
+    setUploadStatus('loading');
+    setUploadProgress(0);
 
-      if (!files) {
-        return;
+    const photos: UploadedPhoto[] = [];
+    const totalFiles = files.length;
+    let processed = 0;
+
+    for (const file of Array.from(files)) {
+      if (!file || !file.type || !file.type.startsWith('image')) continue;
+
+      try {
+        const imageData = await resizeImage(file);
+        const hash = await sha256String(imageData);
+        const duplicate = await checkDuplicateForNewPhoto(imageData, hash);
+
+        photos.push({
+          id: nextPhotoId(),
+          dataUrl: imageData,
+          hash,
+          isDuplicate: duplicate.isDuplicate,
+          duplicateLocation: duplicate.location
+        });
+
+        processed++;
+        setUploadProgress(Math.round((processed / totalFiles) * 100));
+      } catch {
+        // Skip unreadable image
       }
+    }
 
-      setUploadStatus(
-        'loading'
-      );
+    if (photos.length > 0) {
+      setUploadedPhotos(prev => [...prev, ...photos]);
+      setUploadStatus('idle');
+      setErrorMessage('');
+    } else {
+      setUploadStatus('idle');
+    }
 
-      setUploadProgress(0);
-
-      const photos: UploadedPhoto[] =
-        [];
-
-      const totalFiles =
-        files.length;
-
-      let processed = 0;
-
-      for (
-        const file of Array.from(files)
-      ) {
-
-        if (
-          !file ||
-          !file.type ||
-          !file.type.startsWith(
-            'image'
-          )
-        ) {
-          continue;
-        }
-
-        try {
-
-          const imageData =
-            await resizeImage(file);
-
-          const hash =
-            await sha256String(
-              imageData
-            );
-
-          const duplicate =
-            await checkDuplicateForNewPhoto(
-              imageData,
-              hash
-            );
-
-          photos.push({
-            id: nextPhotoId(),
-            dataUrl: imageData,
-            hash,
-            isDuplicate:
-              duplicate.isDuplicate,
-            duplicateLocation:
-              duplicate.location
-          });
-
-          processed++;
-
-          setUploadProgress(
-            Math.round(
-              (
-                processed /
-                totalFiles
-              ) * 100
-            )
-          );
-
-        } catch {
-          // Skip unreadable image
-        }
-      }
-
-      if (photos.length > 0) {
-
-        setUploadedPhotos(
-          prev => [
-            ...prev,
-            ...photos
-          ]
-        );
-
-        setUploadStatus(
-          'idle'
-        );
-
-        setErrorMessage('');
-
-      } else {
-
-        setUploadStatus(
-          'idle'
-        );
-      }
-
-      if (
-        photoFileInputRef.current
-      ) {
-        photoFileInputRef.current.value =
-          '';
-      }
-    };
+    if (photoFileInputRef.current) {
+      photoFileInputRef.current.value = '';
+    }
+  };
 
   // ==========================================================
   // REMOVE PHOTO
   // ==========================================================
 
-  const handleRemoveUploadedPhoto =
-    (
-      index: number
-    ) => {
-
-      setUploadedPhotos(
-        prev =>
-          prev.filter(
-            (_, i) => i !== index
-          )
-      );
-    };
+  const handleRemoveUploadedPhoto = (index: number) => {
+    setUploadedPhotos(prev => prev.filter((_, i) => i !== index));
+  };
 
   // ==========================================================
   // SAVE PHOTOS
   // ==========================================================
 
-  const handleSavePhotosToEvent =
-    async () => {
+  const handleSavePhotosToEvent = async () => {
+    if (!selectedEventId) {
+      setErrorMessage('Please select an event first.');
+      return;
+    }
 
-      if (!selectedEventId) {
+    if (uploadedPhotos.length === 0) {
+      setErrorMessage('Please select photos to upload.');
+      return;
+    }
 
-        setErrorMessage(
-          'Please select an event first.'
-        );
-
-        return;
-      }
-
-      if (
-        uploadedPhotos.length === 0
-      ) {
-
-        setErrorMessage(
-          'Please select photos to upload.'
-        );
-
-        return;
-      }
-
-      const uploadable =
-        uploadedPhotos.filter(
-          p => !p.isDuplicate
-        );
-
-      if (
-        uploadable.length === 0
-      ) {
-
-        setErrorMessage(
-          'All selected photos are duplicates (existing already). Click the X to remove them, then upload again.'
-        );
-
-        return;
-      }
-
-      setIsUploading(true);
-
-      setUploadStatus(
-        'loading'
+    const uploadable = uploadedPhotos.filter(p => !p.isDuplicate);
+    if (uploadable.length === 0) {
+      setErrorMessage(
+        'All selected photos are duplicates (existing already). Click the X to remove them, then upload again.'
       );
-
-      setUploadProgress(0);
-
-      setErrorMessage('');
-
-      try {
-
-        // ====================================================
-        // GET RAW EVENT
-        // ====================================================
-
-        const rawEvent =
-          events.find(
-            e =>
-              e.id ===
-              selectedEventId
-          );
-
-        if (!rawEvent) {
-
-          setErrorMessage(
-            'Event not found. Please reload the data.'
-          );
-
-          setIsUploading(false);
-
-          return;
-        }
-
-        // ====================================================
-        // NORMALIZE EVENT
-        // ====================================================
-
-        const event =
-          normalizeEvent(
-            rawEvent
-          );
-
-        if (
-          !Array.isArray(
-            event.dateEntries
-          )
-        ) {
-
-          setErrorMessage(
-            'Event date information could not be found.'
-          );
-
-          setIsUploading(false);
-
-          return;
-        }
-
-        // ====================================================
-        // TARGET DATE
-        // ====================================================
-
-        const targetIndex =
-          selectedDateIndex >= 0 &&
-          selectedDateIndex <
-            event.dateEntries.length
-            ? selectedDateIndex
-            : 0;
-
-        const targetEntry =
-          event.dateEntries[
-            targetIndex
-          ];
-
-        if (!targetEntry) {
-
-          setErrorMessage(
-            'Selected date album was not found.'
-          );
-
-          setIsUploading(false);
-
-          return;
-        }
-
-        // ====================================================
-        // EXISTING PHOTOS
-        // ====================================================
-
-        const currentPhotos =
-          Array.isArray(
-            targetEntry.photos
-          )
-            ? targetEntry.photos
-            : [];
-
-        const existingPhotoSet =
-          new Set(
-            currentPhotos
-          );
-
-        const newPhotos =
-          uploadable
-            .map(
-              p => p.dataUrl
-            )
-            .filter(
-              photo =>
-                !existingPhotoSet.has(
-                  photo
-                )
-            );
-
-        if (
-          newPhotos.length === 0
-        ) {
-
-          setErrorMessage(
-            'The selected photos already exist in this date album.'
-          );
-
-          setIsUploading(false);
-
-          return;
-        }
-
-        // ====================================================
-        // UPDATE DATE ENTRY
-        // ====================================================
-
-        const updatedEntries =
-          event.dateEntries.map(
-            (
-              entry,
-              index
-            ) => {
-
-              if (
-                index !==
-                targetIndex
-              ) {
-                return entry;
-              }
-
-              return {
-                ...entry,
-                date:
-                  String(
-                    entry.date
-                  ).trim(),
-                photos: [
-                  ...(entry.photos || []),
-                  ...newPhotos
-                ]
-              };
-            }
-          );
-
-        // ====================================================
-        // IMPORTANT:
-        //
-        // Keep the original event.date AND add dateEntries.
-        // This prevents old website code from breaking.
-        // ====================================================
-
-        const finalEntries =
-          mergeDateEntriesIntoRaw(
-            rawEvent.dateEntries,
-            updatedEntries
-          );
-
-        const updatedEvent:
-          ChurchEvent = {
-            ...rawEvent,
-            dateEntries:
-              finalEntries
-          };
-
-        // ====================================================
-        // SAVE EVENT
-        // ====================================================
-
-        await apiUpdateRecord(
-          'events',
-          rawEvent.id,
-          {
-            dateEntries:
-              finalEntries
-          }
-        );
-
-        // Update parent state immediately
-        if (onUpdateEvent) {
-          onUpdateEvent(
-            updatedEvent
-          );
-        }
-
-        // ====================================================
-        // SAVE TO ALL PHOTOS
-        // ====================================================
-
-        const now =
-          new Date();
-
-        const currentMonth =
-          now.getMonth();
-
-        const currentYear =
-          now.getFullYear();
-
-        const dateLabel =
-          targetEntry.date ||
-          rawEvent.date ||
-          `${currentMonth + 1}/${currentYear}`;
-
-        /*
-         * Sequential uploads are intentional.
-         * The server saves the whole collection each request,
-         * so parallel uploads can overwrite one another.
-         */
-
-        for (
-          let index = 0;
-          index < newPhotos.length;
-          index++
-        ) {
-
-          const photoData =
-            newPhotos[index];
-
-          setUploadProgress(
-            Math.round(
-              (
-                (index + 1) /
-                newPhotos.length
-              ) * 100
-            )
-          );
-
-          try {
-
-            const response =
-              await fetch(
-                `${GFC_BASE}/api/uploads/all`,
-                {
-                  method: 'POST',
-
-                  headers: {
-                    'Content-Type':
-                      'application/json'
-                  },
-
-                  body:
-                    JSON.stringify({
-                      image:
-                        photoData,
-
-                      month:
-                        currentMonth,
-
-                      year:
-                        currentYear,
-
-                      date:
-                        dateLabel
-                    })
-                }
-              );
-
-            if (!response.ok) {
-
-              console.warn(
-                'Failed to save photo to All Photos:',
-                response.status
-              );
-            }
-
-          } catch (err) {
-
-            console.warn(
-              'Error saving photo to All Photos:',
-              err
-            );
-          }
-        }
-
-        // ====================================================
-        // REFRESH ALL PHOTOS
-        // ====================================================
-
-        if (
-          onAllPhotosUpdated
-        ) {
-          onAllPhotosUpdated();
-        }
-
-        // ====================================================
-        // SUCCESS
-        // ====================================================
-
-        setUploadStatus(
-          'success'
-        );
-
-        setUploadProgress(100);
-
-        setUploadedPhotos([]);
-
-        setTimeout(() => {
-
-          setUploadStatus(
-            'idle'
-          );
-
-          setUploadProgress(0);
-
-        }, 3000);
-
-      } catch (error) {
-
-        console.error(
-          'Error uploading photos:',
-          error
-        );
-
-        setUploadStatus(
-          'error'
-        );
-
-        setErrorMessage(
-          'Error uploading photos. Please try again.'
-        );
-
-      } finally {
-
+      return;
+    }
+
+    setIsUploading(true);
+    setUploadStatus('loading');
+    setUploadProgress(0);
+    setErrorMessage('');
+
+    try {
+      const rawEvent = events.find(e => e.id === selectedEventId);
+      if (!rawEvent) {
+        setErrorMessage('Event not found. Please reload the data.');
         setIsUploading(false);
+        return;
       }
-    };
+
+      const event = normalizeEvent(rawEvent);
+      if (!Array.isArray(event.dateEntries)) {
+        setErrorMessage('Event date information could not be found.');
+        setIsUploading(false);
+        return;
+      }
+
+      const isGospel = String(rawEvent.id) === 'gospel-network';
+
+      const targetIndex = isGospel
+        ? -1
+        : selectedDateIndex >= 0 && selectedDateIndex < event.dateEntries.length
+          ? selectedDateIndex
+          : 0;
+
+      const targetEntry = isGospel ? null : (event.dateEntries[targetIndex] ?? null);
+
+      if (!targetEntry && !isGospel) {
+        setErrorMessage('Selected date album was not found.');
+        setIsUploading(false);
+        return;
+      }
+
+      const albumEntry: DateEntry = isGospel
+        ? { date: autoAlbumLabel(event.dateEntries), photos: [] }
+        : targetEntry!;
+
+      const currentPhotos = Array.isArray(albumEntry.photos) ? albumEntry.photos : [];
+      const existingPhotoSet = new Set(currentPhotos);
+
+      const newPhotos = uploadable
+        .map(p => p.dataUrl)
+        .filter(photo => !existingPhotoSet.has(photo));
+
+      if (newPhotos.length === 0) {
+        setErrorMessage('The selected photos already exist in this album.');
+        setIsUploading(false);
+        return;
+      }
+
+      const updatedEntries = isGospel
+        ? [...(event.dateEntries || []), { date: albumEntry.date, photos: newPhotos }]
+        : event.dateEntries.map((entry, index) => {
+            if (index !== targetIndex) return entry;
+            return {
+              ...entry,
+              date: String(entry.date).trim(),
+              photos: [...(entry.photos || []), ...newPhotos]
+            };
+          });
+
+      const finalEntries = mergeDateEntriesIntoRaw(rawEvent.dateEntries, updatedEntries);
+
+      const updatedEvent: ChurchEvent = { ...rawEvent, dateEntries: finalEntries };
+
+      await apiUpdateRecord('events', rawEvent.id, { dateEntries: finalEntries });
+
+      if (onUpdateEvent) {
+        onUpdateEvent(updatedEvent);
+      }
+
+      const now = new Date();
+      const currentMonth = now.getMonth();
+      const currentYear = now.getFullYear();
+      const dateLabel = albumEntry.date || rawEvent.date || `${currentMonth + 1}/${currentYear}`;
+
+      for (let index = 0; index < newPhotos.length; index++) {
+        const photoData = newPhotos[index];
+        setUploadProgress(Math.round(((index + 1) / newPhotos.length) * 100));
+
+        try {
+          const response = await fetch(`${GFC_BASE}/api/uploads/all`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              image: photoData,
+              month: currentMonth,
+              year: currentYear,
+              date: dateLabel
+            })
+          });
+
+          if (!response.ok) {
+            console.warn('Failed to save photo to All Photos:', response.status);
+          }
+        } catch (err) {
+          console.warn('Error saving photo to All Photos:', err);
+        }
+      }
+
+      if (onAllPhotosUpdated) {
+        onAllPhotosUpdated();
+      }
+
+      setUploadStatus('success');
+      setUploadProgress(100);
+      setUploadedPhotos([]);
+
+      setTimeout(() => {
+        setUploadStatus('idle');
+        setUploadProgress(0);
+      }, 3000);
+
+    } catch (error) {
+      console.error('Error uploading photos:', error);
+      setUploadStatus('error');
+      setErrorMessage('Error uploading photos. Please try again.');
+    } finally {
+      setIsUploading(false);
+    }
+  };
 
   // ==========================================================
   // ADD DATE
   // ==========================================================
 
-  const handleAddDate =
-    async () => {
+  const handleAddDate = async () => {
+    const rawEvent = events.find(e => e.id === selectedEventId);
+    const value = newDateInput.trim();
 
-      const rawEvent =
-        events.find(
-          e =>
-            e.id ===
-            selectedEventId
-        );
+    if (!rawEvent) {
+      setAddDateError('Please select an event first.');
+      return;
+    }
 
-      const value =
-        newDateInput.trim();
+    if (!value) {
+      setAddDateError(
+        isYearAlbumEvent(rawEvent)
+          ? 'Please enter a year album name first.'
+          : 'Please enter a date first.'
+      );
+      return;
+    }
 
-      if (!rawEvent) {
+    const isYear = isYearAlbumEvent(rawEvent);
 
+    if (!isYear) {
+      if (!isMonthDayYear(value)) {
         setAddDateError(
-          'Please select an event first.'
+          'Please enter a real date as "Month Day, Year" (e.g. August 30, 2026).'
         );
-
+        return;
+      }
+    } else {
+      if (isScheduleEntry(value)) {
+        setAddDateError('Please enter a year like "3rd Year Anniversary" (not a schedule).');
         return;
       }
 
-      if (!value) {
-
-        setAddDateError(
-          isYearAlbumEvent(rawEvent)
-            ? 'Please enter a year album name first.'
-            : 'Please enter a date first.'
-        );
-
+      if (isConcreteDate(value)) {
+        setAddDateError('Please enter a year like "1st Year Anniversary" (not a calendar date).');
         return;
       }
+    }
 
-      const isYear =
-        isYearAlbumEvent(rawEvent);
+    const valueDate = isYear ? value : toMonthDayYear(value);
+    const event = normalizeEvent(rawEvent);
+    const entries = Array.isArray(event.dateEntries) ? event.dateEntries : [];
 
-      if (!isYear) {
+    const dateAlreadyExists = entries.some(
+      entry => dateKey(entry.date) === dateKey(valueDate)
+    );
 
-        if (!isMonthDayYear(value)) {
+    if (dateAlreadyExists) {
+      setAddDateError(`The album "${value}" already exists in this event.`);
+      return;
+    }
 
-          setAddDateError(
-            'Please enter a real date as "Month Day, Year" (e.g. August 30, 2026).'
-          );
+    const updatedEntries = [...entries, { date: valueDate, photos: [] }];
+    const savedDateEntries = mergeDateEntriesIntoRaw(rawEvent.dateEntries, updatedEntries);
 
-          return;
-        }
+    const updatedEvent: ChurchEvent = { ...rawEvent, dateEntries: savedDateEntries };
 
-      } else {
+    setAddingDate(true);
+    setAddDateError('');
 
-        if (isScheduleEntry(value)) {
+    try {
+      await apiUpdateRecord('events', rawEvent.id, { dateEntries: savedDateEntries });
 
-          setAddDateError(
-            'Please enter a year like "3rd Year Anniversary" (not a schedule).'
-          );
-
-          return;
-        }
-
-        if (isConcreteDate(value)) {
-
-          setAddDateError(
-            'Please enter a year like "1st Year Anniversary" (not a calendar date).'
-          );
-
-          return;
-        }
+      if (onUpdateEvent) {
+        onUpdateEvent(updatedEvent);
       }
 
-      const valueDate = isYear
-        ? value
-        : toMonthDayYear(value);
+      setNewDateInput('');
 
-      // Normalize old event
-      const event =
-        normalizeEvent(
-          rawEvent
-        );
+      const savedNormalized = normalizeEvent(updatedEvent);
+      const finalEntries = savedNormalized.dateEntries ?? [];
+      const nextIndex = finalEntries.findIndex(
+        (entry: DateEntry) => dateKey(entry.date) === dateKey(valueDate)
+      );
 
-      const entries =
-        Array.isArray(
-          event.dateEntries
-        )
-          ? event.dateEntries
-          : [];
+      setSelectedDateIndex(nextIndex >= 0 ? nextIndex : finalEntries.length - 1);
 
-      // Case-insensitive duplicate check
-      const dateAlreadyExists =
-        entries.some(
-          entry =>
-            dateKey(entry.date) ===
-            dateKey(valueDate)
-        );
-
-      if (
-        dateAlreadyExists
-      ) {
-
-        setAddDateError(
-          `The album "${value}" already exists in this event.`
-        );
-
-        return;
-      }
-
-      const updatedEntries =
-        [
-          ...entries,
-          {
-            date: valueDate,
-            photos: []
-          }
-        ];
-
-      const savedDateEntries =
-        mergeDateEntriesIntoRaw(
-          rawEvent.dateEntries,
-          updatedEntries
-        );
-
-      const updatedEvent:
-        ChurchEvent = {
-          ...rawEvent,
-          dateEntries:
-            savedDateEntries
-        };
-
-      setAddingDate(true);
-
-      setAddDateError('');
-
-      try {
-
-        await apiUpdateRecord(
-          'events',
-          rawEvent.id,
-          {
-            dateEntries:
-              savedDateEntries
-          }
-        );
-
-        if (onUpdateEvent) {
-
-          onUpdateEvent(
-            updatedEvent
-          );
-        }
-
-        setNewDateInput('');
-
-        // Automatically select the newly added album (it is
-        // re-sorted on display, so find its actual position).
-        const savedNormalized =
-          normalizeEvent(
-            updatedEvent
-          );
-
-        const nextIndex =
-          savedNormalized
-            .dateEntries
-            .findIndex(
-              entry =>
-                dateKey(entry.date) ===
-                dateKey(valueDate)
-            );
-
-        setSelectedDateIndex(
-          nextIndex >= 0
-            ? nextIndex
-            : savedNormalized
-                .dateEntries
-                .length - 1
-        );
-
-      } catch (error) {
-
-        console.error(
-          'Error adding date:',
-          error
-        );
-
-        setAddDateError(
-          'Error adding date. Please try again.'
-        );
-
-        setAddingDate(false);
-
-        return;
-      }
-
+    } catch (error) {
+      console.error('Error adding date:', error);
+      setAddDateError('Error adding date. Please try again.');
       setAddingDate(false);
-    };
+      return;
+    }
+
+    setAddingDate(false);
+  };
 
   // ==========================================================
   // DELETE ALBUM (WHOLE ALBUM)
   // ==========================================================
-  const handleDeleteAlbum =
-    async () => {
 
-      if (
-        selectedDateIndex === null ||
-        selectedDateIndex < 0
-      ) {
-        return;
+  const handleDeleteAlbum = async () => {
+    if (selectedDateIndex === null || selectedDateIndex < 0) return;
+
+    const rawEvent = events.find(e => e.id === selectedEventId);
+    if (!rawEvent) return;
+
+    const norm = normalizeEvent(rawEvent);
+    const list = Array.isArray(norm.dateEntries) ? norm.dateEntries : [];
+
+    if (selectedDateIndex >= list.length) return;
+
+    const target = list[selectedDateIndex];
+    const targetKey = dateKey(String(target.date));
+    const targetPhotos = Array.isArray(target.photos) ? target.photos : [];
+
+    if (
+      !window.confirm(
+        `Delete the whole album "${target.date}" (${targetPhotos.length} photo${targetPhotos.length === 1 ? '' : 's'})?\n\nThe album and all its photos will be removed from the website and cannot be undone.`
+      )
+    ) {
+      return;
+    }
+
+    const savedDateEntries = (
+      Array.isArray(rawEvent.dateEntries) ? rawEvent.dateEntries : []
+    ).filter(rawEntry => dateKey(rawEntry.date) !== targetKey);
+
+    const updatedEvent: ChurchEvent = { ...rawEvent, dateEntries: savedDateEntries };
+
+    setDeletingDate(true);
+
+    try {
+      await apiUpdateRecord('events', rawEvent.id, { dateEntries: savedDateEntries });
+
+      if (onUpdateEvent) {
+        onUpdateEvent(updatedEvent);
       }
 
-      const rawEvent =
-        events.find(
-          e =>
-            e.id ===
-            selectedEventId
-        );
+      setSelectedDateIndex(0);
+    } catch (error) {
+      console.error('Error deleting album:', error);
+      window.alert('Error deleting album. Please try again.');
+      return;
+    }
 
-      if (!rawEvent) {
-        return;
-      }
-
-      const norm =
-        normalizeEvent(
-          rawEvent
-        );
-
-      const list =
-        Array.isArray(
-          norm.dateEntries
-        )
-          ? norm.dateEntries
-          : [];
-
-      if (
-        selectedDateIndex >=
-        list.length
-      ) {
-        return;
-      }
-
-      const target =
-        list[
-          selectedDateIndex
-        ];
-
-      const targetKey =
-        dateKey(
-          String(
-            target.date
-          )
-        );
-
-      const targetPhotos =
-        Array.isArray(
-          target.photos
-        )
-          ? target.photos
-          : [];
-
-      if (
-        !window.confirm(
-          `Delete the whole album "${target.date}" (${targetPhotos.length} photo${targetPhotos.length === 1 ? '' : 's'})?\n\nThe album and all its photos will be removed from the website and cannot be undone.`
-        )
-      ) {
-        return;
-      }
-
-      const savedDateEntries =
-        (
-          Array.isArray(
-            rawEvent.dateEntries
-          )
-            ? rawEvent.dateEntries
-            : []
-        ).filter(
-          rawEntry =>
-            dateKey(
-              rawEntry.date
-            ) !==
-            targetKey
-        );
-
-      const updatedEvent:
-        ChurchEvent = {
-          ...rawEvent,
-          dateEntries:
-            savedDateEntries
-        };
-
-      setDeletingDate(true);
-
-      try {
-
-        await apiUpdateRecord(
-          'events',
-          rawEvent.id,
-          {
-            dateEntries:
-              savedDateEntries
-          }
-        );
-
-        if (onUpdateEvent) {
-
-          onUpdateEvent(
-            updatedEvent
-          );
-
-        }
-
-        setSelectedDateIndex(0);
-
-      } catch (error) {
-
-        console.error(
-          'Error deleting album:',
-          error
-        );
-
-        window.alert(
-          'Error deleting album. Please try again.'
-        );
-
-        return;
-      }
-
-      setDeletingDate(false);
-    };
+    setDeletingDate(false);
+  };
 
   // ==========================================================
   // IMPORT FROM FACEBOOK
   // ==========================================================
+
   const handleFacebookImport = async () => {
     const url = facebookUrl.trim();
 
@@ -1975,16 +916,19 @@ export const QRCodePage: React.FC<
       setFacebookMessage('Please select an event first.');
       return;
     }
-    if (!getSelectedDateEntry()) {
+
+    if (!isGospelNetwork && !getSelectedDateEntry()) {
       setFacebookStatus('error');
       setFacebookMessage('Please select a date album first.');
       return;
     }
+
     if (!url) {
       setFacebookStatus('error');
       setFacebookMessage('Please paste a Facebook URL.');
       return;
     }
+
     if (
       !/^https?:\/\/(www\.|m\.|web\.)?facebook\.com\//i.test(url) &&
       !/^https?:\/\/fb\.watch\//i.test(url)
@@ -2005,12 +949,14 @@ export const QRCodePage: React.FC<
         body: JSON.stringify({
           url,
           eventId: selectedEventId,
-          date: getSelectedDateValue(),
-          dateIndex: selectedDateIndex
+          date: isGospelNetwork ? undefined : getSelectedDateValue(),
+          dateIndex: isGospelNetwork ? undefined : selectedDateIndex,
+          autoCreateAlbum: isGospelNetwork
         })
       });
 
       const data = await response.json().catch(() => ({}));
+
       if (!response.ok) {
         throw new Error(data?.message || 'Failed to import from Facebook.');
       }
@@ -2019,7 +965,6 @@ export const QRCodePage: React.FC<
       setFacebookMessage(data?.message || 'Imported successfully!');
       setFacebookUrl('');
 
-      // Refresh event + all photos
       onReload?.();
       onAllPhotosUpdated?.();
 
@@ -2027,6 +972,7 @@ export const QRCodePage: React.FC<
         setFacebookStatus('idle');
         setFacebookMessage('');
       }, 5000);
+
     } catch (error) {
       console.error('Facebook import error:', error);
       setFacebookStatus('error');
@@ -2036,77 +982,48 @@ export const QRCodePage: React.FC<
     } finally {
       setFacebookImporting(false);
     }
-  };  
+  };
 
   // ==========================================================
   // RESET
   // ==========================================================
 
-  const handleResetUpload =
-    () => {
+  const handleResetUpload = () => {
+    setUploadedPhotos([]);
+    setUploadStatus('idle');
+    setErrorMessage('');
+    setUploadProgress(0);
 
-      setUploadedPhotos([]);
-
-      setUploadStatus(
-        'idle'
-      );
-
-      setErrorMessage('');
-
-      setUploadProgress(0);
-
-      if (
-        photoFileInputRef.current
-      ) {
-        photoFileInputRef.current.value =
-          '';
-      }
-    };
+    if (photoFileInputRef.current) {
+      photoFileInputRef.current.value = '';
+    }
+  };
 
   // ==========================================================
   // NO EVENTS
   // ==========================================================
 
   if (events.length === 0) {
-
     return (
       <div className="space-y-6">
-
         <div className="bg-white dark:bg-[#14141f]/80 backdrop-blur-sm p-6 rounded-2xl border border-gray-200 dark:border-white/5 shadow-sm">
-
           <h3 className="text-sm font-bold text-black dark:text-white mb-2 flex items-center gap-2">
-
             <QrCode className="w-5 h-5 text-indigo-500" />
-
-            <span>
-              Event QR Code Generator
-            </span>
-
+            <span>Event QR Code Generator</span>
           </h3>
 
           <div className="mt-3 inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-indigo-50 dark:bg-indigo-950/40 border border-indigo-200 dark:border-indigo-800/40 text-xs font-mono font-bold text-indigo-600 dark:text-indigo-400">
-
-            Upload page:
-            {' '}
-            {GFC_BASE}
-
+            Upload page: {GFC_BASE}
           </div>
 
           <div className="mt-2 text-xs text-emerald-500 dark:text-emerald-400">
-
             ✅ GFC QR code image + upload link
-
           </div>
-
         </div>
 
         <div className="flex flex-col items-center justify-center gap-3 py-20 text-center">
-
           <AlertCircle className="w-10 h-10 text-red-400" />
-
-          <p className="text-sm text-gray-500 dark:text-gray-400">
-            No events found.
-          </p>
+          <p className="text-sm text-gray-500 dark:text-gray-400">No events found.</p>
 
           {onReload && (
             <button
@@ -2117,9 +1034,7 @@ export const QRCodePage: React.FC<
               Reload Data
             </button>
           )}
-
         </div>
-
       </div>
     );
   }
@@ -2131,824 +1046,431 @@ export const QRCodePage: React.FC<
   return (
     <div className="space-y-6">
 
-      {/* ======================================================
-          HEADER
-      ====================================================== */}
-
+      {/* HEADER */}
       <div className="bg-white dark:bg-[#14141f]/80 backdrop-blur-sm p-6 rounded-2xl border border-gray-200 dark:border-white/5 shadow-sm">
-
         <h3 className="text-sm font-bold text-black dark:text-white mb-2 flex items-center gap-2">
-
           <QrCode className="w-5 h-5 text-indigo-500" />
-
-          <span>
-            Event QR Code Generator
-          </span>
-
+          <span>Event QR Code Generator</span>
         </h3>
 
         <div className="mt-3 inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-indigo-50 dark:bg-indigo-950/40 border border-indigo-200 dark:border-indigo-800/40 text-xs font-mono font-bold text-indigo-600 dark:text-indigo-400">
-
-          Upload page:
-          {' '}
-          {GFC_BASE}
-
+          Upload page: {GFC_BASE}
         </div>
-
       </div>
 
-      {/* ======================================================
-          SELECTION
-      ====================================================== */}
-
+      {/* SELECTION */}
       <div className="bg-white dark:bg-[#14141f]/80 backdrop-blur-sm p-6 rounded-2xl border border-gray-200 dark:border-white/5 shadow-sm">
-
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
 
-          {/* ==================================================
-              LEFT
-          ================================================== */}
-
+          {/* LEFT */}
           <div className="space-y-4">
 
             {/* EVENT */}
-
             <div>
-
               <label className="block text-xs font-bold text-gray-700 dark:text-[#A1A1A1] uppercase tracking-wider mb-2">
-
                 Select Event
-
               </label>
 
               <select
-                value={
-                  selectedEventId
-                }
+                value={selectedEventId}
                 onChange={e => {
-
-                  setSelectedEventId(
-                    e.target.value
-                  );
-
-                  setSelectedDateIndex(
-                    0
-                  );
-
+                  setSelectedEventId(e.target.value);
+                  setSelectedDateIndex(e.target.value === 'gospel-network' ? -1 : 0);
                   handleResetUpload();
-
                 }}
                 className="w-full px-4 py-2.5 rounded-xl border border-gray-200 dark:border-white/10 bg-gray-50 dark:bg-black/30 text-black dark:text-white text-sm focus:border-indigo-400 dark:focus:border-indigo-400/50 focus:outline-hidden focus:ring-2 focus:ring-indigo-400/20 transition-all"
               >
-
-                <option value="">
-                  -- Select an event --
-                </option>
-
-                {events.map(
-                  event => (
-                    <option
-                      key={
-                        event.id
-                      }
-                      value={
-                        event.id
-                      }
-                    >
-                      {event.title}
-                    </option>
-                  )
-                )}
-
+                <option value="">-- Select an event --</option>
+                {events.map(event => (
+                  <option key={event.id} value={event.id}>{event.title}</option>
+                ))}
               </select>
-
             </div>
 
             {/* DATE ALBUM */}
+            {selectedEventId && !isGospelNetwork && getSelectedEvent() && (() => {
+              const selectedEvent = getSelectedEvent()!;
+              const isYearAlbum = isYearAlbumEvent(selectedEvent);
 
-            {selectedEventId &&
-              getSelectedEvent() &&
-              (() => {
+              const albumLabel = isYearAlbum ? 'Year Album' : 'Date Album';
+              const albumAddLabel = isYearAlbum ? 'Add Year Album' : 'Add Date Album';
+              const albumPlaceholder = isYearAlbum ? 'e.g. 1st Year Anniversary' : 'e.g. August 18, 2026';
 
-                const selectedEvent =
-                  getSelectedEvent()!;
+              const hasDates =
+                Array.isArray(selectedEvent.dateEntries) &&
+                selectedEvent.dateEntries.length > 0;
 
-                const isYearAlbum =
-                  isYearAlbumEvent(
-                    selectedEvent
-                  );
-
-                const albumLabel =
-                  isYearAlbum
-                    ? 'Year Album'
-                    : 'Date Album';
-
-                const albumAddLabel =
-                  isYearAlbum
-                    ? 'Add Year Album'
-                    : 'Add Date Album';
-
-                const albumPlaceholder =
-                  isYearAlbum
-                    ? 'e.g. 1st Year Anniversary'
-                    : 'e.g. August 18, 2026';
-
-                const hasDates =
-                  Array.isArray(
-                    selectedEvent.dateEntries
-                  ) &&
-                  selectedEvent
-                    .dateEntries
-                    .length > 0;
-
-                return (
-                  <>
-
-                    {hasDates && (
-
-                      <div>
-
-                        <label className="block text-xs font-bold text-gray-700 dark:text-[#A1A1A1] uppercase tracking-wider mb-2">
-
-                          Select{' '}
-                          {albumLabel}
-                          {' '}
-                          (for upload)
-
-                        </label>
-
-                        <select
-                          value={
-                            selectedDateIndex
-                          }
-                          onChange={e => {
-
-                            setSelectedDateIndex(
-                              parseInt(
-                                e.target.value,
-                                10
-                              )
-                            );
-
-                            handleResetUpload();
-
-                          }}
-                          className="w-full px-4 py-2.5 rounded-xl border border-gray-200 dark:border-white/10 bg-gray-50 dark:bg-black/30 text-black dark:text-white text-sm focus:border-indigo-400 dark:focus:border-indigo-400/50 focus:outline-hidden focus:ring-2 focus:ring-indigo-400/20 transition-all"
-                        >
-
-                          {selectedEvent
-                            .dateEntries
-                            ?.map(
-                              (
-                                entry,
-                                index
-                              ) => (
-
-                                <option
-                                  key={`${entry.date}-${index}`}
-                                  value={
-                                    index
-                                  }
-                                >
-                                  {
-                                    entry.date
-                                  }
-                                </option>
-
-                              )
-                            )}
-
-                        </select>
-
-                        <button
-                          type="button"
-                          onClick={() => void handleDeleteAlbum()}
-                          disabled={deletingDate}
-                          className="mt-2 w-full px-4 py-2 rounded-xl border border-red-200 dark:border-red-400/30 text-xs font-semibold text-red-600 dark:text-red-300 hover:bg-red-50 dark:hover:bg-red-500/10 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
-                        >
-                          {deletingDate ? (
-                            <span className="inline-flex items-center gap-2">
-                              <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                              Deleting...
-                            </span>
-                          ) : (
-                            <span className="inline-flex items-center gap-2">
-                              <Trash2 className="w-3.5 h-3.5" />
-                              Delete Selected Album
-                            </span>
-                          )}
-                        </button>
-
-                      </div>
-
-                    )}
-
-                    {/* ADD DATE */}
-
+              return (
+                <>
+                  {hasDates && (
                     <div>
-
                       <label className="block text-xs font-bold text-gray-700 dark:text-[#A1A1A1] uppercase tracking-wider mb-2">
-
-                        {albumAddLabel}
-
+                        Select {albumLabel} (for upload)
                       </label>
 
-                      <div className="flex gap-2">
+                      <select
+                        value={selectedDateIndex}
+                        onChange={e => {
+                          setSelectedDateIndex(parseInt(e.target.value, 10));
+                          handleResetUpload();
+                        }}
+                        className="w-full px-4 py-2.5 rounded-xl border border-gray-200 dark:border-white/10 bg-gray-50 dark:bg-black/30 text-black dark:text-white text-sm focus:border-indigo-400 dark:focus:border-indigo-400/50 focus:outline-hidden focus:ring-2 focus:ring-indigo-400/20 transition-all"
+                      >
+                        {selectedEvent.dateEntries?.map((entry, index) => (
+                          <option key={`${entry.date}-${index}`} value={index}>{entry.date}</option>
+                        ))}
+                      </select>
 
-                        <input
-                          type="text"
-                          value={
-                            newDateInput
-                          }
-                          onChange={e => {
+                      <button
+                        type="button"
+                        onClick={() => void handleDeleteAlbum()}
+                        disabled={deletingDate}
+                        className="mt-2 w-full px-4 py-2 rounded-xl border border-red-200 dark:border-red-400/30 text-xs font-semibold text-red-600 dark:text-red-300 hover:bg-red-50 dark:hover:bg-red-500/10 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+                      >
+                        {deletingDate ? (
+                          <span className="inline-flex items-center gap-2">
+                            <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                            Deleting...
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-2">
+                            <Trash2 className="w-3.5 h-3.5" />
+                            Delete Selected Album
+                          </span>
+                        )}
+                      </button>
+                    </div>
+                  )}
 
-                            setNewDateInput(
-                              e.target.value
-                            );
+                  {/* ADD DATE */}
+                  <div>
+                    <label className="block text-xs font-bold text-gray-700 dark:text-[#A1A1A1] uppercase tracking-wider mb-2">
+                      {albumAddLabel}
+                    </label>
 
-                            setAddDateError(
-                              ''
-                            );
+                    <div className="flex gap-2">
+                      <input
+                        type="text"
+                        value={newDateInput}
+                        onChange={e => {
+                          setNewDateInput(e.target.value);
+                          setAddDateError('');
+                        }}
+                        onKeyDown={e => {
+                          if (e.key === 'Enter') void handleAddDate();
+                        }}
+                        placeholder={albumPlaceholder}
+                        className="flex-1 px-4 py-2.5 rounded-xl border border-gray-200 dark:border-white/10 bg-gray-50 dark:bg-black/30 text-black dark:text-white text-sm focus:border-indigo-400 dark:focus:border-indigo-400/50 focus:outline-hidden focus:ring-2 focus:ring-indigo-400/20 transition-all"
+                      />
 
-                          }}
-                          onKeyDown={e => {
-
-                            if (
-                              e.key ===
-                              'Enter'
-                            ) {
-
-                              void handleAddDate();
-
-                            }
-
-                          }}
-                          placeholder={
-                            albumPlaceholder
-                          }
-                          className="flex-1 px-4 py-2.5 rounded-xl border border-gray-200 dark:border-white/10 bg-gray-50 dark:bg-black/30 text-black dark:text-white text-sm focus:border-indigo-400 dark:focus:border-indigo-400/50 focus:outline-hidden focus:ring-2 focus:ring-indigo-400/20 transition-all"
-                        />
-
-                        <button
-                          onClick={() =>
-                            void handleAddDate()
-                          }
-                          disabled={
-                            addingDate
-                          }
-                          className="inline-flex items-center gap-2 px-4 py-2.5 bg-indigo-500 hover:bg-indigo-600 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-xl text-xs font-bold transition-all"
-                        >
-
-                          {addingDate ? (
-                            <Loader2 className="w-4 h-4 animate-spin" />
-                          ) : (
-                            <CalendarPlus className="w-4 h-4" />
-                          )}
-
-                          {isYearAlbum
-                            ? 'Add Year'
-                            : 'Add Date'}
-
-                        </button>
-
-                      </div>
-
-                      {addDateError && (
-
-                        <p className="mt-2 text-xs text-red-500 dark:text-red-400 flex items-center gap-1">
-
-                          <AlertCircle className="w-3.5 h-3.5" />
-
-                          {addDateError}
-
-                        </p>
-
-                      )}
-
+                      <button
+                        onClick={() => void handleAddDate()}
+                        disabled={addingDate}
+                        className="inline-flex items-center gap-2 px-4 py-2.5 bg-indigo-500 hover:bg-indigo-600 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-xl text-xs font-bold transition-all"
+                      >
+                        {addingDate ? (
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                        ) : (
+                          <CalendarPlus className="w-4 h-4" />
+                        )}
+                        {isYearAlbum ? 'Add Year' : 'Add Date'}
+                      </button>
                     </div>
 
-                  </>
-                );
-
-              })()}
+                    {addDateError && (
+                      <p className="mt-2 text-xs text-red-500 dark:text-red-400 flex items-center gap-1">
+                        <AlertCircle className="w-3.5 h-3.5" />
+                        {addDateError}
+                      </p>
+                    )}
+                  </div>
+                </>
+              );
+            })()}
 
             {/* SELECTED */}
-
-            {selectedEventId &&
-              getSelectedDateEntry() && (
-
-                <div className="p-4 bg-indigo-50 dark:bg-indigo-950/30 rounded-xl border border-indigo-200 dark:border-indigo-400/30">
-
-                  <div className="flex items-center gap-2 text-sm">
-
-                    <span className="font-bold text-indigo-600 dark:text-indigo-400">
-                      Selected:
-                    </span>
-
-                    <span className="text-black dark:text-white">
-                      {
-                        getSelectedEvent()
-                          ?.title
-                      }
-                    </span>
-
-                    <span className="text-gray-400">
-                      •
-                    </span>
-
-                    <span className="text-black dark:text-white">
-                      {
-                        getSelectedDateEntry()
-                          ?.date
-                      }
-                    </span>
-
-                  </div>
-
+            {selectedEventId && getSelectedDateEntry() && (
+              <div className="p-4 bg-indigo-50 dark:bg-indigo-950/30 rounded-xl border border-indigo-200 dark:border-indigo-400/30">
+                <div className="flex items-center gap-2 text-sm">
+                  <span className="font-bold text-indigo-600 dark:text-indigo-400">Selected:</span>
+                  <span className="text-black dark:text-white">{getSelectedEvent()?.title}</span>
+                  <span className="text-gray-400">•</span>
+                  <span className="text-black dark:text-white">{getSelectedDateEntry()?.date}</span>
                 </div>
-
-              )}
-
+              </div>
+            )}
           </div>
 
-          {/* ==================================================
-              QR
-          ================================================== */}
-
+          {/* QR */}
           <div className="flex flex-col items-center justify-center p-4 bg-gray-50 dark:bg-black/30 rounded-xl border border-gray-200 dark:border-white/10">
-
-            {selectedEventId &&
-            getSelectedDateEntry() ? (
-
+            {selectedEventId && (getSelectedDateEntry() || isGospelNetwork) ? (
               <>
-
                 <div className="flex items-center gap-2 mb-2">
-
                   <QrCode className="w-5 h-5 text-indigo-500" />
-
                   <span className="text-xs font-bold text-indigo-500 dark:text-indigo-400">
-
                     GFC QR Code
-
                   </span>
-
                 </div>
 
-                <img
-                  src="/qr-code.png"
-                  alt="GFC QR Code"
-                  className="w-[240px] h-[240px] object-contain bg-white rounded-xl shadow-md"
-                />
+                <div ref={setQrContainerEl} className="bg-white rounded-xl shadow-md p-2" />
 
                 <a
-                  href={
-                    getSelectedUploadUrl()
-                  }
+                  href={getSelectedUploadUrl()}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="mt-2 text-[11px] font-mono text-indigo-500 dark:text-indigo-400 underline break-all text-center block hover:text-indigo-600 dark:hover:text-indigo-300"
                 >
-                  {
-                    getSelectedUploadUrl()
-                  }
+                  {getSelectedUploadUrl()}
                 </a>
-
               </>
-
             ) : (
-
               <div className="text-center py-6">
-
                 <QrCode className="w-12 h-12 text-gray-300 dark:text-gray-600 mx-auto mb-2" />
-
-                <p className="text-xs text-gray-400">
-                  Select an event and date.
-                </p>
-
+                <p className="text-xs text-gray-400">Select an event and date.</p>
               </div>
-
             )}
-
           </div>
-
         </div>
-
       </div>
 
-      {/* ======================================================
-          UPLOAD
-      ====================================================== */}
-
-      {selectedEventId &&
-        getSelectedDateEntry() && (
-
-          <div className="bg-white dark:bg-[#14141f]/80 backdrop-blur-sm p-6 rounded-2xl border border-gray-200 dark:border-white/5 shadow-sm">
-
-            <h4 className="text-sm font-bold text-black dark:text-white mb-4 flex items-center gap-2">
-
-              <Upload className="w-4 h-4 text-indigo-500" />
-
-              Upload Photos to Event
-
-            </h4>
-
-            {/* BUTTONS */}
-
-            <div className="flex flex-wrap items-center gap-3">
-
-              <label className="cursor-pointer inline-flex items-center gap-2 px-4 py-2.5 bg-indigo-500 hover:bg-indigo-600 text-white rounded-xl text-xs font-bold transition-all shadow-md">
-
-                <Image className="w-4 h-4" />
-
-                Select Photos
-
-                <input
-                  ref={
-                    photoFileInputRef
-                  }
-                  type="file"
-                  accept="image/*"
-                  multiple
-                  onChange={
-                    handlePhotoUpload
-                  }
-                  className="hidden"
-                />
-
-              </label>
-
-              <button
-                onClick={
-                  handleResetUpload
-                }
-                className="px-4 py-2.5 bg-gray-100 dark:bg-white/5 hover:bg-gray-200 dark:hover:bg-white/10 text-gray-700 dark:text-[#A1A1A1] rounded-xl text-xs font-bold transition-all border border-gray-200 dark:border-white/10"
-              >
-                Clear All
-              </button>
-
-            </div>
-
-                        {/* ============================================== */}
-            {/* IMPORT FROM FACEBOOK                            */}
-            {/* ============================================== */}
-            <div className="mt-5 pt-5 border-t border-gray-200 dark:border-white/10">
-              <h5 className="text-xs font-bold text-black dark:text-white mb-2 flex items-center gap-2">
-                <Facebook className="w-4 h-4 text-indigo-500" />
-                Or Import from Facebook
-              </h5>
-              <p className="text-[11px] text-gray-500 dark:text-gray-400 mb-3">
-                Paste a public Facebook post URL. Photos will be saved to <strong>{getSelectedEvent()?.title}</strong> • <strong>{getSelectedDateEntry()?.date}</strong> and All Photos.
-              </p>
-
-              <div className="flex flex-col sm:flex-row gap-2">
-                <input
-                  type="url"
-                  value={facebookUrl}
-                  onChange={e => {
-                    setFacebookUrl(e.target.value);
-                    if (facebookStatus !== 'idle') {
-                      setFacebookStatus('idle');
-                      setFacebookMessage('');
-                    }
-                  }}
-                  onKeyDown={e => {
-                    if (e.key === 'Enter' && !facebookImporting) {
-                      void handleFacebookImport();
-                    }
-                  }}
-                  placeholder="https://www.facebook.com/..."
-                  disabled={facebookImporting}
-                  className="flex-1 px-4 py-2.5 rounded-xl border border-gray-200 dark:border-white/10 bg-gray-50 dark:bg-black/30 text-black dark:text-white text-sm focus:border-indigo-400 dark:focus:border-indigo-400/50 focus:outline-hidden focus:ring-2 focus:ring-indigo-400/20 transition-all disabled:opacity-50"
-                />
-                <button
-                  onClick={() => void handleFacebookImport()}
-                  disabled={facebookImporting || !facebookUrl.trim()}
-                  className="inline-flex items-center justify-center gap-2 px-5 py-2.5 bg-indigo-500 hover:bg-indigo-600 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-xl text-xs font-bold transition-all shadow-md whitespace-nowrap"
-                >
-                  {facebookImporting ? (
-                    <>
-                      <Loader2 className="w-4 h-4 animate-spin" />
-                      Importing...
-                    </>
-                  ) : (
-                    <>
-                      <Facebook className="w-4 h-4" />
-                      Import
-                    </>
-                  )}
-                </button>
-              </div>
-
-              {facebookStatus === 'success' && facebookMessage && (
-                <p className="mt-2 text-xs text-emerald-500 dark:text-emerald-400 flex items-center gap-1 font-semibold">
-                  <CheckCircle className="w-3.5 h-3.5" />
-                  {facebookMessage}
-                </p>
-              )}
-              {facebookStatus === 'error' && facebookMessage && (
-                <p className="mt-2 text-xs text-red-500 dark:text-red-400 flex items-center gap-1 font-semibold">
-                  <AlertCircle className="w-3.5 h-3.5" />
-                  {facebookMessage}
-                </p>
-              )}
-            </div>
-
-            {/* PROGRESS */}
-
-            {uploadStatus ===
-              'loading' &&
-              uploadProgress > 0 && (
-
-                <div className="mt-4">
-
-                  <div className="flex items-center justify-between text-xs text-gray-500 dark:text-gray-400 mb-1">
-
-                    <span>
-                      Processing...
-                    </span>
-
-                    <span>
-                      {
-                        uploadProgress
-                      }%
-                    </span>
-
-                  </div>
-
-                  <div className="w-full h-2 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
-
-                    <div
-                      className="h-full bg-indigo-500 transition-all duration-300 rounded-full"
-                      style={{
-                        width:
-                          `${uploadProgress}%`
-                      }}
-                    />
-
-                  </div>
-
-                </div>
-
-              )}
-
-            {/* PREVIEWS */}
-
-            {uploadedPhotos.length >
-              0 && (
-
-                <div className="mt-4">
-
-                  <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-3">
-
-                    {uploadedPhotos.map(
-                      (
-                        photo,
-                        index
-                      ) => {
-
-                        const isDuplicate =
-                          photo.isDuplicate;
-
-                        const location =
-                          photo.duplicateLocation;
-
-                        return (
-
-                          <div
-                            key={
-                              photo.id
-                            }
-                            className="relative group"
-                          >
-
-                            <div
-                              className={
-                                `relative rounded-xl overflow-hidden aspect-square bg-gray-100 dark:bg-black/20 ${
-                                  isDuplicate
-                                    ? 'border-2 border-red-500'
-                                    : 'border border-gray-200 dark:border-white/10'
-                                }`
-                              }
-                            >
-
-                              <img
-                                src={
-                                  photo.dataUrl
-                                }
-                                alt={
-                                  `Upload ${index + 1}`
-                                }
-                                className="w-full h-full object-cover"
-                              />
-
-                              <button
-                                onClick={() =>
-                                  handleRemoveUploadedPhoto(
-                                    index
-                                  )
-                                }
-                                className={
-                                  `absolute top-1 right-1 p-1 bg-black/60 hover:bg-red-500 text-white rounded-full shadow-lg transition-all ${
-                                    isDuplicate
-                                      ? 'opacity-100'
-                                      : 'opacity-0 group-hover:opacity-100'
-                                  }`
-                                }
-                                title={
-                                  isDuplicate
-                                    ? 'Remove duplicate from selection'
-                                    : 'Remove photo from selection'
-                                }
-                              >
-
-                                <X className="w-3.5 h-3.5" />
-
-                              </button>
-
-                              {isDuplicate && (
-
-                                <>
-
-                                  <div className="absolute top-0 left-0 m-1 bg-red-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full flex items-center gap-1 shadow-lg">
-
-                                    <span className="w-1.5 h-1.5 bg-white rounded-full animate-pulse" />
-
-                                    Duplicate
-
-                                  </div>
-
-                                  <div className="absolute bottom-0 left-0 right-0 bg-red-500/85 text-white text-[9px] px-1.5 py-0.5 truncate">
-
-                                    📍{' '}
-
-                                    {
-                                      location ||
-                                      'Already exists'
-                                    }
-
-                                  </div>
-
-                                </>
-
-                              )}
-
-                            </div>
-
-                            <div className="mt-1 text-[9px] text-gray-400 dark:text-gray-500 truncate">
-
-                              Photo{' '}
-                              {index + 1}
-
-                              {isDuplicate && (
-
-                                <span className="text-red-400 ml-1">
-                                  (duplicate)
-                                </span>
-
-                              )}
-
-                            </div>
-
-                          </div>
-
-                        );
-
-                      }
-                    )}
-
-                  </div>
-
-                  <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">
-
-                    {
-                      uploadedPhotos.length
-                    }{' '}
-
-                    photo
-                    {
-                      uploadedPhotos.length >
-                      1
-                        ? 's'
-                        : ''
-                    }{' '}
-
-                    selected
-
-                    {(() => {
-
-                      const dupCount =
-                        uploadedPhotos.filter(
-                          p =>
-                            p.isDuplicate
-                        ).length;
-
-                      return dupCount >
-                        0 ? (
-
-                        <span className="text-red-400 ml-2">
-
-                          ⚠️{' '}
-                          {dupCount}{' '}
-                          photo
-                          {
-                            dupCount >
-                            1
-                              ? 's are'
-                              : ' is'
-                          }{' '}
-                          duplicate
-                          {
-                            dupCount >
-                            1
-                              ? 's'
-                              : ''
-                          }{' '}
-
-                          (click X to remove)
-
-                        </span>
-
-                      ) : null;
-
-                    })()}
-
-                  </p>
-
-                </div>
-
-              )}
-
-            {/* SAVE */}
-
-            <div className="mt-4 flex flex-wrap gap-3">
-
-              <button
-                onClick={
-                  handleSavePhotosToEvent
-                }
-                disabled={
-                  uploadedPhotos.length ===
-                    0 ||
-                  isUploading
-                }
-                className="inline-flex items-center gap-2 px-6 py-2.5 bg-emerald-500 hover:bg-emerald-600 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-xl text-xs font-bold transition-all shadow-md"
-              >
-
-                {isUploading ? (
-
-                  <>
-
-                    <Loader2 className="w-4 h-4 animate-spin" />
-
-                    Uploading...
-
-                  </>
-
-                ) : (
-
-                  <>
-
-                    <Upload className="w-4 h-4" />
-
-                    Save to Event & All Photos
-
-                  </>
-
-                )}
-
-              </button>
-
-              {uploadStatus ===
-                'success' && (
-
-                <span className="flex items-center gap-1 text-emerald-500 dark:text-emerald-400 text-sm font-bold">
-
-                  <CheckCircle className="w-4 h-4" />
-
-                  Photos saved!
-
-                </span>
-
-              )}
-
-              {errorMessage && (
-
-                <span className="flex items-center gap-1 text-red-500 dark:text-red-400 text-sm font-bold">
-
-                  <AlertCircle className="w-4 h-4" />
-
-                  {errorMessage}
-
-                </span>
-
-              )}
-
-            </div>
-
+      {/* UPLOAD */}
+      {selectedEventId && (getSelectedDateEntry() || isGospelNetwork) && (
+        <div className="bg-white dark:bg-[#14141f]/80 backdrop-blur-sm p-6 rounded-2xl border border-gray-200 dark:border-white/5 shadow-sm">
+
+          <h4 className="text-sm font-bold text-black dark:text-white mb-4 flex items-center gap-2">
+            <Upload className="w-4 h-4 text-indigo-500" />
+            Upload Photos to Event
+          </h4>
+
+          {/* BUTTONS */}
+          <div className="flex flex-wrap items-center gap-3">
+            <label className="cursor-pointer inline-flex items-center gap-2 px-4 py-2.5 bg-indigo-500 hover:bg-indigo-600 text-white rounded-xl text-xs font-bold transition-all shadow-md">
+              <Image className="w-4 h-4" />
+              Select Photos
+              <input
+                ref={photoFileInputRef}
+                type="file"
+                accept="image/*"
+                multiple
+                onChange={handlePhotoUpload}
+                className="hidden"
+              />
+            </label>
+
+            <button
+              onClick={handleResetUpload}
+              className="px-4 py-2.5 bg-gray-100 dark:bg-white/5 hover:bg-gray-200 dark:hover:bg-white/10 text-gray-700 dark:text-[#A1A1A1] rounded-xl text-xs font-bold transition-all border border-gray-200 dark:border-white/10"
+            >
+              Clear All
+            </button>
           </div>
 
-        )}
+          {/* IMPORT FROM FACEBOOK */}
+          <div className="mt-5 pt-5 border-t border-gray-200 dark:border-white/10">
+            <h5 className="text-xs font-bold text-black dark:text-white mb-2 flex items-center gap-2">
+              <Facebook className="w-4 h-4 text-indigo-500" />
+              Or Import from Facebook
+            </h5>
 
+            <p className="text-[11px] text-gray-500 dark:text-gray-400 mb-3">
+              Paste a public Facebook post URL.{' '}
+              {isGospelNetwork ? (
+                <>
+                  Each post is saved to its own new album in{' '}
+                  <strong>{getSelectedEvent()?.title}</strong> and All Photos.
+                </>
+              ) : (
+                <>
+                  Photos will be saved to{' '}
+                  <strong>{getSelectedEvent()?.title}</strong> •{' '}
+                  <strong>{getSelectedDateEntry()?.date}</strong> and All Photos.
+                </>
+              )}
+            </p>
+
+            <div className="flex flex-col sm:flex-row gap-2">
+              <input
+                type="url"
+                value={facebookUrl}
+                onChange={e => {
+                  setFacebookUrl(e.target.value);
+                  if (facebookStatus !== 'idle') {
+                    setFacebookStatus('idle');
+                    setFacebookMessage('');
+                  }
+                }}
+                onKeyDown={e => {
+                  if (e.key === 'Enter' && !facebookImporting) {
+                    void handleFacebookImport();
+                  }
+                }}
+                placeholder="https://www.facebook.com/..."
+                disabled={facebookImporting}
+                className="flex-1 px-4 py-2.5 rounded-xl border border-gray-200 dark:border-white/10 bg-gray-50 dark:bg-black/30 text-black dark:text-white text-sm focus:border-indigo-400 dark:focus:border-indigo-400/50 focus:outline-hidden focus:ring-2 focus:ring-indigo-400/20 transition-all disabled:opacity-50"
+              />
+
+              <button
+                onClick={() => void handleFacebookImport()}
+                disabled={facebookImporting || !facebookUrl.trim()}
+                className="inline-flex items-center justify-center gap-2 px-5 py-2.5 bg-indigo-500 hover:bg-indigo-600 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-xl text-xs font-bold transition-all shadow-md whitespace-nowrap"
+              >
+                {facebookImporting ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    Importing...
+                  </>
+                ) : (
+                  <>
+                    <Facebook className="w-4 h-4" />
+                    Import
+                  </>
+                )}
+              </button>
+            </div>
+
+            {facebookStatus === 'success' && facebookMessage && (
+              <p className="mt-2 text-xs text-emerald-500 dark:text-emerald-400 flex items-center gap-1 font-semibold">
+                <CheckCircle className="w-3.5 h-3.5" />
+                {facebookMessage}
+              </p>
+            )}
+
+            {facebookStatus === 'error' && facebookMessage && (
+              <p className="mt-2 text-xs text-red-500 dark:text-red-400 flex items-center gap-1 font-semibold">
+                <AlertCircle className="w-3.5 h-3.5" />
+                {facebookMessage}
+              </p>
+            )}
+          </div>
+
+          {/* PROGRESS */}
+          {uploadStatus === 'loading' && uploadProgress > 0 && (
+            <div className="mt-4">
+              <div className="flex items-center justify-between text-xs text-gray-500 dark:text-gray-400 mb-1">
+                <span>Processing...</span>
+                <span>{uploadProgress}%</span>
+              </div>
+
+              <div className="w-full h-2 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
+                <div
+                  className="h-full bg-indigo-500 transition-all duration-300 rounded-full"
+                  style={{ width: `${uploadProgress}%` }}
+                />
+              </div>
+            </div>
+          )}
+
+          {/* PREVIEWS */}
+          {uploadedPhotos.length > 0 && (
+            <div className="mt-4">
+              <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-3">
+                {uploadedPhotos.map((photo, index) => {
+                  const isDuplicate = photo.isDuplicate;
+                  const location = photo.duplicateLocation;
+
+                  return (
+                    <div key={photo.id} className="relative group">
+                      <div
+                        className={`relative rounded-xl overflow-hidden aspect-square bg-gray-100 dark:bg-black/20 ${
+                          isDuplicate
+                            ? 'border-2 border-red-500'
+                            : 'border border-gray-200 dark:border-white/10'
+                        }`}
+                      >
+                        <img
+                          src={photo.dataUrl}
+                          alt={`Upload ${index + 1}`}
+                          className="w-full h-full object-cover"
+                        />
+
+                        <button
+                          onClick={() => handleRemoveUploadedPhoto(index)}
+                          className={`absolute top-1 right-1 p-1 bg-black/60 hover:bg-red-500 text-white rounded-full shadow-lg transition-all ${
+                            isDuplicate ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
+                          }`}
+                          title={
+                            isDuplicate
+                              ? 'Remove duplicate from selection'
+                              : 'Remove photo from selection'
+                          }
+                        >
+                          <X className="w-3.5 h-3.5" />
+                        </button>
+
+                        {isDuplicate && (
+                          <>
+                            <div className="absolute top-0 left-0 m-1 bg-red-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full flex items-center gap-1 shadow-lg">
+                              <span className="w-1.5 h-1.5 bg-white rounded-full animate-pulse" />
+                              Duplicate
+                            </div>
+
+                            <div className="absolute bottom-0 left-0 right-0 bg-red-500/85 text-white text-[9px] px-1.5 py-0.5 truncate">
+                              📍 {location || 'Already exists'}
+                            </div>
+                          </>
+                        )}
+                      </div>
+
+                      <div className="mt-1 text-[9px] text-gray-400 dark:text-gray-500 truncate">
+                        Photo {index + 1}
+                        {isDuplicate && <span className="text-red-400 ml-1">(duplicate)</span>}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">
+                {uploadedPhotos.length} photo{uploadedPhotos.length > 1 ? 's' : ''} selected
+                {(() => {
+                  const dupCount = uploadedPhotos.filter(p => p.isDuplicate).length;
+                  return dupCount > 0 ? (
+                    <span className="text-red-400 ml-2">
+                      ⚠️ {dupCount} photo{dupCount > 1 ? 's are' : ' is'} duplicate
+                      {dupCount > 1 ? 's' : ''} (click X to remove)
+                    </span>
+                  ) : null;
+                })()}
+              </p>
+            </div>
+          )}
+
+          {/* SAVE */}
+          <div className="mt-4 flex flex-wrap gap-3">
+            <button
+              onClick={handleSavePhotosToEvent}
+              disabled={uploadedPhotos.length === 0 || isUploading}
+              className="inline-flex items-center gap-2 px-6 py-2.5 bg-emerald-500 hover:bg-emerald-600 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-xl text-xs font-bold transition-all shadow-md"
+            >
+              {isUploading ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  Uploading...
+                </>
+              ) : (
+                <>
+                  <Upload className="w-4 h-4" />
+                  Save to Event & All Photos
+                </>
+              )}
+            </button>
+
+            {uploadStatus === 'success' && (
+              <span className="flex items-center gap-1 text-emerald-500 dark:text-emerald-400 text-sm font-bold">
+                <CheckCircle className="w-4 h-4" />
+                Photos saved!
+              </span>
+            )}
+
+            {errorMessage && (
+              <span className="flex items-center gap-1 text-red-500 dark:text-red-400 text-sm font-bold">
+                <AlertCircle className="w-4 h-4" />
+                {errorMessage}
+              </span>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 };

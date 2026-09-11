@@ -1273,7 +1273,8 @@ async function resolveFacebookImages(rawUrl, page) {
       return {
         images: Array.from(collected),
         caption: data.message || '',
-        permalink: data.permalink_url || rawUrl
+        permalink: data.permalink_url || rawUrl,
+        created_time: data.created_time || ''
       };
     }
   }
@@ -1303,7 +1304,12 @@ async function resolveFacebookImages(rawUrl, page) {
         if (src) collected.add(src);
       }
       if (collected.size > 0) {
-        return { images: Array.from(collected), caption: '', permalink: rawUrl };
+        return {
+          images: Array.from(collected),
+          caption: '',
+          permalink: rawUrl,
+          created_time: data.data?.[0]?.created_time || ''
+        };
       }
     }
   } catch { /* fall through */ }
@@ -1359,7 +1365,8 @@ async function resolveFacebookImages(rawUrl, page) {
           return {
             images: Array.from(collected),
             caption: match.message || '',
-            permalink: match.permalink_url || rawUrl
+            permalink: match.permalink_url || rawUrl,
+            created_time: match.created_time || ''
           };
         }
       }
@@ -1408,6 +1415,24 @@ async function resolveFacebookImages(rawUrl, page) {
 async function expandFacebookShareUrl(rawUrl) {
   const url = String(rawUrl || '').trim();
   return { url, expanded: false };
+}
+
+// Builds a unique album label from a Facebook post's creation date.
+// Falls back to today's date. Appends " (2)", " (3)", ... when the
+// label already exists so each import becomes its own separate album.
+function albumLabelFromFbPost(iso, entries) {
+  const norm = value => String(value || '').trim().toLowerCase().replace(/\s+/g, '');
+  const existing = new Set((entries || []).map(e => norm(e.date)));
+  const d = iso ? new Date(iso) : null;
+  const base = d && !isNaN(d.getTime())
+    ? d.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })
+    : new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
+  let label = base;
+  let n = 2;
+  while (existing.has(norm(label))) {
+    label = `${base} (${n++})`;
+  }
+  return label;
 }
 
 // POST /api/facebook/import
@@ -1507,6 +1532,22 @@ app.post('/api/facebook/import', async (req, res, next) => {
         const di = Number(dateIndex) || 0;
         entry = entries[di] || null;
       }
+
+      // For events like GOSPEL NETWORK there is no date selection: each
+      // import creates its OWN new album, labelled by the post's date.
+      if (!entry && req.body.autoCreateAlbum === true) {
+        const label = albumLabelFromFbPost(resolved.created_time, entries);
+        entry = { date: label, photos: [] };
+        entries.push(entry);
+        await logActivity({
+          collection: 'events',
+          action: 'album',
+          record: ev,
+          actor: 'admin',
+          message: `Auto-created album "${label}" in "${ev.title}"`
+        });
+      }
+
       if (!entry) {
         return res.status(400).json({ message: 'Album not found for this event.' });
       }
