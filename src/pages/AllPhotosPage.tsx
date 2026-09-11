@@ -108,6 +108,20 @@ const parseEntryDate = (value: string): { month: number; year: number } | null =
   return { month: d.getMonth(), year: d.getFullYear() };
 };
 
+const photoDateValue = (p: PhotoItem): number => {
+  const raw = String(p.date || '').trim();
+  if (!raw) return -1;
+  const d = new Date(raw);
+  return Number.isNaN(d.getTime()) ? -1 : d.getTime();
+};
+
+const sortPhotosByDateDesc = (photos: PhotoItem[]): PhotoItem[] =>
+  [...photos].sort((a, b) => {
+    const byDate = photoDateValue(b) - photoDateValue(a);
+    if (byDate !== 0) return byDate;
+    return (b.year ?? -1) - (a.year ?? -1) || (b.month ?? -1) - (a.month ?? -1);
+  });
+
 const YEAR_RANGE = Array.from({ length: 10 }, (_, i) => 2021 + i);
 
 export const AllPhotosPage: React.FC<AllPhotosPageProps> = ({
@@ -143,20 +157,48 @@ export const AllPhotosPage: React.FC<AllPhotosPageProps> = ({
     ].join('|');
   };
 
+  const occurrenceKey = (photo: PhotoItem, occ: PhotoOccurrence): string => {
+    return [
+      occ.source,
+      occ.eventId ?? '',
+      occ.dateEntryIndex ?? '',
+      occ.photoEntryIndex ?? '',
+      occ.albumIndex ?? '',
+      occ.photoIndex ?? '',
+      String(photo.rawUrl ?? '').trim()
+    ].join('|');
+  };
+
+  const isPhotoDeleted = (photo: PhotoItem): boolean => {
+    const occs =
+      Array.isArray(photo.occurrences) &&
+      photo.occurrences.length > 0
+        ? photo.occurrences
+        : null;
+    if (!occs) return deletedPhotoKeys.has(getPhotoKey(photo));
+    return occs.every(occ => deletedPhotoKeys.has(occurrenceKey(photo, occ)));
+  };
+
+  // Deduplicated by URL: the same photo shows only once even if it
+  // lives in more than one album (event + All Photos).
   const allPhotosList = useMemo<PhotoItem[]>(() => {
-    const list: PhotoItem[] = [];
-    const add = (item: PhotoItem, occurrence: PhotoOccurrence) => {
-      list.push({
-        ...item,
-        occurrences: [occurrence],
-        source: occurrence.source,
-        rawUrl: occurrence.rawUrl,
-        albumIndex: occurrence.albumIndex,
-        photoIndex: occurrence.photoIndex,
-        eventId: occurrence.eventId,
-        dateEntryIndex: occurrence.dateEntryIndex,
-        photoEntryIndex: occurrence.photoEntryIndex
-      });
+    const byUrl = new Map<string, PhotoItem>();
+    const ensure = (rawUrl: string, month: number, year: number): PhotoItem => {
+      let item = byUrl.get(rawUrl);
+      if (!item) {
+        item = {
+          url: resolvePhotoUrl(rawUrl),
+          rawUrl,
+          month,
+          year,
+          eventTitle: '',
+          date: '',
+          source: 'event',
+          occurrences: []
+        };
+        byUrl.set(rawUrl, item);
+      }
+      return item;
     };
 
     for (const ev of events) {
@@ -168,10 +210,18 @@ export const AllPhotosPage: React.FC<AllPhotosPageProps> = ({
         const year = parsed ? parsed.year : -1;
         for (let urlIndex = 0; urlIndex < (entry.photos || []).length; urlIndex++) {
           const url = entry.photos[urlIndex];
-          add(
-            { url: resolvePhotoUrl(url), rawUrl: url, month, year, eventTitle: ev.title, date: entry.date, source: 'event' },
-            { source: 'event', rawUrl: url, eventId: ev.id, dateEntryIndex: entryIndex, photoEntryIndex: urlIndex }
-          );
+          const item = ensure(url, month, year);
+          if (!item.eventTitle) {
+            item.eventTitle = ev.title;
+            item.date = entry.date;
+          }
+          item.occurrences?.push({
+            source: 'event',
+            rawUrl: url,
+            eventId: ev.id,
+            dateEntryIndex: entryIndex,
+            photoEntryIndex: urlIndex
+          });
         }
       }
     }
@@ -183,17 +233,25 @@ export const AllPhotosPage: React.FC<AllPhotosPageProps> = ({
       const year = typeof album.year === 'number' ? album.year : -1;
       for (let photoIndex = 0; photoIndex < album.photos.length; photoIndex++) {
         const rawUrl = album.photos[photoIndex];
-        add(
-          { url: resolvePhotoUrl(rawUrl), rawUrl, month, year, eventTitle: 'All Photos', date: album.date || '', source: 'allPhotos' },
-          { source: 'allPhotos', rawUrl, albumIndex, photoIndex }
-        );
+        const item = ensure(rawUrl, month, year);
+        if (!item.eventTitle) {
+          item.eventTitle = 'All Photos';
+          item.date = album.date || '';
+        }
+        item.occurrences?.push({
+          source: 'allPhotos',
+          rawUrl,
+          albumIndex,
+          photoIndex
+        });
       }
     }
-    return list;
+
+    return Array.from(byUrl.values());
   }, [events, allPhotos]);
 
   const grouped = useMemo(() => {
-    let filtered = allPhotosList.filter(photo => !deletedPhotoKeys.has(getPhotoKey(photo)));
+    let filtered = allPhotosList.filter(photo => !isPhotoDeleted(photo));
     if (selectedMonth !== '') filtered = filtered.filter(p => p.month === selectedMonth);
     if (selectedYear !== '') filtered = filtered.filter(p => p.year === selectedYear);
 
@@ -208,56 +266,74 @@ export const AllPhotosPage: React.FC<AllPhotosPageProps> = ({
       byKey.get(key)!.push(p);
     }
     order.sort((a, b) => b.year - a.year || b.month - a.month);
-    return order.map(o => ({ ...o, photos: byKey.get(o.key) || [] }));
+    return order.map(o => ({ ...o, photos: sortPhotosByDateDesc(byKey.get(o.key) || []) }));
   }, [allPhotosList, selectedMonth, selectedYear, deletedPhotoKeys]);
 
-  /* Instant optimistic delete: the clicked photo disappears immediately. */
+  /* Instant optimistic delete: the clicked photo disappears immediately.
+     Because the photo may live in several albums, every occurrence is
+     removed (event albums + All Photos bucket). */
   const deletePhoto = async (photo: PhotoItem, e: React.MouseEvent) => {
     e.stopPropagation();
-    const photoKey = getPhotoKey(photo);
+
+    const occs: PhotoOccurrence[] =
+      Array.isArray(photo.occurrences) && photo.occurrences.length > 0
+        ? photo.occurrences
+        : [{
+            source: photo.source,
+            rawUrl: photo.rawUrl,
+            eventId: photo.eventId,
+            dateEntryIndex: photo.dateEntryIndex,
+            photoEntryIndex: photo.photoEntryIndex,
+            albumIndex: photo.albumIndex,
+            photoIndex: photo.photoIndex
+          }];
+
+    const keys = occs.map(occ => occurrenceKey(photo, occ));
 
     setDeletedPhotoKeys(prev => {
       const next = new Set(prev);
-      next.add(photoKey);
+      keys.forEach(k => next.add(k));
       return next;
     });
     setSelectedPhoto(null);
 
     try {
-      if (photo.source === 'allPhotos') {
-        if (photo.albumIndex === undefined || photo.photoIndex === undefined) {
-          throw new Error('Photo location is missing. Please refresh and try again.');
+      for (const occ of occs) {
+        if (occ.source === 'allPhotos') {
+          if (occ.albumIndex === undefined || occ.photoIndex === undefined) {
+            throw new Error('Photo location is missing. Please refresh and try again.');
+          }
+          const response = await fetch(`${API_URL}/api/allPhotos/delete`, {
+            method: 'DELETE',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ albumIndex: occ.albumIndex, photoIndex: occ.photoIndex })
+          });
+          if (!response.ok) {
+            const errorData = await response.json().catch(() => null);
+            throw new Error(errorData?.message || 'Failed to delete photo.');
+          }
+        } else {
+          if (occ.eventId === undefined || occ.dateEntryIndex === undefined || !photo.rawUrl) {
+            throw new Error('Photo location is missing. Please refresh and try again.');
+          }
+          const response = await fetch(`${API_URL}/api/events/photo/delete`, {
+            method: 'DELETE',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ eventId: occ.eventId, dateEntryIndex: occ.dateEntryIndex, photoUrl: photo.rawUrl })
+          });
+          if (!response.ok) {
+            const errorData = await response.json().catch(() => null);
+            throw new Error(errorData?.message || 'Failed to delete photo.');
+          }
         }
-        const response = await fetch(`${API_URL}/api/allPhotos/delete`, {
-          method: 'DELETE',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ albumIndex: photo.albumIndex, photoIndex: photo.photoIndex })
-        });
-        if (!response.ok) {
-          const errorData = await response.json().catch(() => null);
-          throw new Error(errorData?.message || 'Failed to delete photo.');
-        }
-        onAllPhotosUpdated?.();
-      } else {
-        if (photo.eventId === undefined || photo.dateEntryIndex === undefined || !photo.rawUrl) {
-          throw new Error('Photo location is missing. Please refresh and try again.');
-        }
-        const response = await fetch(`${API_URL}/api/events/photo/delete`, {
-          method: 'DELETE',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ eventId: photo.eventId, dateEntryIndex: photo.dateEntryIndex, photoUrl: photo.rawUrl })
-        });
-        if (!response.ok) {
-          const errorData = await response.json().catch(() => null);
-          throw new Error(errorData?.message || 'Failed to delete photo.');
-        }
-        onEventsUpdated?.();
       }
+      onAllPhotosUpdated?.();
+      onEventsUpdated?.();
     } catch (error) {
       console.error('Error deleting photo:', error);
       setDeletedPhotoKeys(prev => {
         const next = new Set(prev);
-        next.delete(photoKey);
+        keys.forEach(k => next.delete(k));
         return next;
       });
       onError?.(error instanceof Error ? error.message : 'Failed to delete the photo.');
@@ -284,7 +360,7 @@ export const AllPhotosPage: React.FC<AllPhotosPageProps> = ({
   const monthCountsForYear = (year: number): number[] => {
     const counts = new Array(12).fill(0);
     for (const p of allPhotosList) {
-      if (p.year === year && p.year !== -1 && !deletedPhotoKeys.has(getPhotoKey(p))) counts[p.month] += 1;
+      if (p.year === year && p.year !== -1 && !isPhotoDeleted(p)) counts[p.month] += 1;
     }
     return counts;
   };
@@ -377,18 +453,18 @@ export const AllPhotosPage: React.FC<AllPhotosPageProps> = ({
       )}
 
       {selectedAlbum && (
-        <div className="fixed inset-0 z-[60] flex items-end justify-center bg-black/10 dark:bg-black/20 p-3" onClick={() => setSelectedAlbum(null)}>
-          <div className="w-full max-w-4xl max-h-[82vh] overflow-y-auto rounded-t-3xl sm:rounded-3xl border border-gray-200 dark:border-white/10 bg-white/85 dark:bg-[#14141f]/80 backdrop-blur-md shadow-2xl p-4 sm:p-5" onClick={e => e.stopPropagation()}>
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/10 dark:bg-black/20 p-3" onClick={() => setSelectedAlbum(null)}>
+          <div className="w-full max-w-4xl max-h-[82vh] overflow-y-auto hide-scrollbar rounded-3xl border border-gray-200 dark:border-white/10 bg-white/85 dark:bg-[#14141f]/80 backdrop-blur-md shadow-2xl p-4 sm:p-5" onClick={e => e.stopPropagation()}>
             <div className="flex items-center justify-between mb-4">
               <div>
                 <h3 className="font-bold text-black dark:text-white">{selectedAlbum.label}</h3>
-                <p className="text-xs text-gray-500 dark:text-gray-400">{selectedAlbum.photos.filter(p => !deletedPhotoKeys.has(getPhotoKey(p))).length} photo{selectedAlbum.photos.length === 1 ? '' : 's'}</p>
+                <p className="text-xs text-gray-500 dark:text-gray-400">{selectedAlbum.photos.filter(p => !isPhotoDeleted(p)).length} photo{selectedAlbum.photos.filter(p => !isPhotoDeleted(p)).length === 1 ? '' : 's'}</p>
               </div>
               <button onClick={() => setSelectedAlbum(null)} className="p-2 rounded-full bg-gray-100 dark:bg-white/10 hover:bg-gray-200 dark:hover:bg-white/15" aria-label="Close"><X className="w-5 h-5" /></button>
             </div>
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
               {selectedAlbum.photos
-                .filter(p => !deletedPhotoKeys.has(getPhotoKey(p)))
+                .filter(p => !isPhotoDeleted(p))
                 .map((photo, idx) => (
                   <div key={`${getPhotoKey(photo)}-${idx}`} className="group relative rounded-xl overflow-hidden shadow-sm hover:shadow-md transition-all aspect-square cursor-pointer hover:scale-[1.02]" title={`${photo.eventTitle} — ${photo.date}`} onClick={() => setSelectedPhoto(photo)}>
                     <img src={photo.url} alt={`${photo.eventTitle} - ${photo.date}`} loading="lazy" className="w-full h-full object-cover transition-transform hover:scale-110 duration-500" onError={e => { (e.target as HTMLImageElement).src = 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="100" height="100" viewBox="0 0 100 100"%3E%3Crect fill="%23ddd" width="100%" height="100%"/%3E%3Ctext x="50%" y="50%" text-anchor="middle" dy=".3em" font-family="sans-serif" font-size="12" fill="%23999"%3ENo image%3C/text%3E%3C/svg%3E'; }} />

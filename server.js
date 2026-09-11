@@ -762,6 +762,87 @@ app.delete('/api/allPhotos/delete', async (req, res, next) => {
   }
 });
 
+app.delete('/api/allPhotos/album', async (req, res, next) => {
+  try {
+    const { month, year } = req.query;
+
+    if (
+      month === undefined ||
+      year === undefined ||
+      Number.isNaN(parseInt(month, 10)) ||
+      Number.isNaN(parseInt(year, 10))
+    ) {
+      return res.status(400).json({
+        message: 'Month and year query parameters are required.'
+      });
+    }
+
+    const targetMonth = parseInt(month, 10);
+    const targetYear = parseInt(year, 10);
+
+    const list = await dbGetCollection('allPhotos');
+    const existing = Array.isArray(list) ? list : [];
+
+    const matching = existing.filter(
+      album =>
+        (typeof album.month === 'number' ? album.month : parseInt(album.month, 10)) === targetMonth &&
+        (typeof album.year === 'number' ? album.year : parseInt(album.year, 10)) === targetYear
+    );
+
+    if (matching.length === 0) {
+      return res.status(404).json({
+        message: 'No All Photos album found for that month and year.',
+        month: targetMonth,
+        year: targetYear
+      });
+    }
+
+    const remaining = existing.filter(
+      album =>
+        (typeof album.month === 'number' ? album.month : parseInt(album.month, 10)) !== targetMonth ||
+        (typeof album.year === 'number' ? album.year : parseInt(album.year, 10)) !== targetYear
+    );
+
+    await dbSetCollection('allPhotos', remaining);
+
+    const removedCount = matching.reduce(
+      (total, album) => total + (Array.isArray(album.photos) ? album.photos.length : 0),
+      0
+    );
+
+    await logActivity({
+      collection: 'allPhotos',
+      action: 'deleteAlbum',
+      record: {
+        month: targetMonth,
+        year: targetYear,
+        albumsRemoved: matching.length,
+        photosRemoved: removedCount
+      },
+      actor: 'admin',
+      message: `All Photos album deleted for ${month}/${year} (${removedCount} photos)`
+    });
+
+    res.status(200).json({
+      success: true,
+      message: `All Photos album deleted (${matching.length} bucket(s), ${removedCount} photo(s)).`,
+      albumsRemoved: matching.length,
+      photosRemoved: removedCount,
+      removedLabels: matching
+        .map(album => album.date || 'Untitled')
+        .filter(Boolean)
+    });
+
+  } catch (error) {
+    console.error(
+      'Delete all-photos album error:',
+      error
+    );
+
+    next(error);
+  }
+});
+
 // ============================================
 // FACEBOOK IMPORT
 // ============================================
