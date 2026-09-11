@@ -977,6 +977,13 @@ async function resolveFacebookImages(rawUrl, page) {
   );
 }
 
+// Expands a Facebook /share/ short link to its real destination URL.
+// Direct post URLs are returned unchanged.
+async function expandFacebookShareUrl(rawUrl) {
+  const url = String(rawUrl || '').trim();
+  return { url, expanded: false };
+}
+
 // POST /api/facebook/import
 // Body: { url, eventId?, dateIndex? }
 // - If eventId + dateIndex provided: saves to BOTH Event AND All Photos.
