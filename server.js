@@ -967,7 +967,8 @@ function isFacebookCdnUrl(url) {
 }
 
 function canonicalPhotoKey(url) {
-  return isFacebookCdnUrl(url) ? url.split('?')[0] : url;
+  const unwrapped = unwrapProxyUrl(url);
+  return isFacebookCdnUrl(unwrapped) ? unwrapped.split('?')[0] : unwrapped;
 }
 
 function freshestSignedUrl(a, b) {
@@ -1046,6 +1047,72 @@ function photoProxyUrl(url, origin) {
     );
   }
   return url;
+}
+
+// Canonical keys of every photo that exists in at least one event album.
+function collectEventPhotoKeys(events) {
+  const set = new Set();
+  for (const ev of Array.isArray(events) ? events : []) {
+    for (const d of Array.isArray(ev.dateEntries) ? ev.dateEntries : []) {
+      for (const p of Array.isArray(d.photos) ? d.photos : []) {
+        if (typeof p === 'string') set.add(canonicalPhotoKey(p));
+      }
+    }
+  }
+  return set;
+}
+
+// After an event update where date entries were changed (e.g. an album was
+// deleted), drop from All Photos the copies of every photo that was removed
+// from this event AND no longer exists in ANY event album. Albums left
+// empty are removed too. This keeps the "delete an album -> its photos are
+// gone everywhere" behaviour the admin expects, while photos still present
+// in some other event album legitimately stay in All Photos.
+async function purgeOrphanedAllPhotos(prevEntries, newEntries, allEvents) {
+  const entriesKeySet = (entries) => {
+    const set = new Set();
+    for (const d of Array.isArray(entries) ? entries : []) {
+      for (const p of Array.isArray(d.photos) ? d.photos : []) {
+        if (typeof p === 'string') set.add(canonicalPhotoKey(p));
+      }
+    }
+    return set;
+  };
+
+  const prevKeys = entriesKeySet(prevEntries);
+  const newKeys = entriesKeySet(newEntries);
+  const removed = [...prevKeys].filter(k => !newKeys.has(k));
+  if (removed.length === 0) return;
+
+  const globalKeys = collectEventPhotoKeys(allEvents);
+  const orphaned = new Set(removed.filter(k => !globalKeys.has(k)));
+  if (orphaned.size === 0) return;
+
+  const list = await dbGetCollection('allPhotos');
+  let changed = false;
+  const remaining = [];
+  for (const album of Array.isArray(list) ? list : []) {
+    const photos = Array.isArray(album.photos) ? album.photos : [];
+    const kept = photos.filter(
+      p => typeof p !== 'string' || !orphaned.has(canonicalPhotoKey(p))
+    );
+    if (kept.length !== photos.length) changed = true;
+    if (kept.length > 0) {
+      remaining.push(kept.length === photos.length ? album : { ...album, photos: kept });
+    } else if (photos.length > 0) {
+      changed = true;
+    }
+  }
+  if (!changed) return;
+
+  await dbSetCollection('allPhotos', remaining);
+  await logActivity({
+    collection: 'allPhotos',
+    action: 'updated',
+    record: { purged: orphaned.size },
+    actor: 'admin',
+    message: `Purged ${orphaned.size} orphaned photo(s) from All Photos after an event album was deleted.`
+  });
 }
 
 function proxyizePhotos(photos, origin) {
@@ -1427,10 +1494,18 @@ app.post('/api/facebook/import', async (req, res, next) => {
     }
 
     // ---- Save to All Photos (always) ----
+    // By design All Photos is a cross-event gallery, so event imports are
+    // also added to the current month bucket. The bucket is labelled by its
+    // month/year (not the first album's date) so it never looks like a
+    // duplicate of a specific event album.
     const now = new Date();
     const m = now.getMonth();
     const y = now.getFullYear();
-    const label = eventDate || `${m + 1}/${y}`;
+    const monthNames = [
+      'January', 'February', 'March', 'April', 'May', 'June',
+      'July', 'August', 'September', 'October', 'November', 'December'
+    ];
+    const label = `${monthNames[m]} ${y}`;
 
     const list = await dbGetCollection('allPhotos');
     let bucket = list.find(a => String(a.month) === String(m) && String(a.year) === String(y));
@@ -1683,6 +1758,18 @@ app.patch('/api/:collection/:id', validCollection, async (req, res, next) => {
     }
     items[index] = { ...previous, ...req.body, id: previous.id }; 
     await dbSetCollection(req.params.collection, items); 
+
+    if (
+      req.params.collection === 'events' &&
+      Array.isArray(req.body.dateEntries)
+    ) {
+      await purgeOrphanedAllPhotos(
+        Array.isArray(previous.dateEntries) ? previous.dateEntries : [],
+        req.body.dateEntries,
+        items
+      );
+    }
+
     await logActivity({ collection: req.params.collection, action, record: items[index], actor: 'admin' }); 
     res.json(items[index]); 
   } catch (error) { 
