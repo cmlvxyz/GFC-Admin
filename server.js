@@ -994,21 +994,11 @@ function dedupePhotosByImage(photos) {
 // Add only photos that are NOT already present (canonically). Returns the
 // URLs that were actually added.
 function pushUniquePhotos(target, images) {
-  const seen = new Set();
-  (Array.isArray(target) ? target : []).forEach((existing) => {
-    if (typeof existing === 'string') {
-      seen.add(canonicalPhotoKey(existing));
-    }
-  });
   const added = [];
   for (const img of Array.isArray(images) ? images : []) {
     if (typeof img !== 'string') continue;
-    const key = canonicalPhotoKey(img);
-    if (!seen.has(key)) {
-      seen.add(key);
-      target.push(img);
-      added.push(img);
-    }
+    target.push(img);
+    added.push(img);
   }
   return added;
 }
