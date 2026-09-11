@@ -1254,7 +1254,7 @@ async function resolveFacebookImages(rawUrl, page) {
         const src = s?.media?.image?.src || s?.media?.source;
         if (src) collected.add(src);
       }
-      while (nextUrl && safety < 20) {
+      while (nextUrl && safety < 100) {
         try {
           const resp = await fetch(nextUrl);
           const data = await resp.json().catch(() => ({}));
@@ -1322,7 +1322,7 @@ async function resolveFacebookImages(rawUrl, page) {
     if (ownerMatches || !urlOwner) {
       const data = await graphGet(`${page.id}/posts`, {
         fields: 'id,message,permalink_url,full_picture,attachments{media,subattachments}',
-        limit: 100,
+        limit: 200,
         access_token: token
       });
       const posts = data.data || [];
@@ -1349,7 +1349,7 @@ async function resolveFacebookImages(rawUrl, page) {
           const src = s?.media?.image?.src || s?.media?.source;
           if (src) collected.add(src);
         }
-        while (nextUrl && safety < 20) {
+        while (nextUrl && safety < 100) {
           try {
             const resp = await fetch(nextUrl);
             const d = await resp.json().catch(() => ({}));
