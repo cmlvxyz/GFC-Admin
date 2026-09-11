@@ -1055,24 +1055,25 @@ function proxyizePhotos(photos, origin) {
 }
 
 function proxyizeEvents(events, origin) {
-  (Array.isArray(events) ? events : []).forEach((ev) => {
-    if (!Array.isArray(ev.dateEntries)) return;
-    ev.dateEntries.forEach((entry) => {
-      if (Array.isArray(entry.photos)) {
-        entry.photos = proxyizePhotos(entry.photos, origin);
-      }
-    });
+  return (Array.isArray(events) ? events : []).map((ev) => {
+    if (!Array.isArray(ev.dateEntries)) return ev;
+    return {
+      ...ev,
+      dateEntries: ev.dateEntries.map((entry) =>
+        Array.isArray(entry.photos)
+          ? { ...entry, photos: proxyizePhotos(entry.photos, origin) }
+          : entry
+      )
+    };
   });
-  return events;
 }
 
 function proxyizeAllPhotoBuckets(buckets, origin) {
-  (Array.isArray(buckets) ? buckets : []).forEach((bucket) => {
-    if (Array.isArray(bucket.photos)) {
-      bucket.photos = proxyizePhotos(bucket.photos, origin);
-    }
-  });
-  return buckets;
+  return (Array.isArray(buckets) ? buckets : []).map((bucket) =>
+    Array.isArray(bucket.photos)
+      ? { ...bucket, photos: proxyizePhotos(bucket.photos, origin) }
+      : bucket
+  );
 }
 
 async function graphGet(pathname, params) {
@@ -1742,7 +1743,7 @@ app.get(['/', '/index.html'], (req, res) => {
 // ============================================
 app.use((error, req, res, next) => { 
   console.error('Server error:', error); 
-  res.status(500).json({ message: 'Internal server error.' }); 
+  res.status(500).json({ message: error.message || 'Internal server error.' }); 
 });
 
 // ============================================
