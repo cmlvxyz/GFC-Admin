@@ -12,7 +12,8 @@ import {
   Loader2,
   RefreshCw,
   CalendarPlus,
-  Facebook
+  Facebook,
+  Trash2
 } from 'lucide-react';
 import QRCodeStyling from 'qr-code-styling';
 import { updateRecord as apiUpdateRecord, API_URL } from '../api';
@@ -472,19 +473,9 @@ export const QRCodePage: React.FC<
   ] = useState('');
 
   const [
-    editAlbumTargetKey,
-    setEditAlbumTargetKey
-  ] = useState<string | null>(null);
-
-  const [
-    editAlbumInput,
-    setEditAlbumInput
-  ] = useState('');
-
-  const [
-    editAlbumError,
-    setEditAlbumError
-  ] = useState('');
+    deletingDate,
+    setDeletingDate
+  ] = useState(false);
 
   const [
     addingDate,
@@ -935,15 +926,6 @@ export const QRCodePage: React.FC<
     events,
     selectedEventId
   ]);
-
-  // Reset the rename panel when switching events.
-  useEffect(() => {
-
-    setEditAlbumTargetKey(null);
-    setEditAlbumInput('');
-    setEditAlbumError('');
-
-  }, [selectedEventId]);
 
   // ==========================================================
   // QR CODE
@@ -1851,40 +1833,15 @@ export const QRCodePage: React.FC<
     };
 
   // ==========================================================
-  // EDIT ALBUM (RENAME)
+  // DELETE ALBUM (WHOLE ALBUM)
   // ==========================================================
-  const handleStartEditAlbum = () => {
-    if (
-      selectedDateIndex === null ||
-      selectedDateIndex < 0
-    ) {
-      return;
-    }
-    const norm = normalizeEvent(
-      events.find(e => e.id === selectedEventId)
-    );
-    const list = norm?.dateEntries;
-    const entry = list && selectedDateIndex < list.length
-      ? list[selectedDateIndex]
-      : null;
-    if (!entry) {
-      setEditAlbumError('Album not found. Please select an album first.');
-      return;
-    }
-    setEditAlbumError('');
-    setEditAlbumTargetKey(dateKey(String(entry.date)));
-    setEditAlbumInput(String(entry.date));
-  };
-
-  const handleCancelEditAlbum = () => {
-    setEditAlbumTargetKey(null);
-    setEditAlbumInput('');
-    setEditAlbumError('');
-  };
-
-  const handleRenameAlbum =
+  const handleDeleteAlbum =
     async () => {
-      if (editAlbumTargetKey === null) {
+
+      if (
+        selectedDateIndex === null ||
+        selectedDateIndex < 0
+      ) {
         return;
       }
 
@@ -1899,122 +1856,65 @@ export const QRCodePage: React.FC<
         return;
       }
 
-      const value =
-        editAlbumInput.trim();
-
-      if (!value) {
-        setEditAlbumError(
-          'Please enter a date or year album name.'
+      const norm =
+        normalizeEvent(
+          rawEvent
         );
 
+      const list =
+        Array.isArray(
+          norm.dateEntries
+        )
+          ? norm.dateEntries
+          : [];
+
+      if (
+        selectedDateIndex >=
+        list.length
+      ) {
         return;
       }
 
-      const isYear =
-        isYearAlbumEvent(rawEvent);
+      const target =
+        list[
+          selectedDateIndex
+        ];
 
-      if (!isYear) {
-        if (!isMonthDayYear(value)) {
-          setEditAlbumError(
-            'Please enter a real date as "Month Day, Year" (e.g. August 30, 2026).'
-          );
+      const targetKey =
+        dateKey(
+          String(
+            target.date
+          )
+        );
 
-          return;
-        }
-      } else {
-        if (isScheduleEntry(value)) {
-          setEditAlbumError(
-            'Please enter a year like "3rd Year Anniversary" (not a schedule).'
-          );
-
-          return;
-        }
-
-        if (isConcreteDate(value)) {
-          setEditAlbumError(
-            'Please enter a year like "1st Year Anniversary" (not a calendar date).'
-          );
-
-          return;
-        }
-      }
-
-      const valueDate = isYear
-        ? value
-        : toMonthDayYear(value);
-
-      const rawEntries =
+      const targetPhotos =
         Array.isArray(
-          rawEvent.dateEntries
+          target.photos
         )
-          ? rawEvent.dateEntries
+          ? target.photos
           : [];
 
-      const targetRawIndex =
-        rawEntries.findIndex(
+      if (
+        !window.confirm(
+          `Delete the whole album "${target.date}" (${targetPhotos.length} photo${targetPhotos.length === 1 ? '' : 's'})?\n\nThe album and all its photos will be removed from the website and cannot be undone.`
+        )
+      ) {
+        return;
+      }
+
+      const savedDateEntries =
+        (
+          Array.isArray(
+            rawEvent.dateEntries
+          )
+            ? rawEvent.dateEntries
+            : []
+        ).filter(
           rawEntry =>
             dateKey(
               rawEntry.date
-            ) ===
-            editAlbumTargetKey
-        );
-
-      if (
-        targetRawIndex < 0
-      ) {
-        setEditAlbumError(
-          'Album not found. Please select the album again and retry.'
-        );
-
-        return;
-      }
-
-      if (
-        rawEntries.some(
-          (
-            rawEntry,
-            index
-          ) =>
-            index !==
-              targetRawIndex &&
-            dateKey(
-              rawEntry.date
-            ) ===
-              dateKey(
-                valueDate
-              )
-        )
-      ) {
-        setEditAlbumError(
-          `The album "${value}" already exists in this event.`
-        );
-
-        return;
-      }
-
-      // Rename the raw entry directly by key so the new date
-      // replaces the old one (no duplicate album is created and
-      // every other album is kept untouched).
-      const savedDateEntries =
-        rawEntries.map(
-          (
-            rawEntry,
-            index
-          ) =>
-            index ===
-              targetRawIndex
-              ? {
-                  ...rawEntry,
-                  date:
-                    valueDate,
-                  photos:
-                    Array.isArray(
-                      rawEntry.photos
-                    )
-                      ? rawEntry.photos
-                      : []
-                }
-              : rawEntry
+            ) !==
+            targetKey
         );
 
       const updatedEvent:
@@ -2024,7 +1924,7 @@ export const QRCodePage: React.FC<
             savedDateEntries
         };
 
-      setEditAlbumError('');
+      setDeletingDate(true);
 
       try {
 
@@ -2045,50 +1945,23 @@ export const QRCodePage: React.FC<
 
         }
 
-        // Reselect the renamed album (position may change
-        // after re-sorting).
-        const savedNormalized =
-          normalizeEvent(
-            updatedEvent
-          );
-
-        const nextIndex =
-          savedNormalized
-            .dateEntries
-            .findIndex(
-              entry =>
-                dateKey(
-                  entry.date
-                ) ===
-                dateKey(
-                  valueDate
-                )
-            );
-
-        setEditAlbumTargetKey(null);
-        setEditAlbumInput('');
-        setEditAlbumError('');
-        setSelectedDateIndex(
-          nextIndex >= 0
-            ? nextIndex
-            : savedNormalized
-                .dateEntries
-                .length - 1
-        );
+        setSelectedDateIndex(0);
 
       } catch (error) {
 
         console.error(
-          'Error renaming album:',
+          'Error deleting album:',
           error
         );
 
-        setEditAlbumError(
-          'Error renaming album. Please try again.'
+        window.alert(
+          'Error deleting album. Please try again.'
         );
 
         return;
       }
+
+      setDeletingDate(false);
     };
 
   // ==========================================================
@@ -2449,70 +2322,22 @@ export const QRCodePage: React.FC<
 
                         <button
                           type="button"
-                          onClick={handleStartEditAlbum}
-                          className="mt-2 w-full px-4 py-2 rounded-xl border border-dashed border-gray-300 dark:border-white/10 text-xs font-semibold text-gray-600 dark:text-[#A1A1A1] hover:border-indigo-400/60 hover:text-indigo-500 dark:hover:text-indigo-300 transition-all"
+                          onClick={() => void handleDeleteAlbum()}
+                          disabled={deletingDate}
+                          className="mt-2 w-full px-4 py-2 rounded-xl border border-red-200 dark:border-red-400/30 text-xs font-semibold text-red-600 dark:text-red-300 hover:bg-red-50 dark:hover:bg-red-500/10 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
                         >
-                          ✏️ Edit Selected Album
+                          {deletingDate ? (
+                            <span className="inline-flex items-center gap-2">
+                              <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                              Deleting...
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center gap-2">
+                              <Trash2 className="w-3.5 h-3.5" />
+                              Delete Selected Album
+                            </span>
+                          )}
                         </button>
-
-                        {editAlbumTargetKey !== null && (
-                          <div className="mt-3 rounded-xl border border-indigo-200 dark:border-indigo-400/30 bg-indigo-50/60 dark:bg-indigo-500/5 p-3">
-
-                            <label className="block text-xs font-bold text-gray-700 dark:text-[#A1A1A1] uppercase tracking-wider mb-2">
-                              Rename Album
-                            </label>
-
-                            <input
-                              type="text"
-                              value={editAlbumInput}
-                              onChange={e => {
-                                setEditAlbumInput(e.target.value);
-                                setEditAlbumError('');
-                              }}
-                              onKeyDown={e => {
-                                if (e.key === 'Enter') {
-                                  void handleRenameAlbum();
-                                }
-                                if (e.key === 'Escape') {
-                                  handleCancelEditAlbum();
-                                }
-                              }}
-                              placeholder={
-                                isYearAlbum
-                                  ? 'e.g. 3rd Year Anniversary'
-                                  : 'e.g. August 18, 2026'
-                              }
-                              className="w-full px-4 py-2.5 rounded-xl border border-gray-200 dark:border-white/10 bg-white dark:bg-black/30 text-black dark:text-white text-sm focus:border-indigo-400 dark:focus:border-indigo-400/50 focus:outline-none focus:ring-2 focus:ring-indigo-400/20 transition-all"
-                            />
-
-                            {editAlbumError && (
-                              <p className="mt-2 text-xs font-medium text-red-500">
-                                {editAlbumError}
-                              </p>
-                            )}
-
-                            <div className="mt-3 flex gap-2">
-
-                              <button
-                                type="button"
-                                onClick={() => { void handleRenameAlbum(); }}
-                                className="flex-1 px-4 py-2 rounded-xl bg-gradient-to-r from-indigo-500 to-purple-600 text-white text-xs font-bold hover:opacity-90 transition-opacity"
-                              >
-                                Save
-                              </button>
-
-                              <button
-                                type="button"
-                                onClick={handleCancelEditAlbum}
-                                className="flex-1 px-4 py-2 rounded-xl border border-gray-200 dark:border-white/10 text-gray-600 dark:text-[#A1A1A1] text-xs font-bold hover:bg-gray-50 dark:hover:bg-white/5 transition-colors"
-                              >
-                                Cancel
-                              </button>
-
-                            </div>
-
-                          </div>
-                        )}
 
                       </div>
 
