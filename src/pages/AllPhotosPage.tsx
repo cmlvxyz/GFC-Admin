@@ -52,8 +52,7 @@ const MONTH_NAMES = [
 ];
 
 const GFC_BASE = (() => {
-  const fromEnv =
-    (import.meta.env.VITE_GFC_URL as string | undefined)?.trim();
+  const fromEnv = (import.meta.env.VITE_GFC_URL as string | undefined)?.trim();
 
   if (fromEnv) {
     return fromEnv.replace(/\/+$/, '');
@@ -98,9 +97,6 @@ const resolvePhotoUrl = (u: string): string => {
   return `${SITE_BASE}${u.startsWith('/') ? '' : '/'}${u}`;
 };
 
-// Facebook CDN photo URLs change their signed query params (oh/oe/_nc_*)
-// on every import, so the same photo shows up under different strings.
-// Collapse them to the pathname so it is counted/deduped as ONE image.
 const canonicalPhotoKey = (url: string): string =>
   /^https:\/\/scontent-[\w.-]+\.(fbcdn|facebook)\.net\//.test(url)
     ? url.split('?')[0]
@@ -187,8 +183,6 @@ export const AllPhotosPage: React.FC<AllPhotosPageProps> = ({
     return occs.every(occ => deletedPhotoKeys.has(occurrenceKey(photo, occ)));
   };
 
-  // Deduplicated by image (canonical key): the same photo shows only once
-  // even if it has several signed FB URLs or lives in more than one album.
   const allPhotosList = useMemo<PhotoItem[]>(() => {
     const byUrl = new Map<string, PhotoItem>();
     const ensure = (rawUrl: string, month: number, year: number): PhotoItem => {
@@ -278,9 +272,6 @@ export const AllPhotosPage: React.FC<AllPhotosPageProps> = ({
     return order.map(o => ({ ...o, photos: sortPhotosByDateDesc(byKey.get(o.key) || []) }));
   }, [allPhotosList, selectedMonth, selectedYear, deletedPhotoKeys]);
 
-  /* Instant optimistic delete: the clicked photo disappears immediately.
-     Because the photo may live in several albums, every occurrence is
-     removed (event albums + All Photos bucket). */
   const deletePhoto = async (photo: PhotoItem, e: React.MouseEvent) => {
     e.stopPropagation();
 
@@ -349,32 +340,11 @@ export const AllPhotosPage: React.FC<AllPhotosPageProps> = ({
     }
   };
 
-  useEffect(() => {
-    if (!qrContainerEl) return;
-    qrContainerEl.innerHTML = '';
-    let qrUrl = `${GFC_BASE}/upload`;
-    if (selectedMonth !== '') qrUrl += `?month=${selectedMonth + 1}`;
-    if (selectedYear !== '') qrUrl += selectedMonth !== '' ? `&year=${selectedYear}` : `?year=${selectedYear}`;
-    const qr = new QRCodeStyling({
-      width: 240, height: 240, margin: 16, data: qrUrl, image: '/image.png',
-      imageOptions: { imageSize: 0.15, margin: 6, crossOrigin: 'anonymous' },
-      qrOptions: { errorCorrectionLevel: 'H', typeNumber: 0 },
-      dotsOptions: { color: '#1a1a2e', type: 'rounded' },
-      cornersSquareOptions: { color: '#1a1a2e', type: 'extra-rounded' },
-      backgroundOptions: { color: '#ffffff', round: 8 }
-    });
-    qr.append(qrContainerEl);
-  }, [qrContainerEl, selectedMonth, selectedYear]);
+  // ==========================================================
+  // UPLOAD URL — para sa QR code at link
+  // ==========================================================
 
-  const monthCountsForYear = (year: number): number[] => {
-    const counts = new Array(12).fill(0);
-    for (const p of allPhotosList) {
-      if (p.year === year && p.year !== -1 && !isPhotoDeleted(p)) counts[p.month] += 1;
-    }
-    return counts;
-  };
-
-  const getUploadUrl = () => {
+  const getUploadUrl = (): string => {
     const params = new URLSearchParams();
 
     if (selectedMonth !== '') {
@@ -388,6 +358,44 @@ export const AllPhotosPage: React.FC<AllPhotosPageProps> = ({
     const query = params.toString();
 
     return `${GFC_BASE}/upload${query ? `?${query}` : ''}`;
+  };
+
+  // ==========================================================
+  // QR CODE — dynamic, may logo
+  // ==========================================================
+
+  useEffect(() => {
+    if (!qrContainerEl) return;
+    qrContainerEl.innerHTML = '';
+
+    const qrUrl = getUploadUrl();
+
+    const qr = new QRCodeStyling({
+      width: 240,
+      height: 240,
+      margin: 16,
+      data: qrUrl,
+      image: '/image-circle.png',
+      imageOptions: { imageSize: 0.15, margin: 6, crossOrigin: 'anonymous' },
+      qrOptions: { errorCorrectionLevel: 'H', typeNumber: 0 },
+      dotsOptions: { color: '#1a1a2e', type: 'rounded' },
+      cornersSquareOptions: { color: '#1a1a2e', type: 'extra-rounded' },
+      backgroundOptions: { color: '#ffffff', round: 8 }
+    });
+
+    qr.append(qrContainerEl);
+
+    return () => {
+      qrContainerEl.innerHTML = '';
+    };
+  }, [qrContainerEl, selectedMonth, selectedYear]);
+
+  const monthCountsForYear = (year: number): number[] => {
+    const counts = new Array(12).fill(0);
+    for (const p of allPhotosList) {
+      if (p.year === year && p.year !== -1 && !isPhotoDeleted(p)) counts[p.month] += 1;
+    }
+    return counts;
   };
 
   return (
@@ -446,9 +454,23 @@ export const AllPhotosPage: React.FC<AllPhotosPageProps> = ({
         </div>
 
         <div className="bg-white dark:bg-[#14141f]/80 backdrop-blur-sm p-6 rounded-2xl border border-gray-200 dark:border-white/5 shadow-sm lg:sticky lg:top-4">
-          <div className="flex items-center gap-2 mb-3"><QrCode className="w-5 h-5 text-indigo-500" /><span className="text-sm font-bold text-black dark:text-white">Upload QR Code</span></div>
-          <div className="flex justify-center bg-gray-50 dark:bg-black/30 rounded-xl border border-gray-200 dark:border-white/10 p-4"><img src="/qr-code.png" alt="GFC QR Code" className="w-[240px] h-[240px] object-contain bg-white rounded-lg shadow-md" /></div>
-          <a href={getUploadUrl()} target="_blank" rel="noopener noreferrer" className="mt-2 text-[11px] font-mono text-indigo-500 dark:text-indigo-400 underline break-all text-center block hover:text-indigo-600 dark:hover:text-indigo-300">{getUploadUrl()}</a>
+          <div className="flex items-center gap-2 mb-3">
+            <QrCode className="w-5 h-5 text-indigo-500" />
+            <span className="text-sm font-bold text-black dark:text-white">Upload QR Code</span>
+          </div>
+
+          <div className="flex justify-center">
+            <div ref={setQrContainerEl} className="bg-white rounded-xl shadow-md p-2" />
+          </div>
+
+          <a
+            href={getUploadUrl()}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="mt-2 text-[11px] font-mono text-indigo-500 dark:text-indigo-400 underline break-all text-center block hover:text-indigo-600 dark:hover:text-indigo-300"
+          >
+            {getUploadUrl()}
+          </a>
         </div>
       </div>
 
