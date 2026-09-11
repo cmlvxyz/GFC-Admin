@@ -852,12 +852,13 @@ async function resolveFacebookImages(rawUrl, page) {
 
   for (const id of idCandidates) {
     try {
+      // Modern endpoint: fetch the post with attachments + images fields.
       const data = await graphGet(id, {
-        fields: 'id,images,source,created_time,message,permalink_url,attachments{media,subattachments}',
+        fields: 'id,message,created_time,permalink_url,full_picture,attachments{media,subattachments,title,description},images',
         access_token: token
       });
 
-      // Main image
+      // 1) Largest from images[]
       if (Array.isArray(data.images) && data.images.length > 0) {
         const best = data.images.reduce(
           (a, b) => (Number(a?.width || 0) >= Number(b?.width || 0) ? a : b),
@@ -865,13 +866,19 @@ async function resolveFacebookImages(rawUrl, page) {
         );
         if (best?.source) collected.add(best.source);
       }
-      if (data.source) collected.add(data.source);
 
-      // Sub-attachments (multi-photo posts)
-      const subs = data.attachments?.data?.[0]?.subattachments?.data || [];
-      subs.forEach(s => {
-        const src = s?.media?.image?.src || s?.media?.source;
-        if (src) collected.add(src);
+      // 2) Post cover image
+      if (data.full_picture) collected.add(data.full_picture);
+
+      // 3) Attachments + subattachments
+      const atts = data.attachments?.data || [];
+      atts.forEach(att => {
+        if (att?.media?.image?.src) collected.add(att.media.image.src);
+        const subs = att?.subattachments?.data || [];
+        subs.forEach(s => {
+          const src = s?.media?.image?.src || s?.media?.source;
+          if (src) collected.add(src);
+        });
       });
 
       if (collected.size > 0) {
@@ -881,7 +888,9 @@ async function resolveFacebookImages(rawUrl, page) {
           permalink: data.permalink_url || rawUrl
         };
       }
-    } catch (e) { if (e?.fb) lastFbError = e; }
+    } catch (e) {
+      console.warn(`Post ${id} lookup failed:`, e.message);
+    }
   }
 
   // ---- 2) Album URL: /media/set/?set=a.123  OR  /{page}/albums/123
