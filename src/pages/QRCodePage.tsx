@@ -11,10 +11,11 @@ import {
   CheckCircle,
   Loader2,
   RefreshCw,
-  CalendarPlus
+  CalendarPlus,
+  Facebook
 } from 'lucide-react';
 import QRCodeStyling from 'qr-code-styling';
-import { updateRecord as apiUpdateRecord } from '../api';
+import { updateRecord as apiUpdateRecord, API_URL } from '../api';
 
 interface UploadedPhoto {
   id: string;
@@ -274,6 +275,14 @@ export const QRCodePage: React.FC<
 
   const qrStylingRef =
     useRef<QRCodeStyling | null>(null);
+
+  // ==========================================================
+  // FACEBOOK IMPORT STATE
+  // ==========================================================
+  const [facebookUrl, setFacebookUrl] = useState('');
+  const [facebookImporting, setFacebookImporting] = useState(false);
+  const [facebookStatus, setFacebookStatus] = useState<'idle' | 'success' | 'error'>('idle');
+  const [facebookMessage, setFacebookMessage] = useState('');
 
   // ==========================================================
   // IMPORTANT:
@@ -1503,6 +1512,79 @@ export const QRCodePage: React.FC<
       setAddingDate(false);
     };
 
+      // ==========================================================
+  // IMPORT FROM FACEBOOK
+  // ==========================================================
+  const handleFacebookImport = async () => {
+    const url = facebookUrl.trim();
+
+    if (!selectedEventId) {
+      setFacebookStatus('error');
+      setFacebookMessage('Please select an event first.');
+      return;
+    }
+    if (!getSelectedDateEntry()) {
+      setFacebookStatus('error');
+      setFacebookMessage('Please select a date album first.');
+      return;
+    }
+    if (!url) {
+      setFacebookStatus('error');
+      setFacebookMessage('Please paste a Facebook URL.');
+      return;
+    }
+    if (
+      !/^https?:\/\/(www\.|m\.|web\.)?facebook\.com\//i.test(url) &&
+      !/^https?:\/\/fb\.watch\//i.test(url)
+    ) {
+      setFacebookStatus('error');
+      setFacebookMessage('Please enter a valid Facebook URL.');
+      return;
+    }
+
+    setFacebookImporting(true);
+    setFacebookStatus('idle');
+    setFacebookMessage('');
+
+    try {
+      const response = await fetch(`${API_URL}/api/facebook/import`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          url,
+          eventId: selectedEventId,
+          dateIndex: selectedDateIndex
+        })
+      });
+
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(data?.message || 'Failed to import from Facebook.');
+      }
+
+      setFacebookStatus('success');
+      setFacebookMessage(data?.message || 'Imported successfully!');
+      setFacebookUrl('');
+
+      // Refresh event + all photos
+      onReload?.();
+      onAllPhotosUpdated?.();
+
+      setTimeout(() => {
+        setFacebookStatus('idle');
+        setFacebookMessage('');
+      }, 5000);
+    } catch (error) {
+      console.error('Facebook import error:', error);
+      setFacebookStatus('error');
+      setFacebookMessage(
+        error instanceof Error ? error.message : 'Failed to import from Facebook.'
+      );
+    } finally {
+      setFacebookImporting(false);
+    }
+  };  
+
   // ==========================================================
   // RESET
   // ==========================================================
@@ -2004,6 +2086,71 @@ export const QRCodePage: React.FC<
                 Clear All
               </button>
 
+            </div>
+
+                        {/* ============================================== */}
+            {/* IMPORT FROM FACEBOOK                            */}
+            {/* ============================================== */}
+            <div className="mt-5 pt-5 border-t border-gray-200 dark:border-white/10">
+              <h5 className="text-xs font-bold text-black dark:text-white mb-2 flex items-center gap-2">
+                <Facebook className="w-4 h-4 text-indigo-500" />
+                Or Import from Facebook
+              </h5>
+              <p className="text-[11px] text-gray-500 dark:text-gray-400 mb-3">
+                Paste a public Facebook post URL. Photos will be saved to <strong>{getSelectedEvent()?.title}</strong> • <strong>{getSelectedDateEntry()?.date}</strong> and All Photos.
+              </p>
+
+              <div className="flex flex-col sm:flex-row gap-2">
+                <input
+                  type="url"
+                  value={facebookUrl}
+                  onChange={e => {
+                    setFacebookUrl(e.target.value);
+                    if (facebookStatus !== 'idle') {
+                      setFacebookStatus('idle');
+                      setFacebookMessage('');
+                    }
+                  }}
+                  onKeyDown={e => {
+                    if (e.key === 'Enter' && !facebookImporting) {
+                      void handleFacebookImport();
+                    }
+                  }}
+                  placeholder="https://www.facebook.com/..."
+                  disabled={facebookImporting}
+                  className="flex-1 px-4 py-2.5 rounded-xl border border-gray-200 dark:border-white/10 bg-gray-50 dark:bg-black/30 text-black dark:text-white text-sm focus:border-indigo-400 dark:focus:border-indigo-400/50 focus:outline-hidden focus:ring-2 focus:ring-indigo-400/20 transition-all disabled:opacity-50"
+                />
+                <button
+                  onClick={() => void handleFacebookImport()}
+                  disabled={facebookImporting || !facebookUrl.trim()}
+                  className="inline-flex items-center justify-center gap-2 px-5 py-2.5 bg-indigo-500 hover:bg-indigo-600 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-xl text-xs font-bold transition-all shadow-md whitespace-nowrap"
+                >
+                  {facebookImporting ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      Importing...
+                    </>
+                  ) : (
+                    <>
+                      <Facebook className="w-4 h-4" />
+                      Import
+                    </>
+                  )}
+                </button>
+              </div>
+
+              {facebookStatus === 'success' && facebookMessage && (
+                <p className="mt-2 text-xs text-emerald-500 dark:text-emerald-400 flex items-center gap-1 font-semibold">
+                  <CheckCircle className="w-3.5 h-3.5" />
+                  {facebookMessage}
+                </p>
+              )}
+              {facebookStatus === 'error' && facebookMessage && (
+                <p className="mt-2 text-xs text-red-500 dark:text-red-400 flex items-center gap-1 font-semibold">
+                  <AlertCircle className="w-3.5 h-3.5" />
+                  {facebookMessage}
+                </p>
+              )}
             </div>
 
             {/* PROGRESS */}

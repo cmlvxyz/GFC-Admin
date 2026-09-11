@@ -9,11 +9,7 @@ import {
   Images,
   Trash2,
   ChevronDown,
-  ChevronUp,
-  Facebook,
-  Loader2,
-  CheckCircle,
-  AlertCircle
+  ChevronUp
 } from 'lucide-react';
 import QRCodeStyling from 'qr-code-styling';
 import { API_URL } from '../api';
@@ -198,64 +194,6 @@ export const AllPhotosPage: React.FC<AllPhotosPageProps> = ({
 
   const toggleExpand = (key: string) => setExpandedMonth(expandedMonth === key ? null : key);
 
-    // ============================================
-  // Facebook import handler
-  // ============================================
-  const handleFacebookImport = async () => {
-    const url = facebookUrl.trim();
-
-    if (!url) {
-      setFacebookStatus('error');
-      setFacebookMessage('Please paste a Facebook URL first.');
-      return;
-    }
-
-    if (!/^https?:\/\/(www\.|m\.|web\.)?facebook\.com\//i.test(url) &&
-        !/^https?:\/\/fb\.watch\//i.test(url)) {
-      setFacebookStatus('error');
-      setFacebookMessage('Please enter a valid Facebook post, photo, or album URL.');
-      return;
-    }
-
-    setFacebookImporting(true);
-    setFacebookStatus('idle');
-    setFacebookMessage('');
-
-    try {
-      const response = await fetch(`${API_URL}/api/facebook/import`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ url })
-      });
-
-      const data = await response.json().catch(() => ({}));
-
-      if (!response.ok) {
-        throw new Error(data?.message || 'Failed to import from Facebook.');
-      }
-
-      setFacebookStatus('success');
-      setFacebookMessage(data?.message || 'Imported successfully!');
-      setFacebookUrl('');
-
-      // Refresh All Photos so the imported images appear immediately.
-      onAllPhotosUpdated?.();
-
-      setTimeout(() => {
-        setFacebookStatus('idle');
-        setFacebookMessage('');
-      }, 4000);
-    } catch (error) {
-      console.error('Facebook import error:', error);
-      setFacebookStatus('error');
-      setFacebookMessage(
-        error instanceof Error ? error.message : 'Failed to import from Facebook.'
-      );
-    } finally {
-      setFacebookImporting(false);
-    }
-  };
-
   /* Instant optimistic delete: the clicked photo disappears immediately. */
   const deletePhoto = async (photo: PhotoItem, e: React.MouseEvent) => {
     e.stopPropagation();
@@ -355,77 +293,6 @@ export const AllPhotosPage: React.FC<AllPhotosPageProps> = ({
       <div className="bg-white dark:bg-[#14141f]/80 backdrop-blur-sm p-6 rounded-2xl border border-gray-200 dark:border-white/5 shadow-sm">
         <h3 className="text-sm font-bold text-black dark:text-white mb-2 flex items-center gap-2"><Images className="w-5 h-5 text-indigo-500" /><span>All Photos</span></h3>
         <div className="mt-3 inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-indigo-50 dark:bg-indigo-950/40 border border-indigo-200 dark:border-indigo-800/40 text-xs font-mono font-bold text-indigo-600 dark:text-indigo-400">Upload page: {getUploadUrl()}</div>
-      </div>
-
-      <div className="bg-white dark:bg-[#14141f]/80 backdrop-blur-sm p-6 rounded-2xl border border-gray-200 dark:border-white/5 shadow-sm">
-        <h3 className="text-sm font-bold text-black dark:text-white mb-2 flex items-center gap-2"><Images className="w-5 h-5 text-indigo-500" /><span>All Photos</span></h3>
-        <div className="mt-3 inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-indigo-50 dark:bg-indigo-950/40 border border-indigo-200 dark:border-indigo-800/40 text-xs font-mono font-bold text-indigo-600 dark:text-indigo-400">Upload page: {getUploadUrl()}</div>
-      </div>
-
-      {/* ============================================ */}
-      {/* Import Facebook Link                         */}
-      {/* ============================================ */}
-      <div className="bg-white dark:bg-[#14141f]/80 backdrop-blur-sm p-6 rounded-2xl border border-gray-200 dark:border-white/5 shadow-sm">
-        <h3 className="text-sm font-bold text-black dark:text-white mb-2 flex items-center gap-2">
-          <Facebook className="w-5 h-5 text-indigo-500" />
-          <span>Import Facebook Link</span>
-        </h3>
-        <p className="text-xs text-gray-500 dark:text-gray-400 mb-3">
-          Paste a public Facebook post, photo, or album URL from a configured Page.
-        </p>
-
-        <div className="flex flex-col sm:flex-row gap-2">
-          <input
-            type="url"
-            value={facebookUrl}
-            onChange={e => {
-              setFacebookUrl(e.target.value);
-              if (facebookStatus !== 'idle') {
-                setFacebookStatus('idle');
-                setFacebookMessage('');
-              }
-            }}
-            onKeyDown={e => {
-              if (e.key === 'Enter' && !facebookImporting) {
-                void handleFacebookImport();
-              }
-            }}
-            placeholder="https://www.facebook.com/..."
-            disabled={facebookImporting}
-            className="flex-1 px-4 py-2.5 rounded-xl border border-gray-200 dark:border-white/10 bg-gray-50 dark:bg-black/30 text-black dark:text-white text-sm focus:border-indigo-400 dark:focus:border-indigo-400/50 focus:outline-hidden focus:ring-2 focus:ring-indigo-400/20 transition-all disabled:opacity-50"
-          />
-          <button
-            onClick={() => void handleFacebookImport()}
-            disabled={facebookImporting || !facebookUrl.trim()}
-            className="inline-flex items-center justify-center gap-2 px-5 py-2.5 bg-indigo-500 hover:bg-indigo-600 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-xl text-xs font-bold transition-all shadow-md whitespace-nowrap"
-          >
-            {facebookImporting ? (
-              <>
-                <Loader2 className="w-4 h-4 animate-spin" />
-                Importing...
-              </>
-            ) : (
-              <>
-                <Facebook className="w-4 h-4" />
-                Import
-              </>
-            )}
-          </button>
-        </div>
-
-        {facebookStatus === 'success' && facebookMessage && (
-          <p className="mt-2 text-xs text-emerald-500 dark:text-emerald-400 flex items-center gap-1 font-semibold">
-            <CheckCircle className="w-3.5 h-3.5" />
-            {facebookMessage}
-          </p>
-        )}
-
-        {facebookStatus === 'error' && facebookMessage && (
-          <p className="mt-2 text-xs text-red-500 dark:text-red-400 flex items-center gap-1 font-semibold">
-            <AlertCircle className="w-3.5 h-3.5" />
-            {facebookMessage}
-          </p>
-        )}
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-[1fr_320px] gap-6 items-start">

@@ -766,7 +766,7 @@ app.delete('/api/allPhotos/delete', async (req, res, next) => {
 // FACEBOOK IMPORT
 // ============================================
 // Detects which configured Facebook Page a URL belongs to and
-// imports the post/photo/album into All Photos.
+// imports the post's photos into BOTH the target Event AND All Photos.
 //
 // Required env vars (NEVER expose these to the frontend):
 //   FACEBOOK_GFC_PAGE_ID
@@ -800,11 +800,7 @@ function getFacebookPages() {
   return pages;
 }
 
-// Extracts the "identifier" from a Facebook URL so we can decide
-// which configured Page it belongs to.
-//   https://www.facebook.com/1234567890/posts/abc  -> id "1234567890"
-//   https://www.facebook.com/GFCpage/photos/...    -> slug "GFCpage"
-//   https://fb.watch/xxxx                          -> null (unknown)
+// Extract the owner segment (page id or slug) from a Facebook URL.
 function extractFacebookOwner(rawUrl) {
   try {
     const u = new URL(rawUrl);
@@ -812,7 +808,6 @@ function extractFacebookOwner(rawUrl) {
     const segments = u.pathname.split('/').filter(Boolean);
     if (segments.length === 0) return null;
     const first = segments[0].toLowerCase();
-    // Skip Facebook's own reserved paths
     if (['photo', 'photo.php', 'media', 'watch', 'reel', 'story.php', 'permalink.php', 'share', 'groups'].includes(first)) {
       return null;
     }
@@ -839,53 +834,56 @@ async function graphGet(pathname, params) {
   return data;
 }
 
-// Given a Facebook URL, resolve it down to a set of image URLs we
-// can store inside the All Photos bucket.
+// Given a Facebook URL and a Page config, resolve to a list of image URLs.
 async function resolveFacebookImages(rawUrl, page) {
-  const owner = extractFacebookOwner(rawUrl);
   const token = page.token;
+  const collected = new Set();
 
-  // ---- 1) If the URL contains a numeric post/photo id, ask the Graph
-  //         API for it directly (works for posts and single photos).
-  //         We try the common id-bearing URL patterns first.
+  // ---- 1) Try direct ID candidates from the URL (/posts/123, ?fbid=123)
   const idCandidates = [];
   try {
     const u = new URL(rawUrl);
-    // /{pageId}/posts/{postId}
     const m1 = u.pathname.match(/\/(?:posts|photos|videos)\/(\d+)/i);
     if (m1) idCandidates.push(m1[1]);
-    // ?fbid=12345
     const fbid = u.searchParams.get('fbid');
     if (fbid) idCandidates.push(fbid);
-    // /photo.php?fbid=12345 already covered above
   } catch { /* ignore */ }
 
   for (const id of idCandidates) {
     try {
       const data = await graphGet(id, {
-        fields: 'id,images,source,created_time,message,permalink_url',
+        fields: 'id,images,source,created_time,message,permalink_url,attachments{media,subattachments}',
         access_token: token
       });
-      const urls = [];
-      if (Array.isArray(data.images)) {
-        // Pick the largest image
-        const best = data.images.reduce((a, b) => (Number(a?.width || 0) >= Number(b?.width || 0) ? a : b), data.images[0]);
-        if (best?.source) urls.push(best.source);
+
+      // Main image
+      if (Array.isArray(data.images) && data.images.length > 0) {
+        const best = data.images.reduce(
+          (a, b) => (Number(a?.width || 0) >= Number(b?.width || 0) ? a : b),
+          data.images[0]
+        );
+        if (best?.source) collected.add(best.source);
       }
-      if (data.source) urls.push(data.source);
-      if (urls.length > 0) {
+      if (data.source) collected.add(data.source);
+
+      // Sub-attachments (multi-photo posts)
+      const subs = data.attachments?.data?.[0]?.subattachments?.data || [];
+      subs.forEach(s => {
+        const src = s?.media?.image?.src || s?.media?.source;
+        if (src) collected.add(src);
+      });
+
+      if (collected.size > 0) {
         return {
-          images: Array.from(new Set(urls)),
+          images: Array.from(collected),
           caption: data.message || '',
           permalink: data.permalink_url || rawUrl
         };
       }
-    } catch (err) {
-      // try next candidate
-    }
+    } catch { /* try next id */ }
   }
 
-  // ---- 2) Album URL: /media/set/?set=a.{albumId}... or /{page}/albums/{albumId}
+  // ---- 2) Album URL: /media/set/?set=a.123  OR  /{page}/albums/123
   try {
     const u = new URL(rawUrl);
     const set = u.searchParams.get('set') || '';
@@ -895,57 +893,97 @@ async function resolveFacebookImages(rawUrl, page) {
     if (albumId) {
       const data = await graphGet(`${albumId}/photos`, {
         fields: 'images,source,name',
+        limit: 200,
+        access_token: token
+      });
+      for (const p of data.data || []) {
+        let src = p.source;
+        if (Array.isArray(p.images) && p.images.length > 0) {
+          const best = p.images.reduce(
+            (a, b) => (Number(a?.width || 0) >= Number(b?.width || 0) ? a : b),
+            p.images[0]
+          );
+          src = best?.source || src;
+        }
+        if (src) collected.add(src);
+      }
+      if (collected.size > 0) {
+        return { images: Array.from(collected), caption: '', permalink: rawUrl };
+      }
+    }
+  } catch { /* fall through */ }
+
+  // ---- 3) Fallback: pull recent posts from the configured page and match by id/permalink
+  try {
+    const owner = extractFacebookOwner(rawUrl);
+    if (owner && (owner === page.id || owner.toLowerCase() === page.id.toLowerCase())) {
+      const data = await graphGet(`${page.id}/posts`, {
+        fields: 'id,message,permalink_url,full_picture,attachments{media,subattachments}',
         limit: 100,
         access_token: token
       });
-      const images = (data.data || []).map(p => {
-        const best = Array.isArray(p.images)
-          ? p.images.reduce((a, b) => (Number(a?.width || 0) >= Number(b?.width || 0) ? a : b), p.images[0])
-          : null;
-        return best?.source || p.source;
-      }).filter(Boolean);
-      if (images.length > 0) {
-        return { images: Array.from(new Set(images)), caption: '', permalink: rawUrl };
+      const posts = data.data || [];
+      const cleanUrl = rawUrl.split('?')[0];
+      const match = posts.find(p =>
+        rawUrl.includes(p.id) ||
+        (p.permalink_url && p.permalink_url.split('?')[0] === cleanUrl)
+      );
+      if (match) {
+        if (match.full_picture) collected.add(match.full_picture);
+        const subs = match.attachments?.data?.[0]?.subattachments?.data || [];
+        subs.forEach(s => {
+          const src = s?.media?.image?.src || s?.media?.source;
+          if (src) collected.add(src);
+        });
+        if (collected.size > 0) {
+          return {
+            images: Array.from(collected),
+            caption: match.message || '',
+            permalink: match.permalink_url || rawUrl
+          };
+        }
       }
     }
-  } catch (err) {
-    // fall through
-  }
+  } catch { /* ignore */ }
 
-  // ---- 3) Fallback: if the owner in the URL matches the configured Page,
-  //         pull the Page's recent posts and match by permalink / id.
-  if (owner && (owner === page.id || owner.toLowerCase() === page.id.toLowerCase())) {
-    const data = await graphGet(`${page.id}/posts`, {
-      fields: 'id,message,permalink_url,full_picture,attachments{media,subattachments}',
-      limit: 50,
-      access_token: token
-    });
-    const posts = data.data || [];
-    const match = posts.find(p =>
-      rawUrl.includes(p.id) ||
-      (p.permalink_url && rawUrl.split('?')[0] === p.permalink_url.split('?')[0])
-    );
-    if (match) {
-      const images = [];
-      if (match.full_picture) images.push(match.full_picture);
-      const subs = match.attachments?.data?.[0]?.subattachments?.data || [];
-      subs.forEach(s => { if (s?.media?.image?.src) images.push(s.media.image.src); });
-      if (images.length > 0) {
-        return { images: Array.from(new Set(images)), caption: match.message || '', permalink: match.permalink_url || rawUrl };
+  // ---- 4) Last resort: if URL owner matches a configured page, pull the page's recent photos
+  try {
+    const owner = extractFacebookOwner(rawUrl);
+    if (owner && (owner === page.id || owner.toLowerCase() === page.id.toLowerCase())) {
+      const data = await graphGet(`${page.id}/photos`, {
+        fields: 'images,source,created_time',
+        limit: 50,
+        access_token: token
+      });
+      for (const p of data.data || []) {
+        let src = p.source;
+        if (Array.isArray(p.images) && p.images.length > 0) {
+          const best = p.images.reduce(
+            (a, b) => (Number(a?.width || 0) >= Number(b?.width || 0) ? a : b),
+            p.images[0]
+          );
+          src = best?.source || src;
+        }
+        if (src) collected.add(src);
+      }
+      if (collected.size > 0) {
+        return { images: Array.from(collected), caption: '', permalink: rawUrl };
       }
     }
-  }
+  } catch { /* ignore */ }
 
   throw new Error(
-    'Could not resolve images from that Facebook link. Make sure the post/photo/album belongs to one of the configured Pages and is public.'
+    'Could not resolve photos from that Facebook link. Make sure the post belongs to one of the configured Pages and is public.'
   );
 }
 
 // POST /api/facebook/import
-// Body: { url: "FACEBOOK_URL" }
+// Body: { url, eventId?, dateIndex? }
+// - If eventId + dateIndex provided: saves to BOTH Event AND All Photos.
+// - Otherwise: saves to All Photos only.
 app.post('/api/facebook/import', async (req, res, next) => {
   try {
-    const { url } = req.body || {};
+    const { url, eventId, dateIndex } = req.body || {};
     if (!url || typeof url !== 'string') {
       return res.status(400).json({ message: 'Facebook URL is required.' });
     }
@@ -963,47 +1001,89 @@ app.post('/api/facebook/import', async (req, res, next) => {
     const pages = getFacebookPages();
     if (pages.length === 0) {
       return res.status(500).json({
-        message: 'No Facebook Pages are configured on the server. Please set FACEBOOK_GFC_PAGE_ID/FACEBOOK_GFC_PAGE_ACCESS_TOKEN (and/or NEXTGEN equivalents).'
+        message: 'No Facebook Pages are configured on the server. Please set FACEBOOK_GFC_PAGE_ID / FACEBOOK_GFC_PAGE_ACCESS_TOKEN (and/or NEXTGEN equivalents).'
       });
     }
 
-    // Pick the matching Page. If only one Page is configured, use it.
+    // Pick the matching page.
     const owner = extractFacebookOwner(url);
     let page = null;
     if (owner) {
       page = pages.find(p => p.id === owner) || pages.find(p => p.id.toLowerCase() === owner.toLowerCase());
     }
-    if (!page && pages.length === 1) page = pages[0];
 
-    if (!page) {
-      // Try each configured Page until one resolves the URL.
+    let resolved = null;
+    if (page) {
+      resolved = await resolveFacebookImages(url, page);
+    } else {
+      // Try each configured Page
       let lastErr = null;
       for (const p of pages) {
         try {
-          const result = await resolveFacebookImages(url, p);
+          resolved = await resolveFacebookImages(url, p);
           page = p;
-          req._fbResolved = result;
           break;
         } catch (e) { lastErr = e; }
       }
-      if (!page) {
+      if (!page || !resolved) {
         return res.status(400).json({
           message: lastErr?.message || 'Could not resolve that Facebook link against any configured Page.'
         });
       }
     }
 
-    const resolved = req._fbResolved || await resolveFacebookImages(url, page);
     const images = resolved.images || [];
     if (images.length === 0) {
       return res.status(400).json({ message: 'No photos were found at that Facebook URL.' });
     }
 
-    // Bucket into the current month/year (same convention as /api/uploads/all)
+    // ---- Save to Event (if eventId + dateIndex provided) ----
+    let eventSaved = 0;
+    let eventTitle = '';
+    let eventDate = '';
+
+    if (eventId) {
+      const events = await dbGetCollection('events');
+      const evIndex = events.findIndex(e => String(e.id) === String(eventId));
+      if (evIndex === -1) {
+        return res.status(404).json({ message: 'Event not found.' });
+      }
+      const ev = events[evIndex];
+      const entries = Array.isArray(ev.dateEntries) ? ev.dateEntries : [];
+      const di = Number(dateIndex) || 0;
+      const entry = entries[di];
+      if (!entry) {
+        return res.status(400).json({ message: 'Date album not found for this event.' });
+      }
+
+      entry.photos = Array.isArray(entry.photos) ? entry.photos : [];
+      const existingEventSet = new Set(entry.photos);
+      for (const img of images) {
+        if (!existingEventSet.has(img)) {
+          entry.photos.push(img);
+          existingEventSet.add(img);
+          eventSaved++;
+        }
+      }
+
+      await dbSetCollection('events', events);
+      eventTitle = ev.title;
+      eventDate = entry.date || '';
+
+      await logActivity({
+        collection: 'events',
+        action: 'photo',
+        record: ev,
+        actor: 'admin',
+        message: `Imported ${eventSaved} photo(s) from Facebook (${page.label}) into "${ev.title}"`
+      });
+    }
+
+    // ---- Save to All Photos (always) ----
     const now = new Date();
     const m = now.getMonth();
     const y = now.getFullYear();
-    const label = `${m + 1}/${y}`;
+    const label = eventDate || `${m + 1}/${y}`;
 
     const list = await dbGetCollection('allPhotos');
     let bucket = list.find(a => String(a.month) === String(m) && String(a.year) === String(y));
@@ -1013,14 +1093,13 @@ app.post('/api/facebook/import', async (req, res, next) => {
     }
     bucket.photos = Array.isArray(bucket.photos) ? bucket.photos : [];
 
-    // De-dup: don't insert a URL that already exists in this bucket.
-    const existing = new Set(bucket.photos);
-    const added = [];
+    const existingAllSet = new Set(bucket.photos);
+    let allSaved = 0;
     for (const img of images) {
-      if (!existing.has(img)) {
+      if (!existingAllSet.has(img)) {
         bucket.photos.push(img);
-        existing.add(img);
-        added.push(img);
+        existingAllSet.add(img);
+        allSaved++;
       }
     }
 
@@ -1030,14 +1109,19 @@ app.post('/api/facebook/import', async (req, res, next) => {
       action: 'photo',
       record: bucket,
       actor: 'admin',
-      message: `Imported ${added.length} photo(s) from Facebook (${page.label})`
+      message: `Imported ${allSaved} photo(s) from Facebook (${page.label})`
     });
 
     res.status(201).json({
       success: true,
-      message: `Imported ${added.length} photo(s) from ${page.label} Facebook page.`,
-      imported: added.length,
-      skipped: images.length - added.length,
+      message: eventId
+        ? `Imported ${eventSaved} photo(s) into "${eventTitle}" and ${allSaved} into All Photos.`
+        : `Imported ${allSaved} photo(s) into All Photos.`,
+      imported: {
+        event: eventSaved,
+        allPhotos: allSaved
+      },
+      page: page.label,
       bucket: { month: m, year: y, date: label }
     });
   } catch (error) {
