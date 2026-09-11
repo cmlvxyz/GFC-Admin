@@ -7,9 +7,7 @@ import {
   X,
   CalendarDays,
   Images,
-  Trash2,
-  ChevronDown,
-  ChevronUp
+  Trash2
 } from 'lucide-react';
 import QRCodeStyling from 'qr-code-styling';
 import { API_URL } from '../api';
@@ -122,9 +120,9 @@ export const AllPhotosPage: React.FC<AllPhotosPageProps> = ({
   const [selectedMonth, setSelectedMonth] = useState<number | ''>('');
   const [selectedYear, setSelectedYear] = useState<number | ''>('');
   const [yearModal, setYearModal] = useState<number | null>(null);
+  const [selectedAlbum, setSelectedAlbum] = useState<{ key: string; label: string; photos: PhotoItem[] } | null>(null);
   const [selectedPhoto, setSelectedPhoto] = useState<PhotoItem | null>(null);
   const [qrContainerEl, setQrContainerEl] = useState<HTMLDivElement | null>(null);
-  const [expandedMonth, setExpandedMonth] = useState<string | null>(null);
   const [deletedPhotoKeys, setDeletedPhotoKeys] = useState<Set<string>>(new Set());
   const [facebookUrl, setFacebookUrl] = useState('');
   const [facebookImporting, setFacebookImporting] = useState(false);
@@ -212,8 +210,6 @@ export const AllPhotosPage: React.FC<AllPhotosPageProps> = ({
     order.sort((a, b) => b.year - a.year || b.month - a.month);
     return order.map(o => ({ ...o, photos: byKey.get(o.key) || [] }));
   }, [allPhotosList, selectedMonth, selectedYear, deletedPhotoKeys]);
-
-  const toggleExpand = (key: string) => setExpandedMonth(expandedMonth === key ? null : key);
 
   /* Instant optimistic delete: the clicked photo disappears immediately. */
   const deletePhoto = async (photo: PhotoItem, e: React.MouseEvent) => {
@@ -322,11 +318,11 @@ export const AllPhotosPage: React.FC<AllPhotosPageProps> = ({
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <label className="block text-xs font-bold text-gray-700 dark:text-[#A1A1A1] uppercase tracking-wider mb-2">Select Month</label>
-                <div className="flex items-center gap-2"><CalendarDays className="w-4 h-4 text-indigo-400 flex-shrink-0" /><select value={selectedMonth} onChange={e => { setSelectedMonth(e.target.value === '' ? '' : parseInt(e.target.value)); setExpandedMonth(null); }} className="w-full px-4 py-2.5 rounded-xl border border-gray-200 dark:border-white/10 bg-gray-50 dark:bg-black/30 text-black dark:text-white text-sm focus:border-indigo-400 dark:focus:border-indigo-400/50 focus:outline-hidden focus:ring-2 focus:ring-indigo-400/20 transition-all"><option value="">All Months</option>{MONTH_NAMES.map((name, idx) => <option key={name} value={idx}>{name}</option>)}</select></div>
+                <div className="flex items-center gap-2"><CalendarDays className="w-4 h-4 text-indigo-400 flex-shrink-0" /><select value={selectedMonth} onChange={e => { setSelectedMonth(e.target.value === '' ? '' : parseInt(e.target.value)); }} className="w-full px-4 py-2.5 rounded-xl border border-gray-200 dark:border-white/10 bg-gray-50 dark:bg-black/30 text-black dark:text-white text-sm focus:border-indigo-400 dark:focus:border-indigo-400/50 focus:outline-hidden focus:ring-2 focus:ring-indigo-400/20 transition-all"><option value="">All Months</option>{MONTH_NAMES.map((name, idx) => <option key={name} value={idx}>{name}</option>)}</select></div>
               </div>
               <div>
                 <label className="block text-xs font-bold text-gray-700 dark:text-[#A1A1A1] uppercase tracking-wider mb-2">Select Year</label>
-                <div className="flex items-center gap-2"><CalendarDays className="w-4 h-4 text-indigo-400 flex-shrink-0" /><select value={selectedYear} onChange={e => { const year = e.target.value === '' ? '' : parseInt(e.target.value); setSelectedYear(year); setExpandedMonth(null); }} className="w-full px-4 py-2.5 rounded-xl border border-gray-200 dark:border-white/10 bg-gray-50 dark:bg-black/30 text-black dark:text-white text-sm focus:border-indigo-400 dark:focus:border-indigo-400/50 focus:outline-hidden focus:ring-2 focus:ring-indigo-400/20 transition-all"><option value="">All Years</option>{YEAR_RANGE.map(year => <option key={year} value={year}>{year}</option>)}</select></div>
+                <div className="flex items-center gap-2"><CalendarDays className="w-4 h-4 text-indigo-400 flex-shrink-0" /><select value={selectedYear} onChange={e => { const year = e.target.value === '' ? '' : parseInt(e.target.value); setSelectedYear(year); }} className="w-full px-4 py-2.5 rounded-xl border border-gray-200 dark:border-white/10 bg-gray-50 dark:bg-black/30 text-black dark:text-white text-sm focus:border-indigo-400 dark:focus:border-indigo-400/50 focus:outline-hidden focus:ring-2 focus:ring-indigo-400/20 transition-all"><option value="">All Years</option>{YEAR_RANGE.map(year => <option key={year} value={year}>{year}</option>)}</select></div>
               </div>
             </div>
           </div>
@@ -335,39 +331,31 @@ export const AllPhotosPage: React.FC<AllPhotosPageProps> = ({
             {grouped.length === 0 ? (
               <div className="bg-white dark:bg-[#14141f]/80 backdrop-blur-sm p-10 rounded-2xl border border-gray-200 dark:border-white/5 shadow-sm text-center"><Images className="w-10 h-10 text-gray-300 dark:text-gray-600 mx-auto mb-2" /><p className="text-gray-500 dark:text-gray-400">{selectedMonth === '' && selectedYear === '' ? 'No photos found. Upload some photos using the QR code.' : 'No photos found for the selected filters.'}</p></div>
             ) : (
-              grouped.map(group => {
-                const isExpanded = expandedMonth === group.key;
-                const allPhotosInGroup = group.photos;
-                return (
-                  <div key={group.key} className="bg-white dark:bg-[#14141f]/80 backdrop-blur-sm rounded-2xl border border-gray-200 dark:border-white/5 shadow-sm overflow-hidden transition-all">
-                    <div className="flex items-center justify-between p-3 cursor-pointer hover:bg-gray-50 dark:hover:bg-white/5 transition-all" onClick={() => toggleExpand(group.key)}>
-                      <div className="flex items-center gap-3"><h4 className="text-sm font-bold text-black dark:text-white">{group.label}</h4></div>
-                      <div className="flex items-center gap-2">{isExpanded ? <ChevronUp className="w-5 h-5 text-gray-400" /> : <ChevronDown className="w-5 h-5 text-gray-400" />}</div>
-                    </div>
-                    <div className="p-3 pt-0">
-                      {isExpanded ? (
-                        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
-                          {allPhotosInGroup.map((photo, idx) => (
-                            <div key={`${getPhotoKey(photo)}-${idx}`} className="group relative rounded-lg overflow-hidden shadow-sm hover:shadow-md transition-all aspect-square cursor-pointer hover:scale-[1.02]" title={`${photo.eventTitle} — ${photo.date}`} onClick={() => setSelectedPhoto(photo)}>
-                              <img src={photo.url} alt={`${photo.eventTitle} - ${photo.date}`} loading="lazy" className="w-full h-full object-cover transition-transform hover:scale-110 duration-500" onError={e => { (e.target as HTMLImageElement).src = 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="100" height="100" viewBox="0 0 100 100"%3E%3Crect fill="%23ddd" width="100%" height="100%"/%3E%3Ctext x="50%" y="50%" text-anchor="middle" dy=".3em" font-family="sans-serif" font-size="12" fill="%23999"%3ENo image%3C/text%3E%3C/svg%3E'; }} />
-                              {photo.source === 'event' && <div className="absolute bottom-0 left-0 right-0 px-2 py-1 bg-black/50 text-white text-[9px] font-semibold truncate opacity-0 group-hover:opacity-100 transition-opacity">{photo.eventTitle} • {photo.date}</div>}
-                              <button onClick={e => deletePhoto(photo, e)} className="absolute top-1 right-1 p-1.5 bg-red-500 hover:bg-red-600 text-white rounded-full opacity-0 group-hover:opacity-100 transition-all shadow-lg" title="Delete photo permanently" aria-label="Delete photo"><Trash2 className="w-3.5 h-3.5" /></button>
-                            </div>
-                          ))}
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                {grouped.map(group => {
+                  const cover = group.photos[0]?.url;
+                  return (
+                    <button
+                      key={group.key}
+                      onClick={() => setSelectedAlbum({ key: group.key, label: group.label, photos: group.photos })}
+                      className="group relative overflow-hidden rounded-2xl border border-gray-200 dark:border-white/10 shadow-sm hover:shadow-xl transition-all text-left"
+                    >
+                      <div className="relative aspect-[4/3] overflow-hidden">
+                        {cover ? (
+                          <img src={cover} alt={group.label} loading="lazy" className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105" onError={e => { (e.target as HTMLImageElement).src = 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="100" height="100" viewBox="0 0 100 100"%3E%3Crect fill="%23ddd" width="100%" height="100%"/%3E%3Ctext x="50%" y="50%" text-anchor="middle" dy=".3em" font-family="sans-serif" font-size="12" fill="%23999"%3ENo image%3C/text%3E%3C/svg%3E'; }} />
+                        ) : (
+                          <div className="w-full h-full bg-gray-100 dark:bg-black/20 flex items-center justify-center text-gray-400 text-xs">No photos</div>
+                        )}
+                        <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/10 to-transparent" />
+                        <div className="absolute bottom-2.5 left-3 right-3">
+                          <div className="text-white font-bold text-sm drop-shadow-md">{group.label}</div>
+                          <div className="text-white/85 text-[11px] font-semibold drop-shadow">{group.photos.length} photo{group.photos.length === 1 ? '' : 's'}</div>
                         </div>
-                      ) : (
-                        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
-                          {allPhotosInGroup.slice(0, 1).map((photo, idx) => (
-                            <div key={`${getPhotoKey(photo)}-${idx}`} className="relative rounded-lg overflow-hidden shadow-sm hover:shadow-md transition-all aspect-square cursor-pointer hover:scale-[1.02]" title={`${group.label} - Click to expand`} onClick={() => toggleExpand(group.key)}>
-                              <img src={photo.url} alt={`${group.label} cover`} loading="lazy" className="w-full h-full object-cover transition-transform hover:scale-110 duration-500" onError={e => { (e.target as HTMLImageElement).src = 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="100" height="100" viewBox="0 0 100 100"%3E%3Crect fill="%23ddd" width="100%" height="100%"/%3E%3Ctext x="50%" y="50%" text-anchor="middle" dy=".3em" font-family="sans-serif" font-size="12" fill="%23999"%3ENo image%3C/text%3E%3C/svg%3E'; }} /></div>
-                          ))}
-                          {allPhotosInGroup.length === 0 && <div className="aspect-square rounded-lg bg-gray-100 dark:bg-black/20 flex items-center justify-center text-gray-400 text-xs">No photos</div>}
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                );
-              })
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
             )}
           </div>
         </div>
@@ -383,7 +371,32 @@ export const AllPhotosPage: React.FC<AllPhotosPageProps> = ({
         <div className="fixed inset-0 z-[60] bg-black/70 dark:bg-black/90 backdrop-blur-md flex items-center justify-center p-4" onClick={() => setYearModal(null)}>
           <div className="bg-white dark:bg-[#14141f] rounded-2xl p-5 max-w-md w-full" onClick={e => e.stopPropagation()}>
             <div className="flex items-center justify-between mb-4"><h3 className="font-bold text-black dark:text-white">{yearModal}</h3><button onClick={() => setYearModal(null)}><X className="w-5 h-5" /></button></div>
-            <div className="grid grid-cols-2 gap-2">{MONTH_NAMES.map((name, idx) => { const count = monthCountsForYear(yearModal)[idx]; return <button key={name} disabled={count === 0} onClick={() => { setSelectedYear(yearModal); setSelectedMonth(idx); setYearModal(null); setExpandedMonth(null); }} className="p-3 rounded-xl border border-gray-200 dark:border-white/10 text-left text-sm disabled:opacity-40 disabled:cursor-not-allowed hover:bg-gray-50 dark:hover:bg-white/5 text-black dark:text-white">{name}</button>; })}</div>
+            <div className="grid grid-cols-2 gap-2">{MONTH_NAMES.map((name, idx) => { const count = monthCountsForYear(yearModal)[idx]; return <button key={name} disabled={count === 0} onClick={() => { setSelectedYear(yearModal); setSelectedMonth(idx); setYearModal(null); }} className="p-3 rounded-xl border border-gray-200 dark:border-white/10 text-left text-sm disabled:opacity-40 disabled:cursor-not-allowed hover:bg-gray-50 dark:hover:bg-white/5 text-black dark:text-white">{name}</button>; })}</div>
+          </div>
+        </div>
+      )}
+
+      {selectedAlbum && (
+        <div className="fixed inset-0 z-[60] flex items-end justify-center bg-black/10 dark:bg-black/20 p-3" onClick={() => setSelectedAlbum(null)}>
+          <div className="w-full max-w-4xl max-h-[82vh] overflow-y-auto rounded-t-3xl sm:rounded-3xl border border-gray-200 dark:border-white/10 bg-white/85 dark:bg-[#14141f]/80 backdrop-blur-md shadow-2xl p-4 sm:p-5" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <h3 className="font-bold text-black dark:text-white">{selectedAlbum.label}</h3>
+                <p className="text-xs text-gray-500 dark:text-gray-400">{selectedAlbum.photos.filter(p => !deletedPhotoKeys.has(getPhotoKey(p))).length} photo{selectedAlbum.photos.length === 1 ? '' : 's'}</p>
+              </div>
+              <button onClick={() => setSelectedAlbum(null)} className="p-2 rounded-full bg-gray-100 dark:bg-white/10 hover:bg-gray-200 dark:hover:bg-white/15" aria-label="Close"><X className="w-5 h-5" /></button>
+            </div>
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
+              {selectedAlbum.photos
+                .filter(p => !deletedPhotoKeys.has(getPhotoKey(p)))
+                .map((photo, idx) => (
+                  <div key={`${getPhotoKey(photo)}-${idx}`} className="group relative rounded-xl overflow-hidden shadow-sm hover:shadow-md transition-all aspect-square cursor-pointer hover:scale-[1.02]" title={`${photo.eventTitle} — ${photo.date}`} onClick={() => setSelectedPhoto(photo)}>
+                    <img src={photo.url} alt={`${photo.eventTitle} - ${photo.date}`} loading="lazy" className="w-full h-full object-cover transition-transform hover:scale-110 duration-500" onError={e => { (e.target as HTMLImageElement).src = 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="100" height="100" viewBox="0 0 100 100"%3E%3Crect fill="%23ddd" width="100%" height="100%"/%3E%3Ctext x="50%" y="50%" text-anchor="middle" dy=".3em" font-family="sans-serif" font-size="12" fill="%23999"%3ENo image%3C/text%3E%3C/svg%3E'; }} />
+                    {photo.source === 'event' && <div className="absolute bottom-0 left-0 right-0 px-2 py-1 bg-black/50 text-white text-[9px] font-semibold truncate opacity-0 group-hover:opacity-100 transition-opacity">{photo.eventTitle} • {photo.date}</div>}
+                    <button onClick={e => deletePhoto(photo, e)} className="absolute top-1 right-1 p-1.5 bg-red-500 hover:bg-red-600 text-white rounded-full opacity-0 group-hover:opacity-100 transition-all shadow-lg" title="Delete photo permanently" aria-label="Delete photo"><Trash2 className="w-3.5 h-3.5" /></button>
+                  </div>
+                ))}
+            </div>
           </div>
         </div>
       )}
