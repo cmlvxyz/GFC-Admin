@@ -898,6 +898,64 @@ function extractFacebookOwner(rawUrl) {
   }
 }
 
+// Facebook CDN photo URLs carry signed query params (oh, oe, _nc_*). The
+// SAME photo re-imported from FB is served under a DIFFERENT signed URL
+// every time, so string comparison treats it as a new photo and duplicates
+// it inside albums. These helpers collapse such URLs to a canonical key
+// (the pathname without the query) and pick the freshest signed copy.
+function isFacebookCdnUrl(url) {
+  return (
+    typeof url === 'string' &&
+    /^https:\/\/scontent-[\w.-]+\.(fbcdn|facebook)\.net\//.test(url)
+  );
+}
+
+function canonicalPhotoKey(url) {
+  return isFacebookCdnUrl(url) ? url.split('?')[0] : url;
+}
+
+function freshestSignedUrl(a, b) {
+  const expiryOf = (u) => {
+    const m = /(?:^|[?&])oe=([0-9a-fA-F]+)/.exec(u);
+    return m ? parseInt(m[1], 16) : 0;
+  };
+  return expiryOf(b) > expiryOf(a) ? b : a;
+}
+
+// Deduplicate a photos array by canonical key, keeping one URL per image.
+function dedupePhotosByImage(photos) {
+  const seen = new Map();
+  for (const url of Array.isArray(photos) ? photos : []) {
+    if (typeof url !== 'string') continue;
+    const key = canonicalPhotoKey(url);
+    const current = seen.get(key);
+    seen.set(key, current ? freshestSignedUrl(current, url) : url);
+  }
+  return Array.from(seen.values());
+}
+
+// Add only photos that are NOT already present (canonically). Returns the
+// URLs that were actually added.
+function pushUniquePhotos(target, images) {
+  const seen = new Set();
+  (Array.isArray(target) ? target : []).forEach((existing) => {
+    if (typeof existing === 'string') {
+      seen.add(canonicalPhotoKey(existing));
+    }
+  });
+  const added = [];
+  for (const img of Array.isArray(images) ? images : []) {
+    if (typeof img !== 'string') continue;
+    const key = canonicalPhotoKey(img);
+    if (!seen.has(key)) {
+      seen.add(key);
+      target.push(img);
+      added.push(img);
+    }
+  }
+  return added;
+}
+
 async function graphGet(pathname, params) {
   const url = new URL(`https://graph.facebook.com/${GRAPH_VERSION}/${pathname}`);
   for (const [k, v] of Object.entries(params || {})) {
@@ -1232,14 +1290,8 @@ app.post('/api/facebook/import', async (req, res, next) => {
       }
 
       entry.photos = Array.isArray(entry.photos) ? entry.photos : [];
-      const existingEventSet = new Set(entry.photos);
-      for (const img of images) {
-        if (!existingEventSet.has(img)) {
-          entry.photos.push(img);
-          existingEventSet.add(img);
-          eventSaved++;
-        }
-      }
+      const eventSavedImgs = pushUniquePhotos(entry.photos, images);
+      eventSaved = eventSavedImgs.length;
 
       await dbSetCollection('events', events);
       eventTitle = ev.title;
@@ -1268,15 +1320,8 @@ app.post('/api/facebook/import', async (req, res, next) => {
     }
     bucket.photos = Array.isArray(bucket.photos) ? bucket.photos : [];
 
-    const existingAllSet = new Set(bucket.photos);
-    let allSaved = 0;
-    for (const img of images) {
-      if (!existingAllSet.has(img)) {
-        bucket.photos.push(img);
-        existingAllSet.add(img);
-        allSaved++;
-      }
-    }
+    const allSavedImgs = pushUniquePhotos(bucket.photos, images);
+    const allSaved = allSavedImgs.length;
 
     await dbSetCollection('allPhotos', list);
     await logActivity({
@@ -1446,7 +1491,15 @@ app.post('/api/uploads', async (req, res, next) => {
     }
 
     entry.photos = entry.photos || [];
-    entry.photos.push(image);
+    const addedImgs = pushUniquePhotos(entry.photos, [image]);
+    const wasNew = addedImgs.length > 0;
+    if (!wasNew) {
+      return res.status(200).json({
+        success: true,
+        message: 'Photo already uploaded (skipped duplicate).',
+        photoCount: entry.photos.length
+      });
+    }
     
     console.log(`💾 Saving to database: events (${entry.photos.length} photos)`);
     await dbSetCollection('events', events);

@@ -98,6 +98,14 @@ const resolvePhotoUrl = (u: string): string => {
   return `${SITE_BASE}${u.startsWith('/') ? '' : '/'}${u}`;
 };
 
+// Facebook CDN photo URLs change their signed query params (oh/oe/_nc_*)
+// on every import, so the same photo shows up under different strings.
+// Collapse them to the pathname so it is counted/deduped as ONE image.
+const canonicalPhotoKey = (url: string): string =>
+  /^https:\/\/scontent-[\w.-]+\.(fbcdn|facebook)\.net\//.test(url)
+    ? url.split('?')[0]
+    : url;
+
 const CURRENT_YEAR = new Date().getFullYear();
 
 const parseEntryDate = (value: string): { month: number; year: number } | null => {
@@ -179,12 +187,13 @@ export const AllPhotosPage: React.FC<AllPhotosPageProps> = ({
     return occs.every(occ => deletedPhotoKeys.has(occurrenceKey(photo, occ)));
   };
 
-  // Deduplicated by URL: the same photo shows only once even if it
-  // lives in more than one album (event + All Photos).
+  // Deduplicated by image (canonical key): the same photo shows only once
+  // even if it has several signed FB URLs or lives in more than one album.
   const allPhotosList = useMemo<PhotoItem[]>(() => {
     const byUrl = new Map<string, PhotoItem>();
     const ensure = (rawUrl: string, month: number, year: number): PhotoItem => {
-      let item = byUrl.get(rawUrl);
+      const key = canonicalPhotoKey(rawUrl);
+      let item = byUrl.get(key);
       if (!item) {
         item = {
           url: resolvePhotoUrl(rawUrl),
@@ -196,7 +205,7 @@ export const AllPhotosPage: React.FC<AllPhotosPageProps> = ({
           source: 'event',
           occurrences: []
         };
-        byUrl.set(rawUrl, item);
+        byUrl.set(key, item);
       }
       return item;
     };
