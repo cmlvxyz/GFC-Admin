@@ -360,7 +360,7 @@ const allowedOrigins = [
   'http://localhost:3003',
   'http://localhost:4000',
   process.env.CORS_ORIGIN,
-  'https://gfc-admin-rosy.vercel.app',
+  'https://gfc-admin.up.railway.app',
   'https://gfc-591v4f663-yans-projects-3c2ad947.vercel.app',
   'https://gfc-n55az5ieq-yans-projects-3c2ad947.vercel.app'
 ].filter(Boolean);

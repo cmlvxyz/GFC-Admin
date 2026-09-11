@@ -90,7 +90,7 @@ const SITE_BASE = (() => {
   const isLocalhost = !host || host === 'localhost' || host === '127.0.0.1';
   const isLanIp = /^\d{1,3}(\.\d{1,3}){3}$/.test(host);
   if (isLocalhost || isLanIp) return host ? `http://${host}:3002` : 'http://localhost:3002';
-  return typeof window !== 'undefined' ? window.location.origin : 'https://gfc-admin-rosy.vercel.app';
+  return typeof window !== 'undefined' ? window.location.origin : 'https://gfc-admin.up.railway.app';
 })();
 
 const resolvePhotoUrl = (u: string): string => {

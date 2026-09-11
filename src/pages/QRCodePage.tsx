@@ -222,37 +222,37 @@ export const QRCodePage: React.FC<QRCodePageProps> = ({
 }) => {
 
   // ==========================================================
-  // BASE URL
-  // ==========================================================
+// BASE URL — ito ang scan destination
+// ==========================================================
 
-  const GFC_BASE = (() => {
-    const fromEnv = (import.meta.env.VITE_SITE_URL as string | undefined)?.trim();
-    if (fromEnv) return fromEnv.replace(/\/+$/, '');
+const GFC_BASE = (() => {
+  const fromEnv = (import.meta.env.VITE_SITE_URL as string | undefined)?.trim();
+  if (fromEnv) return fromEnv.replace(/\/+$/, '');
 
-    const host = typeof window !== 'undefined' ? window.location.hostname : '';
-    const isLocalhost = !host || host === 'localhost' || host === '127.0.0.1';
-    const isLanIp = /^\d{1,3}(\.\d{1,3}){3}$/.test(host);
+  const host = typeof window !== 'undefined' ? window.location.hostname : '';
+  const isLocalhost = !host || host === 'localhost' || host === '127.0.0.1';
+  const isLanIp = /^\d{1,3}(\.\d{1,3}){3}$/.test(host);
 
-    if (isLocalhost || isLanIp) {
-      return host ? `http://${host}:3002` : 'http://localhost:3002';
-    }
+  if (isLocalhost || isLanIp) {
+    return host ? `http://${host}:3002` : 'http://localhost:3002';
+  }
 
-    return typeof window !== 'undefined'
-      ? window.location.origin
-      : 'https://gfc-admin-rosy.vercel.app';
-  })();
+  return typeof window !== 'undefined'
+    ? window.location.origin
+    : 'https://gfc-admin.up.railway.app';  // ← Railway URL
+})();
 
-  // ==========================================================
-  // QR URL
-  // ==========================================================
+// ==========================================================
+// QR URL — ito ang naka-encode sa QR at nakadisplay
+// ==========================================================
 
-  const getUploadUrl = (eventId: string, dateValue: string) => {
-    return (
-      `${GFC_BASE}/upload` +
-      `?event=${encodeURIComponent(eventId)}` +
-      `&date=${encodeURIComponent(dateValue.replace(/\s+/g, ''))}`
-    );
-  };
+const getUploadUrl = (eventId: string, dateValue: string) => {
+  return (
+    `${GFC_BASE}/upload` +
+    `?event=${encodeURIComponent(eventId)}` +
+    `&date=${encodeURIComponent(dateValue.replace(/\s+/g, ''))}`
+  );
+};
 
   // ==========================================================
   // STATE
@@ -459,51 +459,61 @@ export const QRCodePage: React.FC<QRCodePageProps> = ({
   // QR CODE
   // ==========================================================
 
-  useEffect(() => {
-    if (!qrContainerEl) return;
+  // ==========================================================
+// QR CODE — ito ang bumubuo ng QR at naglalagay ng logo
+// ==========================================================
 
+useEffect(() => {
+  if (!qrContainerEl) return;
+
+  qrContainerEl.innerHTML = '';
+
+  const uploadUrl = getSelectedUploadUrl();
+
+  const qr = new QRCodeStyling({
+    width: 260,
+    height: 260,
+    margin: 16,
+    data: uploadUrl,
+
+    // ↓↓↓ CHURCH WEB LOGO — palitan ang path kung iba ang file name ↓↓↓
+    image: '/image-circle.png',
+
+    imageOptions: {
+      imageSize: 0.15,       // 15% ng QR code ang laki ng logo
+      margin: 6,             // espasyo sa paligid ng logo
+      crossOrigin: 'anonymous'
+    },
+
+    qrOptions: {
+      errorCorrectionLevel: 'H',  // mataas na error correction para safe ang logo
+      typeNumber: 0
+    },
+
+    dotsOptions: {
+      color: '#1a1a2e',
+      type: 'rounded'
+    },
+
+    cornersSquareOptions: {
+      color: '#1a1a2e',
+      type: 'extra-rounded'
+    },
+
+    backgroundOptions: {
+      color: '#ffffff',
+      round: 8
+    }
+  });
+
+  qr.append(qrContainerEl);
+  qrStylingRef.current = qr;
+
+  return () => {
+    qrStylingRef.current = null;
     qrContainerEl.innerHTML = '';
-
-    const uploadUrl = getSelectedUploadUrl();
-
-    const qr = new QRCodeStyling({
-      width: 260,
-      height: 260,
-      margin: 16,
-      data: uploadUrl,
-      image: '/image-circle.png',
-      imageOptions: {
-        imageSize: 0.15,
-        margin: 6,
-        crossOrigin: 'anonymous'
-      },
-      qrOptions: {
-        errorCorrectionLevel: 'H',
-        typeNumber: 0
-      },
-      dotsOptions: {
-        color: '#1a1a2e',
-        type: 'rounded'
-      },
-      cornersSquareOptions: {
-        color: '#1a1a2e',
-        type: 'extra-rounded'
-      },
-      backgroundOptions: {
-        color: '#ffffff',
-        round: 8
-      }
-    });
-
-    qr.append(qrContainerEl);
-    qrStylingRef.current = qr;
-
-    return () => {
-      qrStylingRef.current = null;
-      qrContainerEl.innerHTML = '';
-    };
-  }, [qrContainerEl, selectedEventId, selectedDateIndex, events]);
-
+  };
+}, [qrContainerEl, selectedEventId, selectedDateIndex, events]);
   // ==========================================================
   // UPDATE QR
   // ==========================================================
