@@ -1206,15 +1206,15 @@ const getUploadUrl = (eventId: string, dateValue: string) => {
                 <div className="bg-white rounded-xl shadow-md p-2">
                   <QRCodeCanvas
                     value={getSelectedUploadUrl()}
-                    size={260}
+                    size={320}
                     level="H"
-                    fgColor="#1a1a2e"
+                    fgColor="#111827"
                     bgColor="#ffffff"
                     marginSize={4}
                     imageSettings={{
                       src: '/image-circle.png',
-                      width: 39,
-                      height: 39,
+                      width: 38,
+                      height: 38,
                       excavate: true
                     }}
                   />

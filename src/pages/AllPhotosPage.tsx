@@ -434,9 +434,9 @@ export const AllPhotosPage: React.FC<AllPhotosPageProps> = ({
             <div className="bg-white rounded-xl shadow-md p-2">
               <QRCodeCanvas
                 value={getUploadUrl()}
-                size={240}
+                size={300}
                 level="H"
-                fgColor="#1a1a2e"
+                fgColor="#111827"
                 bgColor="#ffffff"
                 marginSize={4}
                 imageSettings={{
