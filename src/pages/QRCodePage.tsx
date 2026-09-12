@@ -313,6 +313,7 @@ const getUploadUrl = (eventId: string, dateValue: string) => {
   const [coverMessage, setCoverMessage] = useState('');
 
   const photoFileInputRef = useRef<HTMLInputElement>(null);
+  const coverFileInputRef = useRef<HTMLInputElement>(null);
 
   // Facebook Import State
   const [facebookUrl, setFacebookUrl] = useState('');
@@ -951,6 +952,62 @@ const getUploadUrl = (eventId: string, dateValue: string) => {
   };
 
   // ==========================================================
+  // SET ALBUM COVER (DIRECT FILE UPLOAD)
+  // ==========================================================
+
+  const handleCoverFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !file.type || !file.type.startsWith('image')) return;
+
+    const rawEvent = events.find(ev => ev.id === selectedEventId);
+    const entry = getSelectedDateEntry();
+    if (!rawEvent || !entry || selectedDateIndex < 0) return;
+
+    const norm = normalizeEvent(rawEvent);
+    const list = Array.isArray(norm.dateEntries) ? norm.dateEntries : [];
+    if (selectedDateIndex >= list.length) return;
+
+    setCoverSaving(true);
+    setCoverMessage('');
+
+    try {
+      const imageData = await resizeImage(file);
+      const currentPhotos = Array.isArray(list[selectedDateIndex].photos)
+        ? list[selectedDateIndex].photos
+        : [];
+
+      const newPhotos = currentPhotos.includes(imageData)
+        ? currentPhotos
+        : [...currentPhotos, imageData];
+
+      const updatedEntries = list.map((e, index) =>
+        index === selectedDateIndex
+          ? { ...e, photos: newPhotos, coverImage: imageData }
+          : e
+      );
+
+      const finalEntries = mergeDateEntriesIntoRaw(rawEvent.dateEntries, updatedEntries);
+
+      await apiUpdateRecord('events', rawEvent.id, { dateEntries: finalEntries });
+      const updatedEvent: ChurchEvent = { ...rawEvent, dateEntries: finalEntries };
+      if (onUpdateEvent) {
+        onUpdateEvent(updatedEvent);
+      }
+      setCoverMessage('Cover saved!');
+      setTimeout(() => setCoverMessage(''), 3000);
+    } catch (error) {
+      console.error('Cover upload error:', error);
+      setCoverMessage('Error saving cover.');
+      setTimeout(() => setCoverMessage(''), 3000);
+    } finally {
+      setCoverSaving(false);
+      if (coverFileInputRef.current) {
+        coverFileInputRef.current.value = '';
+      }
+    }
+  };
+
+  // ==========================================================
   // IMPORT FROM FACEBOOK
   // ==========================================================
 
@@ -1385,12 +1442,42 @@ const getUploadUrl = (eventId: string, dateValue: string) => {
               />
             </label>
 
+            <label
+              className={`cursor-pointer inline-flex items-center gap-2 px-4 py-2.5 text-white rounded-xl text-xs font-bold transition-all shadow-md ${
+                coverSaving
+                  ? 'bg-emerald-400 cursor-wait'
+                  : 'bg-emerald-500 hover:bg-emerald-600'
+              }`}
+              title="Pick one image as the cover of this album"
+            >
+              {coverSaving ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : (
+                <Image className="w-4 h-4" />
+              )}
+              Select Cover
+              <input
+                ref={coverFileInputRef}
+                type="file"
+                accept="image/*"
+                onChange={handleCoverFileUpload}
+                className="hidden"
+              />
+            </label>
+
             <button
               onClick={handleResetUpload}
               className="px-4 py-2.5 bg-gray-100 dark:bg-white/5 hover:bg-gray-200 dark:hover:bg-white/10 text-gray-700 dark:text-[#A1A1A1] rounded-xl text-xs font-bold transition-all border border-gray-200 dark:border-white/10"
             >
               Clear All
             </button>
+
+            {!coverSaving && coverMessage && (
+              <span className="inline-flex items-center gap-1 text-emerald-500 dark:text-emerald-400 text-sm font-bold">
+                <CheckCircle className="w-4 h-4" />
+                {coverMessage}
+              </span>
+            )}
           </div>
 
           {/* IMPORT FROM FACEBOOK */}
