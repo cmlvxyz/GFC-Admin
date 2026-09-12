@@ -15,7 +15,7 @@ import {
   Facebook,
   Trash2
 } from 'lucide-react';
-import QRCodeStyling from 'qr-code-styling';
+import { QRCodeCanvas } from 'qrcode.react';
 import { updateRecord as apiUpdateRecord, API_URL } from '../api';
 
 interface UploadedPhoto {
@@ -299,8 +299,6 @@ const getUploadUrl = (eventId: string, dateValue: string) => {
   const [uploadProgress, setUploadProgress] = useState(0);
 
   const photoFileInputRef = useRef<HTMLInputElement>(null);
-  const [qrContainerEl, setQrContainerEl] = useState<HTMLDivElement | null>(null);
-  const qrStylingRef = useRef<QRCodeStyling | null>(null);
 
   // Facebook Import State
   const [facebookUrl, setFacebookUrl] = useState('');
@@ -490,70 +488,6 @@ const getUploadUrl = (eventId: string, dateValue: string) => {
   // ==========================================================
   // QR CODE
   // ==========================================================
-
-  // ==========================================================
-// QR CODE — ito ang bumubuo ng QR at naglalagay ng logo
-// ==========================================================
-
-useEffect(() => {
-  if (!qrContainerEl) return;
-
-  qrContainerEl.innerHTML = '';
-
-  const uploadUrl = getSelectedUploadUrl();
-
-  const qr = new QRCodeStyling({
-    width: 260,
-    height: 260,
-    margin: 16,
-    data: uploadUrl,
-
-    // ↓↓↓ CHURCH WEB LOGO — bilog na church logo ↓↓↓
-    image: '/image-circle.png',
-
-    imageOptions: {
-      imageSize: 0.15,       // 15% ng QR code ang laki ng logo
-      margin: 6,             // espasyo sa paligid ng logo
-      crossOrigin: 'anonymous'
-    },
-
-    qrOptions: {
-      errorCorrectionLevel: 'H',  // mataas na error correction para safe ang logo
-      typeNumber: 0
-    },
-
-    dotsOptions: {
-      color: '#1a1a2e',
-      type: 'square'
-    },
-
-    cornersSquareOptions: {
-      color: '#1a1a2e',
-      type: 'square'
-    },
-
-    backgroundOptions: {
-      color: '#ffffff',
-      round: 0
-    }
-  });
-
-  qr.append(qrContainerEl);
-  qrStylingRef.current = qr;
-
-  return () => {
-    qrStylingRef.current = null;
-    qrContainerEl.innerHTML = '';
-  };
-}, [qrContainerEl, selectedEventId, selectedDateIndex, events]);
-  // ==========================================================
-  // UPDATE QR
-  // ==========================================================
-
-  useEffect(() => {
-    if (!qrStylingRef.current || !selectedEventId) return;
-    qrStylingRef.current.update({ data: getSelectedUploadUrl() });
-  }, [selectedEventId, selectedDateIndex, events, qrContainerEl]);
 
   // ==========================================================
   // RESIZE IMAGE
@@ -1269,7 +1203,22 @@ useEffect(() => {
                   </span>
                 </div>
 
-                <div ref={setQrContainerEl} className="bg-white rounded-xl shadow-md p-2" />
+                <div className="bg-white rounded-xl shadow-md p-2">
+                  <QRCodeCanvas
+                    value={getSelectedUploadUrl()}
+                    size={260}
+                    level="H"
+                    fgColor="#1a1a2e"
+                    bgColor="#ffffff"
+                    marginSize={4}
+                    imageSettings={{
+                      src: '/image-circle.png',
+                      width: 39,
+                      height: 39,
+                      excavate: true
+                    }}
+                  />
+                </div>
 
                 <a
                   href={getSelectedUploadUrl()}

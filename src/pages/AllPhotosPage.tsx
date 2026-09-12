@@ -9,7 +9,7 @@ import {
   Images,
   Trash2
 } from 'lucide-react';
-import QRCodeStyling from 'qr-code-styling';
+import { QRCodeCanvas } from 'qrcode.react';
 import { API_URL } from '../api';
 
 interface AllPhotosPageProps {
@@ -140,7 +140,6 @@ export const AllPhotosPage: React.FC<AllPhotosPageProps> = ({
   const [yearModal, setYearModal] = useState<number | null>(null);
   const [selectedAlbum, setSelectedAlbum] = useState<{ key: string; label: string; photos: PhotoItem[] } | null>(null);
   const [selectedPhoto, setSelectedPhoto] = useState<PhotoItem | null>(null);
-  const [qrContainerEl, setQrContainerEl] = useState<HTMLDivElement | null>(null);
   const [deletedPhotoKeys, setDeletedPhotoKeys] = useState<Set<string>>(new Set());
   const [facebookUrl, setFacebookUrl] = useState('');
   const [facebookImporting, setFacebookImporting] = useState(false);
@@ -360,35 +359,7 @@ export const AllPhotosPage: React.FC<AllPhotosPageProps> = ({
     return `${GFC_BASE}/upload${query ? `?${query}` : ''}`;
   };
 
-  // ==========================================================
-  // QR CODE — dynamic, may logo
-  // ==========================================================
-
-  useEffect(() => {
-    if (!qrContainerEl) return;
-    qrContainerEl.innerHTML = '';
-
-    const qrUrl = getUploadUrl();
-
-    const qr = new QRCodeStyling({
-      width: 240,
-      height: 240,
-      margin: 16,
-      data: qrUrl,
-      image: '/image-circle.png',
-      imageOptions: { imageSize: 0.15, margin: 6, crossOrigin: 'anonymous' },
-      qrOptions: { errorCorrectionLevel: 'H', typeNumber: 0 },
-      dotsOptions: { color: '#1a1a2e', type: 'square' },
-      cornersSquareOptions: { color: '#1a1a2e', type: 'square' },
-      backgroundOptions: { color: '#ffffff', round: 0 }
-    });
-
-    qr.append(qrContainerEl);
-
-    return () => {
-      qrContainerEl.innerHTML = '';
-    };
-  }, [qrContainerEl, selectedMonth, selectedYear]);
+  
 
   const monthCountsForYear = (year: number): number[] => {
     const counts = new Array(12).fill(0);
@@ -460,7 +431,22 @@ export const AllPhotosPage: React.FC<AllPhotosPageProps> = ({
           </div>
 
           <div className="flex justify-center">
-            <div ref={setQrContainerEl} className="bg-white rounded-xl shadow-md p-2" />
+            <div className="bg-white rounded-xl shadow-md p-2">
+              <QRCodeCanvas
+                value={getUploadUrl()}
+                size={240}
+                level="H"
+                fgColor="#1a1a2e"
+                bgColor="#ffffff"
+                marginSize={4}
+                imageSettings={{
+                  src: '/image-circle.png',
+                  width: 36,
+                  height: 36,
+                  excavate: true
+                }}
+              />
+            </div>
           </div>
 
           <a
