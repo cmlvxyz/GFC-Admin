@@ -1293,9 +1293,8 @@ const getUploadUrl = (eventId: string, dateValue: string) => {
 
             {/* SELECTED */}
             {selectedEventId && getSelectedDateEntry() && (() => {
-              const entry = getSelectedDateEntry();
+              const entry = getSelectedDateEntry()!;
               const albumPhotos = Array.isArray(entry.photos) ? entry.photos : [];
-
               return (
                 <div className="p-4 bg-indigo-50 dark:bg-indigo-950/30 rounded-xl border border-indigo-200 dark:border-indigo-400/30">
                   <div className="flex items-center gap-2 text-sm">
@@ -1316,7 +1315,6 @@ const getUploadUrl = (eventId: string, dateValue: string) => {
                           const isCover =
                             entry.coverImage &&
                             unwrapProxyUrl(entry.coverImage) === unwrapProxyUrl(photo);
-
                           return (
                             <button
                               key={`${photo}-${idx}`}
