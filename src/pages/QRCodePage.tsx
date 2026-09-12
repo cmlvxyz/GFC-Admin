@@ -1292,81 +1292,16 @@ const getUploadUrl = (eventId: string, dateValue: string) => {
             })()}
 
             {/* SELECTED */}
-            {selectedEventId && getSelectedDateEntry() && (() => {
-              const entry = getSelectedDateEntry()!;
-              const albumPhotos = Array.isArray(entry.photos) ? entry.photos : [];
-              return (
-                <div className="p-4 bg-indigo-50 dark:bg-indigo-950/30 rounded-xl border border-indigo-200 dark:border-indigo-400/30">
-                  <div className="flex items-center gap-2 text-sm">
-                    <span className="font-bold text-indigo-600 dark:text-indigo-400">Selected:</span>
-                    <span className="text-black dark:text-white">{getSelectedEvent()?.title}</span>
-                    <span className="text-gray-400">•</span>
-                    <span className="text-black dark:text-white">{entry.date}</span>
-                  </div>
-
-                  {albumPhotos.length > 0 && (
-                    <>
-                      <p className="mt-3 mb-2 text-[10px] font-bold text-indigo-500 dark:text-indigo-400 uppercase tracking-wider">
-                        Album Cover — {albumPhotos.length} photo{albumPhotos.length > 1 ? 's' : ''}
-                      </p>
-
-                      <div className="grid grid-cols-4 sm:grid-cols-6 gap-2">
-                        {albumPhotos.map((photo, idx) => {
-                          const isCover =
-                            entry.coverImage &&
-                            unwrapProxyUrl(entry.coverImage) === unwrapProxyUrl(photo);
-                          return (
-                            <button
-                              key={`${photo}-${idx}`}
-                              type="button"
-                              onClick={() => void handleSetCover(photo)}
-                              disabled={coverSaving || !!isCover}
-                              title={isCover ? 'Current cover' : 'Set as album cover'}
-                              className={`relative rounded-lg overflow-hidden aspect-square border-2 transition-all group ${
-                                isCover
-                                  ? 'border-indigo-500 cursor-default'
-                                  : 'border-transparent hover:border-indigo-500 cursor-pointer'
-                              }`}
-                            >
-                              <img
-                                src={photo}
-                                alt={entry.date}
-                                className="w-full h-full object-cover"
-                              />
-
-                              <span
-                                className={`absolute bottom-0 inset-x-0 py-0.5 text-center text-[9px] font-bold transition-all ${
-                                  isCover
-                                    ? 'bg-indigo-500 text-white'
-                                    : 'bg-black/60 text-white opacity-0 group-hover:opacity-100'
-                                }`}
-                              >
-                                {isCover ? '★ Cover' : 'Set Cover'}
-                              </span>
-                            </button>
-                          );
-                        })}
-                      </div>
-
-                      <div className="mt-2 text-[11px] text-indigo-600 dark:text-indigo-400 min-h-[16px] flex items-center gap-2">
-                        {coverSaving && (
-                          <span className="inline-flex items-center gap-1 font-semibold">
-                            <Loader2 className="w-3 h-3 animate-spin" />
-                            Saving cover...
-                          </span>
-                        )}
-                        {!coverSaving && coverMessage && (
-                          <span className="inline-flex items-center gap-1 font-semibold">
-                            <CheckCircle className="w-3 h-3" />
-                            {coverMessage}
-                          </span>
-                        )}
-                      </div>
-                    </>
-                  )}
+            {selectedEventId && getSelectedDateEntry() && (
+              <div className="p-4 bg-indigo-50 dark:bg-indigo-950/30 rounded-xl border border-indigo-200 dark:border-indigo-400/30">
+                <div className="flex items-center gap-2 text-sm">
+                  <span className="font-bold text-indigo-600 dark:text-indigo-400">Selected:</span>
+                  <span className="text-black dark:text-white">{getSelectedEvent()?.title}</span>
+                  <span className="text-gray-400">•</span>
+                  <span className="text-black dark:text-white">{getSelectedDateEntry()?.date}</span>
                 </div>
-              );
-            })()}
+              </div>
+            )}
           </div>
 
           {/* QR */}
