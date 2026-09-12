@@ -1134,11 +1134,13 @@ function proxyizeEvents(events, origin) {
     if (!Array.isArray(ev.dateEntries)) return ev;
     return {
       ...ev,
-      dateEntries: ev.dateEntries.map((entry) =>
-        Array.isArray(entry.photos)
-          ? { ...entry, photos: proxyizePhotos(entry.photos, origin) }
-          : entry
-      )
+      dateEntries: ev.dateEntries.map((entry) => {
+        const next = { ...entry, photos: proxyizePhotos(entry.photos, origin) };
+        if (entry.coverImage) {
+          next.coverImage = photoProxyUrl(String(entry.coverImage), origin);
+        }
+        return next;
+      })
     };
   });
 }
