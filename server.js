@@ -1443,6 +1443,26 @@ function albumLabelFromFbPost(iso, entries) {
   return label;
 }
 
+// Extract { month, year } (0-indexed month) from an album label like
+// "August 9, 2026" or "August 2026". Returns null when the label has no
+// usable date so callers can fall back to the current month.
+function monthYearFromLabel(label) {
+  let s = String(label || '').trim().replace(/\s*\(\d+\)$/, '');
+  if (!s) return null;
+  const asDate = new Date(s);
+  if (!isNaN(asDate.getTime()) && /^[A-Za-z]+\s+\d{1,2},\s+\d{4}$/.test(s)) {
+    return { month: asDate.getMonth(), year: asDate.getFullYear() };
+  }
+  const monthYear = /^([A-Za-z]+)\s+(\d{4})$/.exec(s);
+  if (monthYear) {
+    const d = new Date(`${monthYear[1]} 1, ${monthYear[2]}`);
+    if (!isNaN(d.getTime())) {
+      return { month: d.getMonth(), year: parseInt(monthYear[2], 10) };
+    }
+  }
+  return null;
+}
+
 // POST /api/facebook/import
 // Body: { url, eventId?, dateIndex? }
 // - If eventId + dateIndex provided: saves to BOTH Event AND All Photos.
@@ -1578,13 +1598,14 @@ app.post('/api/facebook/import', async (req, res, next) => {
     }
 
     // ---- Save to All Photos (always) ----
-    // By design All Photos is a cross-event gallery, so event imports are
-    // also added to the current month bucket. The bucket is labelled by its
-    // month/year (not the first album's date) so it never looks like a
-    // duplicate of a specific event album.
+    // Photos are bucketed by the EVENT's date (e.g. "August 9, 2026" ->
+    // August 2026) so each import lands in the month it truly belongs to
+    // instead of whenever it was imported. Without an event date (a bare
+    // import / a non-date album label), fall back to the current month.
+    const parsedDate = monthYearFromLabel(eventDate || '');
     const now = new Date();
-    const m = now.getMonth();
-    const y = now.getFullYear();
+    const m = parsedDate ? parsedDate.month : now.getMonth();
+    const y = parsedDate ? parsedDate.year : now.getFullYear();
     const monthNames = [
       'January', 'February', 'March', 'April', 'May', 'June',
       'July', 'August', 'September', 'October', 'November', 'December'
