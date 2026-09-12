@@ -924,6 +924,23 @@ app.delete('/api/allPhotos/album', async (req, res, next) => {
 
 const GRAPH_VERSION = (process.env.FACEBOOK_GRAPH_VERSION || 'v21.0').trim();
 
+// Numeric page ids (Graph API id + web/URL aliases) known to map to each
+// configured page. Facebook serves permalink.php posts under a different
+// page identity id than the Graph API id, so both must be recognised when
+// building "<page_id>_<pfbid>" composites or locating posts in the feed.
+const FACEBOOK_PAGE_ID_ALIASES = {
+  gfc: ['1074232749116315', '61590579395623'],
+  nextgen: ['1085336628004750', '61590304157455']
+};
+
+// Fields fetched for every post/node during pfbid/feed lookups.
+const FB_POST_FIELDS =
+  'id,message,created_time,permalink_url,full_picture,attachments{media,subattachments.limit(100){media}}';
+
+// How many pages of the page feed are walked when hunting a pfbid post
+// that sits far back in the feed.
+const FB_MAX_FEED_PAGES = parseInt(process.env.FACEBOOK_MAX_FEED_PAGES || '6', 10) || 6;
+
 function getFacebookPages() {
   const pages = [];
   if (process.env.FACEBOOK_GFC_PAGE_ID && process.env.FACEBOOK_GFC_PAGE_ACCESS_TOKEN) {
@@ -957,6 +974,18 @@ function extractFacebookOwner(rawUrl) {
       return null;
     }
     return segments[0];
+  } catch {
+    return null;
+  }
+}
+
+// The opaque ?id=<numeric> owner param used by permalink.php / story.php /
+// share links. It identifies the page that owns the post (e.g. 61590304157455).
+function facebookOwnerIdParam(rawUrl) {
+  try {
+    const p = new URL(String(rawUrl || ''));
+    const id = p.searchParams.get('id') || '';
+    return /^\d+$/.test(id) ? id : null;
   } catch {
     return null;
   }
@@ -1170,17 +1199,62 @@ async function graphGet(pathname, params) {
   return data;
 }
 
+// Adds every image URL reachable from a single feed/post node (cover photo,
+// attachment media, and any paginated subattachments) to `collected`.
+async function collectImagesFromPostNode(node, collected) {
+  if (node?.full_picture) collected.add(node.full_picture);
+  const firstAtt = node?.attachments?.data?.[0];
+  if (!firstAtt) return;
+  if (firstAtt.media?.image?.src) collected.add(firstAtt.media.image.src);
+  if (firstAtt.media?.source) collected.add(firstAtt.media.source);
+  let sub = firstAtt?.subattachments?.data || [];
+  let nextUrl = firstAtt?.subattachments?.paging?.next || null;
+  for (const s of sub) {
+    const src = s?.media?.image?.src || s?.media?.source;
+    if (src) collected.add(src);
+  }
+  let safety = 0;
+  while (nextUrl && safety < 100) {
+    try {
+      const resp = await fetch(nextUrl);
+      const data = await resp.json().catch(() => ({}));
+      for (const s of data.data || []) {
+        const src = s?.media?.image?.src || s?.media?.source;
+        if (src) collected.add(src);
+      }
+      nextUrl = data.paging?.next || null;
+      safety++;
+    } catch { break; }
+  }
+}
+
+// True when a feed/post node belongs to the pfbid we are looking for. The
+// Graph API exposes pfbid posts through the page feed with the pfbid either
+// in the post id ("..._pfbid...") or in the permalink's story_fbid query.
+function postMatchesPfbid(node, pfbid) {
+  if (!node || !pfbid) return false;
+  const id = String(node.id || '');
+  const permalink = String(node.permalink_url || '');
+  const story = node.story || '';
+  return (
+    id.includes(pfbid) ||
+    permalink.includes(pfbid) ||
+    permalink.includes(`story_fbid=${pfbid}`) ||
+    story.includes(pfbid)
+  );
+}
+
 async function resolveFacebookImages(rawUrl, page) {
   const token = page.token;
   const collected = new Set();
 
   // Known page IDs (Graph API id + URL-based ids) that map to this page.
   // The URL often uses a different id than the Graph API id.
-  const PAGE_ID_ALIASES = {
-    gfc: ['1074232749116315', '61590579395623'],
-    nextgen: ['1085336628004750', '61590304157455']
-  };
-  const aliases = (PAGE_ID_ALIASES[page.key] || []).concat([page.id]);
+  const aliases = (FACEBOOK_PAGE_ID_ALIASES[page.key] || []).concat([page.id]);
+  // permalink.php links point at the owner with ?id=<numeric page id>; include
+  // it too so "<owner_id>_<pfbid>" composites are always tried.
+  const urlIdParam = facebookOwnerIdParam(rawUrl);
+  if (urlIdParam) aliases.push(urlIdParam);
   const knownPageIds = Array.from(new Set(aliases.map(String)));
 
   // ---- 0) pfbid / permalink.php links carry an opaque "pfbid..." post id.
@@ -1213,6 +1287,10 @@ async function resolveFacebookImages(rawUrl, page) {
   // Also try the URL-owner / numeric page id as prefix
   const urlOwner = extractFacebookOwner(workingUrl);
 
+  // Keeps the last underlying Facebook error so the final failure message can
+  // include a concrete reason (expired token, missing permission, etc.).
+  let lastGraphError = null;
+
   for (const bareId of idCandidates) {
     // Build candidates: full "pageid_postid" first, then bare id.
     const candidates = [];
@@ -1236,6 +1314,7 @@ async function resolveFacebookImages(rawUrl, page) {
         });
         break;
       } catch (e) {
+        lastGraphError = e?.fb?.message || e?.message || 'Facebook API error';
         // Try next candidate
       }
     }
@@ -1392,6 +1471,59 @@ async function resolveFacebookImages(rawUrl, page) {
     console.warn('Fallback (recent posts) failed:', e.message);
   }
 
+  // ---- 3b) pfbid / permalink.php links: a pfbid post id can rarely be read
+  //      directly by the Graph API, but the post always appears in the owning
+  //      page's feed — sometimes many posts back. Walk the feed (posts + feed
+  //      endpoints, through both the Graph page id and the URL ?id= identity)
+  //      until the pfbid shows up. Purely additive to the steps above.
+  if (pfbidCandidate && collected.size === 0) {
+    const feedNodes = Array.from(new Set(
+      [page.id, urlIdParam, urlOwner, ...knownPageIds]
+        .filter(n => n && /^\d+$/.test(String(n)))
+        .map(String)
+    ));
+    for (const nodeId of feedNodes) {
+      for (const endpoint of ['posts', 'feed']) {
+        let cursor = null;
+        try {
+          cursor = await graphGet(`${nodeId}/${endpoint}`, {
+            fields: FB_POST_FIELDS,
+            limit: 100,
+            access_token: token
+          });
+        } catch { continue; }
+        let pages = 0;
+        while (cursor && pages < FB_MAX_FEED_PAGES) {
+          const items = cursor.data || [];
+          let found = null;
+          for (const item of items) {
+            if (postMatchesPfbid(item, pfbidCandidate)) {
+              found = item;
+              break;
+            }
+          }
+          if (found) {
+            await collectImagesFromPostNode(found, collected);
+            if (collected.size > 0) {
+              return {
+                images: Array.from(collected),
+                caption: found.message || '',
+                permalink: found.permalink_url || rawUrl,
+                created_time: found.created_time || ''
+              };
+            }
+          }
+          if (!cursor.paging?.next) break;
+          try {
+            const resp = await fetch(cursor.paging.next);
+            cursor = await resp.json().catch(() => ({}));
+          } catch { break; }
+          pages++;
+        }
+      }
+    }
+  }
+
   // ---- 4) Last resort: page's recent photos
   try {
     const ownerMatches = urlOwner && knownPageIds.some(
@@ -1422,8 +1554,10 @@ async function resolveFacebookImages(rawUrl, page) {
     console.warn('Fallback (recent photos) failed:', e.message);
   }
 
+  const fbDetail = lastGraphError ? ` Last Facebook error: ${lastGraphError}.` : '';
   throw new Error(
-    'Could not resolve photos from that Facebook link. Make sure the post belongs to one of the configured Pages and is public.'
+    'Could not resolve photos from that Facebook link. Make sure the post belongs to one of the configured Pages and is public.' +
+    fbDetail
   );
 }
 
@@ -1517,6 +1651,23 @@ app.post('/api/facebook/import', async (req, res, next) => {
     let page = null;
     if (owner) {
       page = pages.find(p => p.id === owner) || pages.find(p => p.id.toLowerCase() === owner.toLowerCase());
+    }
+
+    // permalink.php / story.php posts carry the page identity in ?id=
+    // (e.g. 61590304157455). Match configured pages (incl. URL aliases) so we
+    // only probe the page the post truly belongs to instead of every page.
+    if (!page) {
+      const ownerIdParam = facebookOwnerIdParam(url);
+      if (ownerIdParam) {
+        page =
+          pages.find(p => String(p.id) === ownerIdParam) ||
+          pages.find(p =>
+            (FACEBOOK_PAGE_ID_ALIASES[p.key] || [])
+              .map(String)
+              .includes(ownerIdParam)
+          ) ||
+          null;
+      }
     }
 
     let resolved = null;
