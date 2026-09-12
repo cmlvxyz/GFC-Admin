@@ -1176,7 +1176,7 @@ async function resolveFacebookImages(rawUrl, page) {
   // The URL often uses a different id than the Graph API id.
   const PAGE_ID_ALIASES = {
     gfc: ['1074232749116315', '61590579395623'],
-    nextgen: ['1085336628004750', '1085336628004750']
+    nextgen: ['1085336628004750', '61590304157455']
   };
   const aliases = (PAGE_ID_ALIASES[page.key] || []).concat([page.id]);
   const knownPageIds = Array.from(new Set(aliases.map(String)));
