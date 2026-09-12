@@ -1183,15 +1183,19 @@ async function resolveFacebookImages(rawUrl, page) {
   const aliases = (PAGE_ID_ALIASES[page.key] || []).concat([page.id]);
   const knownPageIds = Array.from(new Set(aliases.map(String)));
 
-  // ---- 0) pfbid / permalink.php → resolve to numeric id first
-  let workingUrl = rawUrl;
-  if (/story_fbid=pfbid/i.test(rawUrl) || /\/permalink\.php/i.test(rawUrl)) {
-    const resolved = await resolvePfbidToNumericId(rawUrl);
-    if (resolved.id) {
-      workingUrl = `https://www.facebook.com/${resolved.id}`;
-      console.log(`🔗 pfbid resolved to numeric id ${resolved.id}`);
-    }
-  }
+  // ---- 0) pfbid / permalink.php links carry an opaque "pfbid..." post id.
+  //      The Graph API cannot read a bare pfbid directly, but the composite
+  //      "<page_id>_<pfbid>" form IS accepted for the page that owns the post,
+  //      and the page's feed exposes the post under its permalink_url. We keep
+  //      the original URL for the album/fallback steps and pass the pfbid into
+  //      step 1 as an extra id candidate (page-prefixed composite first).
+  const workingUrl = rawUrl;
+  let pfbidCandidate = null;
+  try {
+    const pfUrl = new URL(rawUrl);
+    const sfb = pfUrl.searchParams.get('story_fbid') || '';
+    if (sfb && !/^\d+$/.test(sfb)) pfbidCandidate = sfb;
+  } catch { /* ignore */ }
 
   // ---- 1) Try direct ID candidates from the URL
   const idCandidates = [];
@@ -1203,6 +1207,7 @@ async function resolveFacebookImages(rawUrl, page) {
     if (fbid && /^\d+$/.test(fbid)) idCandidates.push(fbid);
     const storyFbid = u.searchParams.get('story_fbid');
     if (storyFbid && /^\d+$/.test(storyFbid)) idCandidates.push(storyFbid);
+    if (pfbidCandidate) idCandidates.push(pfbidCandidate);
   } catch { /* ignore */ }
 
   // Also try the URL-owner / numeric page id as prefix
@@ -1345,6 +1350,8 @@ async function resolveFacebookImages(rawUrl, page) {
         if (p.permalink_url && p.permalink_url.split('?')[0] === cleanUrl) return true;
         if (postSuffix && p.id && p.id.endsWith(`_${postSuffix}`)) return true;
         if (postSuffix && p.permalink_url && p.permalink_url.includes(postSuffix)) return true;
+        if (pfbidCandidate && p.id && p.id.endsWith(`_${pfbidCandidate}`)) return true;
+        if (pfbidCandidate && p.permalink_url && p.permalink_url.includes(pfbidCandidate)) return true;
         return false;
       });
 
@@ -1390,7 +1397,7 @@ async function resolveFacebookImages(rawUrl, page) {
     const ownerMatches = urlOwner && knownPageIds.some(
       id => id.toLowerCase() === String(urlOwner).toLowerCase()
     );
-    if (ownerMatches || !urlOwner) {
+    if (!pfbidCandidate && (ownerMatches || !urlOwner)) {
       const data = await graphGet(`${page.id}/photos`, {
         fields: 'images,source,created_time',
         limit: 50,
