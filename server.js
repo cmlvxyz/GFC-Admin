@@ -1224,7 +1224,7 @@ async function resolveFacebookImages(rawUrl, page) {
     for (const candidateId of candidates) {
       try {
         data = await graphGet(candidateId, {
-          fields: 'id,message,created_time,permalink_url,full_picture,attachments{media,subattachments},images',
+          fields: 'id,message,created_time,permalink_url,full_picture,attachments{media,subattachments.limit(100){media}},images',
           access_token: token
         });
         break;
@@ -1329,7 +1329,7 @@ async function resolveFacebookImages(rawUrl, page) {
     );
     if (ownerMatches || !urlOwner) {
       const data = await graphGet(`${page.id}/posts`, {
-        fields: 'id,message,permalink_url,full_picture,attachments{media,subattachments}',
+        fields: 'id,message,permalink_url,full_picture,attachments{media,subattachments.limit(100){media}}',
         limit: 99,
         access_token: token
       });
