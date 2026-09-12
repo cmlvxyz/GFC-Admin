@@ -615,14 +615,22 @@ app.post('/api/uploads/all', async (req, res, next) => {
       list.push(bucket);
     }
     bucket.photos = Array.isArray(bucket.photos) ? bucket.photos : [];
-    bucket.photos.push(image);
+    const pushed = pushUniquePhotos(bucket.photos, [image]);
+    if (pushed.length === 0) {
+      return res.status(200).json({
+        success: true,
+        message: 'Photo already uploaded (skipped duplicate).',
+        photoCount: bucket.photos.length
+      });
+    }
+    const addedImgs = pushed.length;
     
     console.log(`💾 Saving to database: allPhotos (${bucket.photos.length} photos)`);
     await dbSetCollection('allPhotos', list);
     await logActivity({ collection: 'allPhotos', action: 'photo', record: bucket, actor: 'public' });
 
     console.log(`✅ Photo uploaded to All Photos ${m + 1}/${y} "${label}" (${bucket.photos.length} photos)`);
-    res.status(201).json({ success: true, message: 'Photo uploaded successfully!', photoCount: bucket.photos.length });
+    res.status(201).json({ success: true, message: 'Photo uploaded successfully!', photoCount: bucket.photos.length, added: addedImgs });
   } catch (error) {
     console.error('All-photos upload error:', error);
     next(error);
@@ -994,11 +1002,21 @@ function dedupePhotosByImage(photos) {
 // Add only photos that are NOT already present (canonically). Returns the
 // URLs that were actually added.
 function pushUniquePhotos(target, images) {
+  const seen = new Set();
+  (Array.isArray(target) ? target : []).forEach((existing) => {
+    if (typeof existing === 'string') {
+      seen.add(canonicalPhotoKey(existing));
+    }
+  });
   const added = [];
   for (const img of Array.isArray(images) ? images : []) {
     if (typeof img !== 'string') continue;
-    target.push(img);
-    added.push(img);
+    const key = canonicalPhotoKey(img);
+    if (!seen.has(key)) {
+      seen.add(key);
+      target.push(img);
+      added.push(img);
+    }
   }
   return added;
 }

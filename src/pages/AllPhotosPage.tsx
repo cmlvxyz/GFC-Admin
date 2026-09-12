@@ -378,9 +378,9 @@ export const AllPhotosPage: React.FC<AllPhotosPageProps> = ({
       image: '/image-circle.png',
       imageOptions: { imageSize: 0.15, margin: 6, crossOrigin: 'anonymous' },
       qrOptions: { errorCorrectionLevel: 'H', typeNumber: 0 },
-      dotsOptions: { color: '#1a1a2e', type: 'rounded' },
-      cornersSquareOptions: { color: '#1a1a2e', type: 'extra-rounded' },
-      backgroundOptions: { color: '#ffffff', round: 8 }
+      dotsOptions: { color: '#1a1a2e', type: 'square' },
+      cornersSquareOptions: { color: '#1a1a2e', type: 'square' },
+      backgroundOptions: { color: '#ffffff', round: 0 }
     });
 
     qr.append(qrContainerEl);

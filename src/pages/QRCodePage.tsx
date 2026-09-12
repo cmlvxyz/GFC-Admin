@@ -508,8 +508,8 @@ useEffect(() => {
     margin: 16,
     data: uploadUrl,
 
-    // ↓↓↓ CHURCH WEB LOGO — palitan ang path kung iba ang file name ↓↓↓
-    image: '/image.png',
+    // ↓↓↓ CHURCH WEB LOGO — bilog na church logo ↓↓↓
+    image: '/image-circle.png',
 
     imageOptions: {
       imageSize: 0.15,       // 15% ng QR code ang laki ng logo
@@ -524,17 +524,17 @@ useEffect(() => {
 
     dotsOptions: {
       color: '#1a1a2e',
-      type: 'rounded'
+      type: 'square'
     },
 
     cornersSquareOptions: {
       color: '#1a1a2e',
-      type: 'extra-rounded'
+      type: 'square'
     },
 
     backgroundOptions: {
       color: '#ffffff',
-      round: 8
+      round: 0
     }
   });
 
