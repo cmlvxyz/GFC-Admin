@@ -9,6 +9,7 @@
     "dev": "node dev.js",
     "start": "node server.js",
     "seed": "node scripts/seed-db.js",
+    "covers:clean": "node scripts/remove-covers.js",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview --host=0.0.0.0 --open",
     "lint": "tsc --noEmit"

@@ -70,6 +70,11 @@ const isYearAlbumEvent = (event?: ChurchEvent | null): boolean => {
   return String(event?.id) === 'anniversary';
 };
 
+// Only the Church Anniversary event supports an album cover photo.
+const isAnniversaryEvent = (event?: ChurchEvent | null): boolean =>
+  String(event?.id) === 'anniversary' ||
+  /anniversary/i.test(String(event?.title || ''));
+
 const ordinalOf = (value: unknown): number => {
   const match = String(value ?? '').trim().match(/^(\d+)/);
   return match ? parseInt(match[1], 10) : Number.MAX_SAFE_INTEGER;
@@ -1375,28 +1380,30 @@ const getUploadUrl = (eventId: string, dateValue: string) => {
               />
             </label>
 
-            <label
-              className={`cursor-pointer inline-flex items-center gap-2 px-4 py-2.5 text-white rounded-xl text-xs font-bold transition-all shadow-md ${
-                coverSaving
-                  ? 'bg-emerald-400 cursor-wait'
-                  : 'bg-emerald-500 hover:bg-emerald-600'
-              }`}
-              title="Pick one image as the cover of this album"
-            >
-              {coverSaving ? (
-                <Loader2 className="w-4 h-4 animate-spin" />
-              ) : (
-                <Image className="w-4 h-4" />
-              )}
-              Select Cover
-              <input
-                ref={coverFileInputRef}
-                type="file"
-                accept="image/*"
-                onChange={handleCoverFileUpload}
-                className="hidden"
-              />
-            </label>
+            {isAnniversaryEvent(getSelectedEvent()) && (
+              <label
+                className={`cursor-pointer inline-flex items-center gap-2 px-4 py-2.5 text-white rounded-xl text-xs font-bold transition-all shadow-md ${
+                  coverSaving
+                    ? 'bg-emerald-400 cursor-wait'
+                    : 'bg-emerald-500 hover:bg-emerald-600'
+                }`}
+                title="Pick one image as the cover of this album"
+              >
+                {coverSaving ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : (
+                  <Image className="w-4 h-4" />
+                )}
+                Select Cover
+                <input
+                  ref={coverFileInputRef}
+                  type="file"
+                  accept="image/*"
+                  onChange={handleCoverFileUpload}
+                  className="hidden"
+                />
+              </label>
+            )}
 
             <button
               onClick={handleResetUpload}
