@@ -14,7 +14,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const port = Number(process.env.PORT || 4000);
 const dataDirectory = path.join(__dirname, 'data');
 const dataFile = path.join(dataDirectory, 'data.json');
-const collections = ['events', 'sermons', 'prayers', 'attendees', 'members', 'announcements', 'testimonials', 'allPhotos'];
+const collections = ['events', 'sermons', 'prayers', 'attendees', 'members', 'announcements', 'testimonials', 'allPhotos', 'aboutImages', 'ministries', 'pastors', 'songs', 'aboutInfo', 'verses', 'giveInfo', 'siteSettings'];
 
 const emptyDatabase = () => ({ 
   version: 1, 
@@ -27,7 +27,15 @@ const emptyDatabase = () => ({
   announcements: [], 
   testimonials: [], 
   activities: [],
-  allPhotos: [] 
+  allPhotos: [],
+  aboutImages: [],
+  ministries: [],
+  pastors: [],
+  songs: [],
+  aboutInfo: [],
+  verses: [],
+  giveInfo: [],
+  siteSettings: []
 });
 
 // ============================================
@@ -269,7 +277,15 @@ const icons = {
   admin: '🔐', 
   system: '⚙️', 
   uploads: '📸',
-  allPhotos: '🖼️' 
+  allPhotos: '🖼️',
+  aboutImages: '🖼️',
+  ministries: '⛪',
+  pastors: '🕊️',
+  songs: '🎵',
+  aboutInfo: '📝',
+  verses: '📖',
+  giveInfo: '💝',
+  siteSettings: '⚙️'
 };
 
 const activityMessages = {
@@ -316,6 +332,46 @@ const activityMessages = {
   allPhotos: { 
     photo: () => 'New photo was uploaded to All Photos',
     delete: () => 'Photo was deleted from All Photos'
+  },
+  aboutImages: {
+    created: (l) => `New About Us image "${l}" was added`,
+    updated: (l) => `About Us image "${l}" was updated`,
+    deleted: (l) => `About Us image "${l}" was deleted`
+  },
+  ministries: {
+    created: (l) => `Ministry "${l}" was added`,
+    updated: (l) => `Ministry "${l}" was updated`,
+    deleted: (l) => `Ministry "${l}" was deleted`
+  },
+  pastors: {
+    created: (l) => `Leader "${l}" was added`,
+    updated: (l) => `Leader "${l}" was updated`,
+    deleted: (l) => `Leader "${l}" was deleted`
+  },
+  songs: {
+    created: (l) => `Worship song "${l}" was added`,
+    updated: (l) => `Worship song "${l}" was updated`,
+    deleted: (l) => `Worship song "${l}" was deleted`
+  },
+  aboutInfo: {
+    created: (l) => 'About page text was added',
+    updated: (l) => 'About page text was updated',
+    deleted: (l) => 'About page text was deleted'
+  },
+  verses: {
+    created: (l) => `Verse "${l}" was added`,
+    updated: (l) => `Verse "${l}" was updated`,
+    deleted: (l) => `Verse "${l}" was deleted`
+  },
+  giveInfo: {
+    created: () => 'Giving info was added',
+    updated: () => 'Giving info was updated',
+    deleted: () => 'Giving info was deleted'
+  },
+  siteSettings: {
+    created: () => 'Site setting was added',
+    updated: () => 'Site setting was updated',
+    deleted: () => 'Site setting was deleted'
   }
 };
 

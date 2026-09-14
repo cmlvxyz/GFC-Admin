@@ -103,6 +103,72 @@ export interface AllPhotoAlbum {
   photos: string[];
 }
 
+export interface AboutImage {
+  id: string;
+  image: string;
+  caption?: string;
+}
+
+export interface Ministry {
+  id: string;
+  title: string;
+  description: string;
+  icon?: string;
+  leader?: string;
+  meetingTime?: string;
+  location?: string;
+  details?: string;
+  photo?: string;
+}
+
+export interface Pastor {
+  id: string;
+  name: string;
+  role: string;
+  facebook?: string;
+  image: string;
+}
+
+export interface Song {
+  id: string;
+  name: string;
+  link: string;
+}
+
+export interface AboutInfo {
+  id: string;
+  introHeading?: string;
+  introParagraph?: string;
+  stats?: string;
+  scheduleLabel?: string;
+  scheduleTime?: string;
+  slogan?: string;
+  missionQuote?: string;
+  visionTitle?: string;
+  visionText?: string;
+  communityText?: string;
+}
+
+export interface Verse {
+  id: string;
+  text: string;
+  ref: string;
+}
+
+export interface GiveInfo {
+  id: string;
+  gcashNumber?: string;
+  gcashName?: string;
+  bdoNumber?: string;
+  bdoName?: string;
+}
+
+export interface SiteSetting {
+  id: string;
+  key: string;
+  value: string;
+}
+
 export interface RemoteContent {
   initialized: boolean;
   events: ChurchEvent[];
@@ -113,6 +179,14 @@ export interface RemoteContent {
   announcements: Announcement[];
   testimonials: Testimonial[];
   allPhotos: AllPhotoAlbum[];
+  aboutImages: AboutImage[];
+  ministries: Ministry[];
+  pastors: Pastor[];
+  songs: Song[];
+  aboutInfo: AboutInfo[];
+  verses: Verse[];
+  giveInfo: GiveInfo[];
+  siteSettings: SiteSetting[];
 }
 
 export type RecordMap = {
@@ -124,6 +198,14 @@ export type RecordMap = {
   announcements: Announcement[];
   testimonials: Testimonial[];
   allPhotos: AllPhotoAlbum[];
+  aboutImages: AboutImage[];
+  ministries: Ministry[];
+  pastors: Pastor[];
+  songs: Song[];
+  aboutInfo: AboutInfo[];
+  verses: Verse[];
+  giveInfo: GiveInfo[];
+  siteSettings: SiteSetting[];
 };
 
 export type Collection = keyof RecordMap;

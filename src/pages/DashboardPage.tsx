@@ -4,7 +4,6 @@ import {
   PlaySquare,
   Heart,
   UserCheck,
-  Quote,
   Megaphone,
   Users,
   Layers,
@@ -14,7 +13,12 @@ import {
   Radio,
   Clock,
   ArrowRight,
-  FileText
+  FileText,
+  Files,
+  Music,
+  Sparkles,
+  BookOpen,
+  Gift
 } from 'lucide-react';
 import { Activity as ActivityType } from '../types';
 import { ActivityFeed } from '../components/ActivityFeed';
@@ -44,11 +48,11 @@ const statsConfig: ModuleStat[] = [
     bar: 'bg-indigo-500'
   },
   {
-    id: 'sermons',
-    label: 'Sermons',
-    icon: <PlaySquare className="w-4 h-4" />,
-    tile: 'bg-purple-100 text-purple-600 group-hover:bg-purple-600 group-hover:text-white',
-    bar: 'bg-purple-500'
+    id: 'verses',
+    label: 'Verse of the Day',
+    icon: <BookOpen className="w-4 h-4" />,
+    tile: 'bg-emerald-100 text-emerald-600 group-hover:bg-emerald-600 group-hover:text-white',
+    bar: 'bg-emerald-500'
   },
   {
     id: 'prayers',
@@ -65,9 +69,9 @@ const statsConfig: ModuleStat[] = [
     bar: 'bg-emerald-500'
   },
   {
-    id: 'testimonials',
-    label: 'Testimonials',
-    icon: <Quote className="w-4 h-4" />,
+    id: 'giveInfo',
+    label: 'Give',
+    icon: <Gift className="w-4 h-4" />,
     tile: 'bg-amber-100 text-amber-600 group-hover:bg-amber-600 group-hover:text-white',
     bar: 'bg-amber-500'
   },
@@ -84,17 +88,47 @@ const statsConfig: ModuleStat[] = [
     icon: <Users className="w-4 h-4" />,
     tile: 'bg-fuchsia-100 text-fuchsia-600 group-hover:bg-fuchsia-600 group-hover:text-white',
     bar: 'bg-fuchsia-500'
+  },
+  {
+    id: 'aboutImages',
+    label: 'About Images',
+    icon: <Files className="w-4 h-4" />,
+    tile: 'bg-sky-100 text-sky-600 group-hover:bg-sky-600 group-hover:text-white',
+    bar: 'bg-sky-500'
+  },
+  {
+    id: 'ministries',
+    label: 'Ministries',
+    icon: <Layers className="w-4 h-4" />,
+    tile: 'bg-violet-100 text-violet-600 group-hover:bg-violet-600 group-hover:text-white',
+    bar: 'bg-violet-500'
+  },
+  {
+    id: 'pastors',
+    label: 'Leaders',
+    icon: <Users className="w-4 h-4" />,
+    tile: 'bg-amber-100 text-amber-600 group-hover:bg-amber-600 group-hover:text-white',
+    bar: 'bg-amber-500'
+  },
+  {
+    id: 'songs',
+    label: 'Songs',
+    icon: <PlaySquare className="w-4 h-4" />,
+    tile: 'bg-teal-100 text-teal-600 group-hover:bg-teal-600 group-hover:text-white',
+    bar: 'bg-teal-500'
   }
 ];
 
 const quickActions = [
   { label: 'Add Event', page: 'events', icon: <Calendar className="w-3.5 h-3.5" />, chip: 'bg-indigo-50 text-indigo-700 hover:bg-indigo-600 hover:text-white' },
-  { label: 'Add Sermon', page: 'sermons', icon: <PlaySquare className="w-3.5 h-3.5" />, chip: 'bg-purple-50 text-purple-700 hover:bg-purple-600 hover:text-white' },
   { label: 'Add Announcement', page: 'announcements', icon: <Megaphone className="w-3.5 h-3.5" />, chip: 'bg-cyan-50 text-cyan-700 hover:bg-cyan-600 hover:text-white' },
   { label: 'Add Prayer', page: 'prayers', icon: <Heart className="w-3.5 h-3.5" />, chip: 'bg-rose-50 text-rose-700 hover:bg-rose-600 hover:text-white' },
-  { label: 'Add Attendee', page: 'attendees', icon: <UserCheck className="w-3.5 h-3.5" />, chip: 'bg-emerald-50 text-emerald-700 hover:bg-emerald-600 hover:text-white' },
-  { label: 'Add Testimonial', page: 'testimonials', icon: <Quote className="w-3.5 h-3.5" />, chip: 'bg-amber-50 text-amber-700 hover:bg-amber-600 hover:text-white' },
-  { label: 'Add Member', page: 'members', icon: <Users className="w-3.5 h-3.5" />, chip: 'bg-fuchsia-50 text-fuchsia-700 hover:bg-fuchsia-600 hover:text-white' }
+  { label: 'Add Member', page: 'members', icon: <Users className="w-3.5 h-3.5" />, chip: 'bg-fuchsia-50 text-fuchsia-700 hover:bg-fuchsia-600 hover:text-white' },
+  { label: 'About Images', page: 'aboutImages', icon: <Files className="w-3.5 h-3.5" />, chip: 'bg-sky-50 text-sky-700 hover:bg-sky-600 hover:text-white' },
+  { label: 'Ministries', page: 'ministries', icon: <Sparkles className="w-3.5 h-3.5" />, chip: 'bg-violet-50 text-violet-700 hover:bg-violet-600 hover:text-white' },
+  { label: 'Worship Songs', page: 'songs', icon: <Music className="w-3.5 h-3.5" />, chip: 'bg-teal-50 text-teal-700 hover:bg-teal-600 hover:text-white' },
+  { label: 'Verse of the Day', page: 'verses', icon: <BookOpen className="w-3.5 h-3.5" />, chip: 'bg-emerald-50 text-emerald-700 hover:bg-emerald-600 hover:text-white' },
+  { label: 'Giving Info', page: 'giveInfo', icon: <Gift className="w-3.5 h-3.5" />, chip: 'bg-amber-50 text-amber-700 hover:bg-amber-600 hover:text-white' }
 ];
 
 function moduleLabel(type: string): string {
@@ -105,8 +139,15 @@ function moduleLabel(type: string): string {
     case 'attendees': return 'Attendees';
     case 'members': return 'Members';
     case 'announcements': return 'Announcements';
-    case 'testimonials': return 'Testimonials';
     case 'allPhotos': return 'Photos';
+    case 'qrcodes': return 'Events Photos';
+    case 'aboutImages': return 'About Images';
+    case 'ministries': return 'Ministries';
+    case 'pastors': return 'Leaders';
+    case 'songs': return 'Songs';
+    case 'aboutInfo': return 'About Text';
+    case 'verses': return 'Verse of the Day';
+    case 'giveInfo': return 'Giving Info';
     case 'admin': return 'Admin';
     case 'system': return 'System';
     default: return type || 'Other';
@@ -176,7 +217,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
               GOSPEL FELLOWSHIP CHURCH • LIMAY, BATAAN
             </span>
           </div>
-          <h2 className="text-2xl md:text-3xl font-black tracking-tight text-gray-900 dark:text-white mt-3">
+          <h2 className="text-2xl md:text-3xl font-heading font-bold tracking-tight text-[#0f172a] dark:text-white mt-3">
             Church Admin Dashboard
           </h2>
           <p className="text-sm text-gray-600 dark:text-gray-400 max-w-2xl mt-2">
@@ -195,7 +236,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
           </button>
           <button
             onClick={() => onNavigate('announcements')}
-            className="flex items-center gap-1.5 px-4 py-2.5 bg-gray-900 hover:bg-gray-800 dark:bg-white dark:hover:bg-gray-100 text-white dark:text-gray-900 font-bold rounded-xl text-xs shadow-sm transition-all"
+            className="flex items-center gap-1.5 px-4 py-2.5 bg-[#0f172a] hover:bg-[#1e293b] text-white font-bold rounded-xl text-xs shadow-sm transition-all"
           >
             <Megaphone className="w-4 h-4" />
             <span>Post Announcement</span>

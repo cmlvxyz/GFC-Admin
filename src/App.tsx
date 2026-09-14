@@ -1,11 +1,13 @@
 import React, { useEffect, useMemo, useRef, useState, useCallback } from 'react';
-import { Bell, Menu, ArrowLeft, LayoutDashboard, Calendar as CalendarIcon, Video, Megaphone, Heart, Users, MessageSquare, Settings, Shield, Trash2, X, QrCode, Images } from 'lucide-react';
-import type { Activity, Announcement, Attendee, AllPhotoAlbum, ChurchEvent, Collection, Member, PrayerRequest, RecordMap, Sermon, Testimonial } from './types';
+import { ArrowLeft, LayoutDashboard, Images, QrCode, Users, UserCheck, Info, Music, Sparkles, Trash2, Settings, Bell } from 'lucide-react';
+import type { AboutImage, AboutInfo, Activity, Announcement, Attendee, AllPhotoAlbum, ChurchEvent, Collection, GiveInfo, Member, Ministry, Pastor, PrayerRequest, RecordMap, Sermon, SiteSetting, Song, Testimonial, Verse } from './types';
 import { API_URL, clearActivities, createRecord, deleteRecord as apiDeleteRecord, getActivities, getActivityStream, getContent, listCollection, resetRemoteData, updateRecord as apiUpdateRecord } from './api';
-import { Sidebar } from './components/Sidebar';
+import { Navbar, NavLinkItem, NavMenuItem } from './components/Navbar';
 import { ToastHost, ToastItem, ToastType } from './components/ToastHost';
 import { ConfirmDialog, ConfirmState } from './components/ConfirmDialog';
 import { ManagePage } from './components/ManagePage';
+import { AdminHomePreview } from './components/AdminHomePreview';
+import { ActivityFeed } from './components/ActivityFeed';
 import { DashboardPage } from './pages/DashboardPage';
 import { QRCodePage } from './pages/QRCodePage';
 import { AllPhotosPage } from './pages/AllPhotosPage';
@@ -13,8 +15,9 @@ import { collections, todayDisplay } from './config';
 
 const pageTitles: Record<string, { title: string; icon: string }> = {
   dashboard: { title: 'Dashboard', icon: '📊' },
+  home: { title: 'Home', icon: '🏠' },
   events: { title: 'Events', icon: '📅' },
-  qrcodes: { title: 'QR Codes', icon: '🔳' },
+  qrcodes: { title: 'Events Photos', icon: '🔳' },
   photos: { title: 'All Photos', icon: '🖼️' },
   sermons: { title: 'Sermons', icon: '🎬' },
   announcements: { title: 'Announcements', icon: '📢' },
@@ -22,14 +25,34 @@ const pageTitles: Record<string, { title: string; icon: string }> = {
   attendees: { title: 'Attendees', icon: '👥' },
   testimonials: { title: 'Testimonials', icon: '🗣️' },
   members: { title: 'Members', icon: '🧑' },
-  settings: { title: 'Settings', icon: '⚙️' }
+  notifications: { title: 'Notifications', icon: '🔔' },
+  settings: { title: 'Settings', icon: '⚙️' },
+  aboutImages: { title: 'About Images', icon: '🖼️' },
+  ministries: { title: 'Ministries', icon: '⛪' },
+  pastors: { title: 'Leaders', icon: '🕊️' },
+  songs: { title: 'Worship Songs', icon: '🎵' },
+  aboutInfo: { title: 'About Page Text', icon: '📝' },
+  verses: { title: 'Verse of the Day', icon: '📖' },
+  giveInfo: { title: 'Giving Info', icon: '💝' },
+  about: { title: 'About Content', icon: '🌐' },
+  contact: { title: 'Contact & Registration', icon: '📞' },
+  siteSettings: { title: 'Site Settings', icon: '⚙️' }
 };
+
+const NAV_ITEMS: NavLinkItem[] = [
+  { id: 'home', label: 'Home', pages: ['home'] },
+  { id: 'about', label: 'About', pages: ['about', 'aboutImages', 'ministries', 'pastors', 'songs', 'aboutInfo'] },
+  { id: 'events', label: 'Events', pages: ['events', 'photos', 'qrcodes'] },
+  { id: 'verse', label: 'Verse', pages: ['verses'] },
+  { id: 'prayer', label: 'Prayer', pages: ['prayers'] },
+  { id: 'contact', label: 'Contact', pages: ['contact', 'attendees', 'members'] },
+  { id: 'give', label: 'Give', pages: ['giveInfo'] }
+];
 
 export default function App() {
   const [loading, setLoading] = useState(true);
   const [page, setPage] = useState('dashboard');
   const [isDark, setIsDark] = useState(false);
-  const [mobileOpen, setMobileOpen] = useState(false);
   const [currentTime, setCurrentTime] = useState('');
   const [activities, setActivities] = useState<Activity[]>([]);
   const [activitiesLoading, setActivitiesLoading] = useState(true);
@@ -45,7 +68,15 @@ export default function App() {
     members: [],
     announcements: [],
     testimonials: [],
-    allPhotos: []
+    allPhotos: [],
+    aboutImages: [],
+    ministries: [],
+    pastors: [],
+    songs: [],
+    aboutInfo: [],
+    verses: [],
+    giveInfo: [],
+    siteSettings: []
   });
 
   const showToast = useCallback((message: string, type: ToastType = 'success') => {
@@ -77,7 +108,15 @@ export default function App() {
         members: (content.members || []) as Member[],
         announcements: (content.announcements || []) as Announcement[],
         testimonials: (content.testimonials || []) as Testimonial[],
-        allPhotos: (content.allPhotos || []) as AllPhotoAlbum[]
+        allPhotos: (content.allPhotos || []) as AllPhotoAlbum[],
+        aboutImages: (content.aboutImages || []) as AboutImage[],
+        ministries: (content.ministries || []) as Ministry[],
+        pastors: (content.pastors || []) as Pastor[],
+        songs: (content.songs || []) as Song[],
+        aboutInfo: (content.aboutInfo || []) as AboutInfo[],
+        verses: (content.verses || []) as Verse[],
+        giveInfo: (content.giveInfo || []) as GiveInfo[],
+        siteSettings: (content.siteSettings || []) as SiteSetting[]
       });
       setDataLoadedOnce(true);
     } catch (error) {
@@ -203,6 +242,25 @@ export default function App() {
     }
   };
 
+  // ============ SITE SETTINGS (static texts ng website) ============
+  const settingsMap = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const s of data.siteSettings as SiteSetting[]) map.set(s.key, s.value);
+    return map;
+  }, [data.siteSettings]);
+
+  const settingText = useCallback((key: string, fallback: string) => settingsMap.get(key) ?? fallback, [settingsMap]);
+
+  const saveSetting = useCallback(async (key: string, value: string) => {
+    const list = data.siteSettings as SiteSetting[];
+    const existing = list.find(s => s.key === key);
+    if (existing) {
+      await handleUpdate('siteSettings', existing.id, { ...existing, value });
+    } else {
+      await handleCreate('siteSettings', { id: `setting-${Date.now()}`, key, value });
+    }
+  }, [data.siteSettings]);  // eslint-disable-line react-hooks/exhaustive-deps
+
   const handleReset = () => {
     setConfirm({
       show: true,
@@ -212,7 +270,7 @@ export default function App() {
         try {
           await resetRemoteData();
           await clearActivities();
-          setData({ events: [], sermons: [], prayers: [], attendees: [], members: [], announcements: [], testimonials: [], allPhotos: [] });
+          setData({ events: [], sermons: [], prayers: [], attendees: [], members: [], announcements: [], testimonials: [], allPhotos: [], aboutImages: [], ministries: [], pastors: [], songs: [], aboutInfo: [], verses: [], giveInfo: [], siteSettings: [] });
           setActivities([]);
           showToast('💾 All data was reset.', 'success');
         } catch (error) {
@@ -241,7 +299,7 @@ export default function App() {
 
   // ============ RECORD BUILDERS ============
   const buildRecord = (key: string) => (values: Record<string, string>): any => {
-    const idPrefix = key === 'events' ? 'event' : key === 'sermons' ? 'sermon' : key === 'announcements' ? 'ann' : key === 'prayers' ? 'prayer' : key === 'attendees' ? 'att' : key === 'testimonials' ? 'test' : 'mem';
+    const idPrefix = key === 'events' ? 'event' : key === 'sermons' ? 'sermon' : key === 'announcements' ? 'ann' : key === 'prayers' ? 'prayer' : key === 'attendees' ? 'att' : key === 'testimonials' ? 'test' : key === 'verses' ? 'verse' : key === 'giveInfo' ? 'give' : 'mem';
     const id = `${idPrefix}-${Date.now()}`;
     switch (key) {
       case 'events':
@@ -258,6 +316,10 @@ export default function App() {
         return { id, name: values.name, role: values.role || undefined, text: values.text, createdAt: todayDisplay };
       case 'members':
         return { id, fullName: values.fullName, role: values.role || 'Member', ministry: values.ministry || 'General', contactNumber: values.contactNumber || undefined, facebookName: values.facebookName || undefined, birthMonth: values.birthMonth || '', isBaptized: false, joinDate: values.joinDate || undefined };
+      case 'verses':
+        return { id, text: values.text, ref: values.ref };
+      case 'giveInfo':
+        return { id, gcashNumber: values.gcashNumber || undefined, gcashName: values.gcashName || undefined, bdoNumber: values.bdoNumber || undefined, bdoName: values.bdoName || undefined };
       default:
         return { id, ...values };
     }
@@ -277,17 +339,48 @@ export default function App() {
         <DashboardPage
           counts={{
             events: data.events.length,
-            sermons: data.sermons.length,
             prayers: data.prayers.length,
             attendees: data.attendees.length,
             members: data.members.length,
             announcements: data.announcements.length,
-            testimonials: data.testimonials.length
+            aboutImages: data.aboutImages.length,
+            ministries: data.ministries.length,
+            pastors: data.pastors.length,
+            songs: data.songs.length,
+            verses: data.verses.length,
+            giveInfo: data.giveInfo.length
           }}
           activities={activities}
           loadingActivities={activitiesLoading}
           onClearActivities={handleClearActivities}
           onNavigate={setPage}
+        />
+      );
+    }
+
+    if (page === 'home') {
+      return (
+        <AdminHomePreview
+          events={data.events}
+          announcements={data.announcements}
+          verses={data.verses}
+          settings={data.siteSettings}
+          getSetting={settingText}
+          onUpdate={(collection, id, record) => void handleUpdate(collection, id, record)}
+          onCreate={(collection, record) => void handleCreate(collection, record)}
+          onDelete={(collection, id) => void handleDelete(collection, id)}
+          onSaveSetting={(key, value) => void saveSetting(key, value)}
+          onNavigate={setPage}
+        />
+      );
+    }
+
+    if (page === 'notifications') {
+      return (
+        <ActivityFeed
+          activities={activities}
+          loading={activitiesLoading}
+          onClear={handleClearActivities}
         />
       );
     }
@@ -366,6 +459,22 @@ export default function App() {
       );
     }
 
+    if (page === 'about') {
+      return renderHub(
+        'About Content',
+        'Pamahalaan ang lahat ng laman ng About page — lumalabas ito sa About page ng website.',
+        aboutHub
+      );
+    }
+
+    if (page === 'contact') {
+      return renderHub(
+        'Contact & Registration',
+        'Pamahalaan ang mga naka-register mula sa Contact page at ang listahan ng church members.',
+        contactHub
+      );
+    }
+
     const config = collections.find(c => c.key === page);
     if (!config) return null;
 
@@ -431,47 +540,82 @@ export default function App() {
     );
   };
 
-  const sidebarItems = useMemo(() => [
-    { id: 'dashboard', icon: <LayoutDashboard className="w-5 h-5" />, label: 'Dashboard', badge: null },
-    { id: 'events', icon: <CalendarIcon className="w-5 h-5" />, label: 'Events', badge: data.events.length },
-    { id: 'qrcodes', icon: <QrCode className="w-5 h-5" />, label: 'QR Codes', badge: null },
-    { id: 'photos', icon: <Images className="w-5 h-5" />, label: 'All Photos', badge: null },
-    { id: 'sermons', icon: <Video className="w-5 h-5" />, label: 'Sermons', badge: data.sermons.length },
-    { id: 'announcements', icon: <Megaphone className="w-5 h-5" />, label: 'Announcements', badge: data.announcements.length },
-    { id: 'prayers', icon: <Heart className="w-5 h-5" />, label: 'Prayer Requests', badge: data.prayers.length },
-    { id: 'attendees', icon: <Users className="w-5 h-5" />, label: 'Attendees', badge: data.attendees.length },
-    { id: 'testimonials', icon: <MessageSquare className="w-5 h-5" />, label: 'Testimonials', badge: data.testimonials.length },
-    { id: 'members', icon: <Users className="w-5 h-5" />, label: 'Members', badge: data.members.length },
-    { id: 'settings', icon: <Settings className="w-5 h-5" />, label: 'Settings', badge: null }
+  const menuItems = useMemo<NavMenuItem[]>(() => [
+    { id: 'dashboard', label: 'Dashboard', icon: <LayoutDashboard className="w-4 h-4" />, badge: null },
+    { id: 'photos', label: 'All Photos', icon: <Images className="w-4 h-4" />, badge: null },
+    { id: 'qrcodes', label: 'Events Photos', icon: <QrCode className="w-4 h-4" />, badge: null },
+    { id: 'attendees', label: 'Attendees', icon: <Users className="w-4 h-4" />, badge: data.attendees.length },
+    { id: 'members', label: 'Members', icon: <Users className="w-4 h-4" />, badge: data.members.length },
+    { id: 'notifications', label: 'Notifications', icon: <Bell className="w-4 h-4" />, badge: activities.length }
+  ], [data, activities.length]);
+
+  const aboutHub = useMemo(() => [
+    { key: 'aboutImages', title: 'About Images', desc: 'Carousel photos ng About page (umiikot kada 5s)', icon: <Images className="w-5 h-5" />, badge: data.aboutImages.length, tile: 'bg-sky-100 text-sky-600 group-hover:bg-sky-600 group-hover:text-white' },
+    { key: 'ministries', title: 'Ministries', desc: 'Mga ministry at ang kanilang details', icon: <Sparkles className="w-5 h-5" />, badge: data.ministries.length, tile: 'bg-violet-100 text-violet-600 group-hover:bg-violet-600 group-hover:text-white' },
+    { key: 'pastors', title: 'Leaders', desc: 'Pastors at leaders ng church', icon: <Users className="w-5 h-5" />, badge: data.pastors.length, tile: 'bg-amber-100 text-amber-600 group-hover:bg-amber-600 group-hover:text-white' },
+    { key: 'songs', title: 'Worship Songs', desc: 'Worship lineup sa ministry worship', icon: <Music className="w-5 h-5" />, badge: data.songs.length, tile: 'bg-teal-100 text-teal-600 group-hover:bg-teal-600 group-hover:text-white' },
+    { key: 'aboutInfo', title: 'About Page Text', desc: 'Teksto ng About page (intro, mission, vision, stats)', icon: <Info className="w-5 h-5" />, badge: data.aboutInfo.length, tile: 'bg-rose-100 text-rose-600 group-hover:bg-rose-600 group-hover:text-white' }
   ], [data]);
+
+  const contactHub = useMemo(() => [
+    { key: 'attendees', title: 'Attendees', desc: 'Mga nag-register mula sa Contact page', icon: <Users className="w-5 h-5" />, badge: data.attendees.length, tile: 'bg-emerald-100 text-emerald-600 group-hover:bg-emerald-600 group-hover:text-white' },
+    { key: 'members', title: 'Members', desc: 'Listahan ng church members', icon: <UserCheck className="w-5 h-5" />, badge: data.members.length, tile: 'bg-fuchsia-100 text-fuchsia-600 group-hover:bg-fuchsia-600 group-hover:text-white' }
+  ], [data]);
+
+  const renderHub = (
+    title: string,
+    subtitle: string,
+    items: { key: string; title: string; desc: string; icon: React.ReactNode; badge: number; tile: string }[]
+  ) => (
+    <div className="space-y-6">
+      <div>
+        <h1 className="text-xl md:text-2xl font-heading font-bold tracking-tight text-[#0f172a] dark:text-white">{title}</h1>
+        <p className="mt-1 text-sm text-gray-500 dark:text-[#A1A1A1]">{subtitle}</p>
+      </div>
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+        {items.map(it => (
+          <button
+            key={it.key}
+            onClick={() => setPage(it.key)}
+            className="group bg-white dark:bg-[#14141f]/80 rounded-2xl border border-gray-200 dark:border-white/5 p-6 text-left hover:-translate-y-0.5 hover:shadow-lg transition-all"
+          >
+            <div className={`w-11 h-11 rounded-xl flex items-center justify-center ${it.tile}`}>{it.icon}</div>
+            <div className="mt-4 flex items-center justify-between gap-2">
+              <h3 className="font-bold text-black dark:text-white">{it.title}</h3>
+              <span className="text-xs font-bold text-gray-400 dark:text-gray-500">{it.badge}</span>
+            </div>
+            <p className="mt-1 text-xs text-gray-500 dark:text-[#A1A1A1] leading-relaxed">{it.desc}</p>
+            <div className="mt-4 text-xs font-bold text-indigo-600 dark:text-indigo-400">Manage →</div>
+          </button>
+        ))}
+      </div>
+    </div>
+  );
 
   // Sa App.tsx - hanapin ang return statement
 
   return (
     <div className={isDark ? 'dark' : ''}>
-      <div className="min-h-screen bg-gradient-to-br from-indigo-50/30 via-white to-purple-50/30 dark:bg-[#0a0a14] dark:from-[#0a0a14] dark:via-[#0f0f1a] dark:to-[#0a0a14] flex h-screen overflow-hidden">
+      <div className="min-h-screen bg-gradient-to-br from-indigo-50/30 via-white to-purple-50/30 dark:bg-[#0a0a14] dark:from-[#0a0a14] dark:via-[#0f0f1a] dark:to-[#0a0a14] flex h-screen overflow-hidden flex-col relative">
         <ToastHost toasts={toasts} dismiss={id => setToasts(prev => prev.filter(t => t.id !== id))} />
         <ConfirmDialog confirm={confirm} onClose={() => setConfirm(null)} />
 
-        <Sidebar
-          items={sidebarItems}
+        <Navbar
           active={page}
           onNavigate={setPage}
+          navItems={NAV_ITEMS}
+          menuItems={menuItems}
           isDark={isDark}
           onToggleTheme={() => setIsDark(!isDark)}
-          mobileOpen={mobileOpen}
-          onCloseMobile={() => setMobileOpen(false)}
+          now={currentTime}
+          activityCount={activities.length}
+          overlay={page === 'home'}
         />
 
-        <main className="flex-1 overflow-y-auto p-6 md:p-8">
+        <main className={`flex-1 overflow-y-auto ${page === 'home' ? '' : 'p-6 md:p-8'}`}>
+          {page !== 'home' && (
           <div className="flex flex-wrap items-center justify-between gap-4 pb-6 border-b border-gray-200 dark:border-white/5 mb-6">
             <div className="flex items-center gap-4">
-              <button
-                onClick={() => setMobileOpen(!mobileOpen)}
-                className="md:hidden p-2 rounded-xl bg-gradient-to-r from-indigo-500 to-indigo-600 text-white shadow-lg"
-              >
-                <Menu className="w-5 h-5" />
-              </button>
               <button
                 onClick={() => setPage('dashboard')}
                 className="p-2 rounded-xl bg-gray-100 dark:bg-white/5 hover:bg-gray-200 dark:hover:bg-white/10 text-gray-700 dark:text-[#A1A1A1] transition-all flex items-center gap-2"
@@ -479,36 +623,12 @@ export default function App() {
               >
                 <ArrowLeft className="w-4 h-4" />
               </button>
-              <h1 className="text-xl md:text-2xl font-bold text-black dark:text-white">
+              <h1 className="text-xl md:text-2xl font-heading font-bold tracking-tight text-[#0f172a] dark:text-white">
                 {pageTitles[page]?.icon} {pageTitles[page]?.title || page}
               </h1>
-              <div className="flex items-center gap-2 bg-gray-100 dark:bg-white/5 px-4 py-1.5 rounded-full text-xs font-semibold text-gray-600 dark:text-[#A1A1A1]">
-                <span className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse" />
-                <span>{currentTime}</span>
-              </div>
-            </div>
-
-            <div className="flex items-center gap-3 flex-wrap">
-              <button
-                onClick={() => setPage('dashboard')}
-                className="relative p-2 rounded-full hover:bg-gray-100 dark:hover:bg-white/5 transition-all"
-                title="Live activity feed"
-              >
-                <Bell className="w-5 h-5 text-gray-600 dark:text-[#A1A1A1]" />
-                {activities.length > 0 && (
-                  <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full text-center min-w-[18px]">
-                    {activities.length}
-                  </span>
-                )}
-              </button>
-              <div className="flex items-center gap-3 text-sm font-medium text-black dark:text-white">
-                <span className="hidden sm:inline">Admin</span>
-                <div className="w-9 h-9 rounded-full bg-gradient-to-br from-indigo-500 to-indigo-600 text-white flex items-center justify-center font-bold text-sm shadow-lg">
-                  <Shield className="w-4 h-4" />
-                </div>
-              </div>
             </div>
           </div>
+          )}
 
           {/* REMOVED: loading condition - always render page */}
           {renderPage()}
