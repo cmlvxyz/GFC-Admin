@@ -7,6 +7,11 @@ import { ToastHost, ToastItem, ToastType } from './components/ToastHost';
 import { ConfirmDialog, ConfirmState } from './components/ConfirmDialog';
 import { ManagePage } from './components/ManagePage';
 import { AdminHomePreview } from './components/AdminHomePreview';
+import { AdminAboutPreview } from './components/AdminAboutPreview';
+import { AdminEventsPreview } from './components/AdminEventsPreview';
+import { AdminVersePreview } from './components/AdminVersePreview';
+import { AdminPrayerPreview } from './components/AdminPrayerPreview';
+import { AdminContactPreview } from './components/AdminContactPreview';
 import { ActivityFeed } from './components/ActivityFeed';
 import { DashboardPage } from './pages/DashboardPage';
 import { QRCodePage } from './pages/QRCodePage';
@@ -36,16 +41,21 @@ const pageTitles: Record<string, { title: string; icon: string }> = {
   giveInfo: { title: 'Giving Info', icon: '💝' },
   about: { title: 'About Content', icon: '🌐' },
   contact: { title: 'Contact & Registration', icon: '📞' },
-  siteSettings: { title: 'Site Settings', icon: '⚙️' }
+  siteSettings: { title: 'Site Settings', icon: '⚙️' },
+  aboutManage: { title: 'About Content', icon: '🌐' },
+  eventsManage: { title: 'Events', icon: '📅' },
+  versesManage: { title: 'Verse of the Day', icon: '📖' },
+  prayersManage: { title: 'Prayer Requests', icon: '🙏' },
+  contactManage: { title: 'Contact & Registration', icon: '📞' }
 };
 
 const NAV_ITEMS: NavLinkItem[] = [
   { id: 'home', label: 'Home', pages: ['home'] },
-  { id: 'about', label: 'About', pages: ['about', 'aboutImages', 'ministries', 'pastors', 'songs', 'aboutInfo'] },
-  { id: 'events', label: 'Events', pages: ['events', 'photos', 'qrcodes'] },
-  { id: 'verse', label: 'Verse', pages: ['verses'] },
-  { id: 'prayer', label: 'Prayer', pages: ['prayers'] },
-  { id: 'contact', label: 'Contact', pages: ['contact', 'attendees', 'members'] },
+  { id: 'about', label: 'About', pages: ['about', 'aboutImages', 'ministries', 'pastors', 'songs', 'aboutInfo', 'aboutManage'] },
+  { id: 'events', label: 'Events', pages: ['events', 'eventsManage', 'photos', 'qrcodes'] },
+  { id: 'verse', label: 'Verse', pages: ['verses', 'versesManage'] },
+  { id: 'prayer', label: 'Prayer', pages: ['prayers', 'prayersManage'] },
+  { id: 'contact', label: 'Contact', pages: ['contact', 'contactManage', 'attendees', 'members'] },
   { id: 'give', label: 'Give', pages: ['giveInfo'] }
 ];
 
@@ -332,6 +342,73 @@ export default function App() {
     return out;
   };
 
+  // ============ MANAGE TABLE (reusable para sa preview "Manage" button) ============
+  const renderManage = (collectionKey: string): React.ReactElement | null => {
+    const config = collections.find(c => c.key === collectionKey);
+    if (!config) return null;
+
+    const collection = collectionKey as Collection;
+    const records = data[collection] as any[];
+    const extraRender = collectionKey === 'prayers'
+      ? (p: any) => (
+          <>
+            {p.status === 'pending' && (
+              <button
+                onClick={() => handleUpdate('prayers', p.id, { status: 'approved' })}
+                className="px-3 py-1 bg-emerald-50 dark:bg-emerald-950/30 text-emerald-600 dark:text-emerald-400 rounded-lg text-xs font-bold hover:bg-emerald-100 dark:hover:bg-emerald-950/50 transition-all mr-2"
+              >
+                ✅ Approve
+              </button>
+            )}
+            {p.status !== 'answered' && (
+              <button
+                onClick={() => {
+                  const t = prompt('Testimony/answer for this prayer:');
+                  if (t !== null) handleUpdate('prayers', p.id, { status: 'answered', answeredTestimony: t });
+                }}
+                className="px-3 py-1 bg-blue-50 dark:bg-blue-950/30 text-blue-600 dark:text-blue-400 rounded-lg text-xs font-bold hover:bg-blue-100 dark:hover:bg-blue-950/50 transition-all mr-2"
+              >
+                💫 Mark Answered
+              </button>
+            )}
+          </>
+        )
+      : collectionKey === 'announcements'
+      ? (a: any) => (
+          <button
+            onClick={() => handleUpdate('announcements', a.id, { isPinned: !a.isPinned })}
+            className={`px-3 py-1 rounded-lg text-xs font-bold transition-all mr-2 ${
+              a.isPinned
+                ? 'bg-amber-50 dark:bg-amber-950/30 text-amber-600 dark:text-amber-400 hover:bg-amber-100 dark:hover:bg-amber-950/50'
+                : 'bg-gray-100 dark:bg-white/10 text-gray-600 dark:text-[#A1A1A1] hover:bg-gray-200 dark:hover:bg-white/20'
+            }`}
+          >
+            {a.isPinned ? '🚫 Unpin' : '📌 Pin'}
+          </button>
+        )
+      : undefined;
+
+    return (
+      <ManagePage
+        title={config.title}
+        icon={config.icon}
+        accent={config.accent}
+        fields={config.fields}
+        columns={config.columns}
+        records={records}
+        idOf={(record: any) => record.id}
+        toForm={toFormFor(collectionKey)}
+        buildRecord={buildRecord(collectionKey)}
+        onAdd={(record) => void handleCreate(collection, record)}
+        onUpdate={(id, record) => void handleUpdate(collection, id, record)}
+        onDelete={(id) => void handleDelete(collection, id)}
+        extraRender={extraRender}
+        addLabel={`Add ${config.title}`}
+        csvFileName={collectionKey}
+      />
+    );
+  };
+
   // ============ RENDER HELPERS ============
   const renderPage = () => {
     if (page === 'dashboard') {
@@ -460,6 +537,19 @@ export default function App() {
     }
 
     if (page === 'about') {
+      return (
+        <AdminAboutPreview
+          aboutImages={data.aboutImages}
+          ministries={data.ministries}
+          pastors={data.pastors}
+          songs={data.songs}
+          aboutInfo={data.aboutInfo}
+          onNavigate={setPage}
+        />
+      );
+    }
+
+    if (page === 'aboutManage') {
       return renderHub(
         'About Content',
         'Pamahalaan ang lahat ng laman ng About page — lumalabas ito sa About page ng website.',
@@ -468,6 +558,15 @@ export default function App() {
     }
 
     if (page === 'contact') {
+      return (
+        <AdminContactPreview
+          onCreate={(attendee) => void handleCreate('attendees', attendee)}
+          onNavigate={setPage}
+        />
+      );
+    }
+
+    if (page === 'contactManage') {
       return renderHub(
         'Contact & Registration',
         'Pamahalaan ang mga naka-register mula sa Contact page at ang listahan ng church members.',
@@ -475,69 +574,29 @@ export default function App() {
       );
     }
 
-    const config = collections.find(c => c.key === page);
-    if (!config) return null;
+    if (page === 'events') {
+      return <AdminEventsPreview events={data.events} onNavigate={setPage} />;
+    }
 
-    const collection = page as Collection;
-    const records = data[collection] as any[];
-    const extraRender = page === 'prayers'
-      ? (p: any) => (
-          <>
-            {p.status === 'pending' && (
-              <button
-                onClick={() => handleUpdate('prayers', p.id, { status: 'approved' })}
-                className="px-3 py-1 bg-emerald-50 dark:bg-emerald-950/30 text-emerald-600 dark:text-emerald-400 rounded-lg text-xs font-bold hover:bg-emerald-100 dark:hover:bg-emerald-950/50 transition-all mr-2"
-              >
-                ✅ Approve
-              </button>
-            )}
-            {p.status !== 'answered' && (
-              <button
-                onClick={() => {
-                  const t = prompt('Testimony/answer for this prayer:');
-                  if (t !== null) handleUpdate('prayers', p.id, { status: 'answered', answeredTestimony: t });
-                }}
-                className="px-3 py-1 bg-blue-50 dark:bg-blue-950/30 text-blue-600 dark:text-blue-400 rounded-lg text-xs font-bold hover:bg-blue-100 dark:hover:bg-blue-950/50 transition-all mr-2"
-              >
-                💫 Mark Answered
-              </button>
-            )}
-          </>
-        )
-      : page === 'announcements'
-      ? (a: any) => (
-          <button
-            onClick={() => handleUpdate('announcements', a.id, { isPinned: !a.isPinned })}
-            className={`px-3 py-1 rounded-lg text-xs font-bold transition-all mr-2 ${
-              a.isPinned
-                ? 'bg-amber-50 dark:bg-amber-950/30 text-amber-600 dark:text-amber-400 hover:bg-amber-100 dark:hover:bg-amber-950/50'
-                : 'bg-gray-100 dark:bg-white/10 text-gray-600 dark:text-[#A1A1A1] hover:bg-gray-200 dark:hover:bg-white/20'
-            }`}
-          >
-            {a.isPinned ? '🚫 Unpin' : '📌 Pin'}
-          </button>
-        )
-      : undefined;
+    if (page === 'verses') {
+      return <AdminVersePreview verses={data.verses} onNavigate={setPage} />;
+    }
 
-    return (
-      <ManagePage
-        title={config.title}
-        icon={config.icon}
-        accent={config.accent}
-        fields={config.fields}
-        columns={config.columns}
-        records={records}
-        idOf={(record: any) => record.id}
-        toForm={toFormFor(page)}
-        buildRecord={buildRecord(page)}
-        onAdd={(record) => void handleCreate(collection, record)}
-        onUpdate={(id, record) => void handleUpdate(collection, id, record)}
-        onDelete={(id) => void handleDelete(collection, id)}
-        extraRender={extraRender}
-        addLabel={`Add ${config.title}`}
-        csvFileName={page}
-      />
-    );
+    if (page === 'prayers') {
+      return (
+        <AdminPrayerPreview
+          prayers={data.prayers}
+          onCreate={(prayer) => void handleCreate('prayers', prayer)}
+          onNavigate={setPage}
+        />
+      );
+    }
+
+    if (page === 'eventsManage') return renderManage('events');
+    if (page === 'versesManage') return renderManage('verses');
+    if (page === 'prayersManage') return renderManage('prayers');
+
+    return renderManage(page);
   };
 
   const menuItems = useMemo<NavMenuItem[]>(() => [
@@ -593,6 +652,7 @@ export default function App() {
   );
 
   // Sa App.tsx - hanapin ang return statement
+  const isBarePage = ['home', 'about', 'events', 'verses', 'prayers', 'contact'].includes(page);
 
   return (
     <div className={isDark ? 'dark' : ''}>
@@ -600,20 +660,21 @@ export default function App() {
         <ToastHost toasts={toasts} dismiss={id => setToasts(prev => prev.filter(t => t.id !== id))} />
         <ConfirmDialog confirm={confirm} onClose={() => setConfirm(null)} />
 
-        <Navbar
-          active={page}
-          onNavigate={setPage}
-          navItems={NAV_ITEMS}
-          menuItems={menuItems}
-          isDark={isDark}
-          onToggleTheme={() => setIsDark(!isDark)}
-          now={currentTime}
-          activityCount={activities.length}
-          overlay={page === 'home'}
-        />
+        <main className="relative flex-1 overflow-y-auto">
+          <Navbar
+            active={page}
+            onNavigate={setPage}
+            navItems={NAV_ITEMS}
+            menuItems={menuItems}
+            isDark={isDark}
+            onToggleTheme={() => setIsDark(!isDark)}
+            now={currentTime}
+            activityCount={activities.length}
+            overlay={isBarePage}
+          />
 
-        <main className={`flex-1 overflow-y-auto ${page === 'home' ? '' : 'p-6 md:p-8'}`}>
-          {page !== 'home' && (
+          <div className={isBarePage ? 'bg-white' : 'p-6 md:p-8'}>
+          {!isBarePage && (
           <div className="flex flex-wrap items-center justify-between gap-4 pb-6 border-b border-gray-200 dark:border-white/5 mb-6">
             <div className="flex items-center gap-4">
               <button
@@ -632,6 +693,7 @@ export default function App() {
 
           {/* REMOVED: loading condition - always render page */}
           {renderPage()}
+          </div>
         </main>
       </div>
     </div>

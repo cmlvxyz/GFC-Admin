@@ -117,7 +117,7 @@ export interface Ministry {
   leader?: string;
   meetingTime?: string;
   location?: string;
-  details?: string;
+  details?: string | string[];
   photo?: string;
 }
 
@@ -130,7 +130,7 @@ export interface Pastor {
 }
 
 export interface Song {
-  id: string;
+  id?: string;
   name: string;
   link: string;
 }

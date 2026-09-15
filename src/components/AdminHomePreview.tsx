@@ -317,29 +317,33 @@ export const AdminHomePreview: React.FC<AdminHomePreviewProps> = ({
   }
 
   return (
-    <main>
+    <main className="w-full">
       {/* ============ HERO (100% kapareho ng website) ============ */}
-      <section id="homeSection" className="relative">
-        <div className="relative min-h-[90vh] flex items-center bg-[#0f1a2e]">
-          {/* Background image */}
-          <Editable
-            onClick={() => openSettings(['heroImage'], 'Hero Background Image', 'Ang background image ng hero ng Home page.')}
-            chip="Edit Image"
-            chipPosition="right-4 top-4"
-            fill
-          >
-            <img
-              src={S('heroImage')}
-              alt=""
-              aria-hidden="true"
-              className="w-full h-full object-cover animate-kenburns"
-            />
-          </Editable>
+      <section id="homeSection" className="relative w-full">
+        <div className="relative w-full min-h-[90vh] flex items-center bg-[#0f1a2e]">
+          {/* Background image — full width, naka-absolute */}
+          <div className="absolute inset-0 overflow-hidden">
+            <Editable
+              onClick={() => openSettings(['heroImage'], 'Hero Background Image', 'Ang background image ng hero ng Home page.')}
+              chip="Edit Image"
+              chipPosition="right-4 top-4"
+              fill
+              className="w-full h-full"
+            >
+              <img
+                src={S('heroImage')}
+                alt=""
+                aria-hidden="true"
+                className="w-full h-full object-cover animate-kenburns"
+              />
+            </Editable>
+          </div>
+
           {/* Overlays */}
           <div className="absolute inset-0 bg-gradient-to-br from-[#0f1a2e]/95 via-[#0f1a2e]/80 to-[#0f1a2e]/55" />
           <div className="absolute inset-0 bg-gradient-to-t from-[#0f1a2e] via-transparent to-[#0f1a2e]/40" />
 
-          {/* Content */}
+          {/* Content — naka-center */}
           <div className="relative z-10 w-full max-w-7xl mx-auto px-5 sm:px-8 lg:px-12 pt-32 pb-60 sm:pb-48 text-center">
             <div className="max-w-3xl mx-auto space-y-7">
               {/* Eyebrow */}
@@ -648,47 +652,49 @@ export const AdminHomePreview: React.FC<AdminHomePreviewProps> = ({
       </section>
 
       {/* ============ ANNOUNCEMENTS ============ */}
-      <section className="bg-slate-50">
-        <div className="py-20 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto">
-        <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 mb-10">
-          <div className="space-y-3">
-            <span className="inline-flex items-center gap-2 text-[11px] font-bold uppercase tracking-[0.35em] text-indigo-600">
-              <Megaphone className="w-4 h-4" />
-              Announcements
-            </span>
-            <h2 className="text-3xl sm:text-4xl font-serif text-[#0f172a] tracking-tight">
-              What's new at GFC
-            </h2>
-          </div>
-          <button
-            onClick={openNewAnnouncement}
-            className="inline-flex items-center gap-1.5 text-xs font-bold text-indigo-600 hover:text-indigo-700 transition-colors bg-white rounded-full px-4 py-2 border border-indigo-200 shadow-sm"
-          >
-            <Plus className="w-3.5 h-3.5" />
-            Add Announcement
-          </button>
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
-          {visibleAnnouncements.map(a => (
-            <Editable
-              key={a.id}
-              onClick={() => openAnnouncement(a)}
-              chip="Edit"
-              className="bg-white rounded-2xl border border-slate-200 p-7 space-y-3 transition-colors duration-300 hover:border-indigo-300"
+      {visibleAnnouncements.length > 0 && (
+        <section className="bg-slate-50">
+          <div className="py-20 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto">
+          <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 mb-10">
+            <div className="space-y-3">
+              <span className="inline-flex items-center gap-2 text-[11px] font-bold uppercase tracking-[0.35em] text-indigo-600">
+                <Megaphone className="w-4 h-4" />
+                Announcements
+              </span>
+              <h2 className="text-3xl sm:text-4xl font-serif text-[#0f172a] tracking-tight">
+                What's new at GFC
+              </h2>
+            </div>
+            <button
+              onClick={openNewAnnouncement}
+              className="inline-flex items-center gap-1.5 text-xs font-bold text-indigo-600 hover:text-indigo-700 transition-colors bg-white rounded-full px-4 py-2 border border-indigo-200 shadow-sm"
             >
-              <div className="flex items-center gap-2 text-[11px] font-bold uppercase tracking-widest text-indigo-600">
-                {a.category || 'Announcement'}
-                {a.isPinned && <span className="text-indigo-600">· Pinned</span>}
-              </div>
-              <h3 className="font-serif text-lg text-[#0f172a]">{a.title}</h3>
-              <p className="text-sm text-slate-500 leading-relaxed">{a.details}</p>
-              {a.date && <p className="text-xs text-slate-400 pt-1">{a.date}</p>}
-            </Editable>
-          ))}
-        </div>
-        </div>
-      </section>
+              <Plus className="w-3.5 h-3.5" />
+              Add Announcement
+            </button>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+            {visibleAnnouncements.map(a => (
+              <Editable
+                key={a.id}
+                onClick={() => openAnnouncement(a)}
+                chip="Edit"
+                className="bg-white rounded-2xl border border-slate-200 p-7 space-y-3 transition-colors duration-300 hover:border-indigo-300"
+              >
+                <div className="flex items-center gap-2 text-[11px] font-bold uppercase tracking-widest text-indigo-600">
+                  {a.category || 'Announcement'}
+                  {a.isPinned && <span className="text-indigo-600">· Pinned</span>}
+                </div>
+                <h3 className="font-serif text-lg text-[#0f172a]">{a.title}</h3>
+                <p className="text-sm text-slate-500 leading-relaxed">{a.details}</p>
+                {a.date && <p className="text-xs text-slate-400 pt-1">{a.date}</p>}
+              </Editable>
+            ))}
+          </div>
+          </div>
+        </section>
+      )}
 
       {/* ============ PRAYER CTA BAND ============ */}
       <section className="px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto pb-20">

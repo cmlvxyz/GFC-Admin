@@ -37,7 +37,7 @@ export const Navbar: React.FC<NavbarProps> = ({
 }) => {
   const [open, setOpen] = useState(false);
 
-  const spanBase = 'font-serif tracking-tight text-white text-lg sm:text-3xl lg:text-2xl leading-tight whitespace-nowrap';
+  const spanBase = 'font-serif tracking-tight text-white text-xl md:text-6xl lg:text-4xl leading-tight whitespace-nowrap';
 
   const go = (id: string) => {
     onNavigate(id);
@@ -46,7 +46,7 @@ export const Navbar: React.FC<NavbarProps> = ({
 
   const activeNav = navItems.find(n => n.pages.includes(active));
 
-  const linkBase = 'relative text-sm font-medium tracking-wide py-1 transition-colors duration-300';
+  const linkBase = 'relative text-lg font-medium tracking-wide py-1 transition-colors duration-300';
   const linkColor = (isActive: boolean) => isActive ? 'text-indigo-400' : 'text-white/80 hover:text-white';
   const underline = (isActive: boolean) =>
     `absolute -bottom-0.5 left-0 h-px bg-current transition-all duration-300 ease-out ${
@@ -61,9 +61,9 @@ export const Navbar: React.FC<NavbarProps> = ({
         {/* Brand & Logo - gaya sa website */}
         <button
           onClick={() => go('dashboard')}
-          className="flex items-center gap-3 group shrink-0"
+          className="flex items-center gap-3 sm:gap-5 group shrink-0"
         >
-          <div className="w-12 h-12 sm:w-16 sm:h-16 rounded-full overflow-hidden ring-1 ring-white/25 shadow-md bg-white/90 flex items-center justify-center group-hover:scale-105 transition-transform duration-300">
+          <div className="w-12 h-12 sm:w-20 sm:h-20 lg:w-25 lg:h-25 rounded-full overflow-hidden ring-1 ring-white/25 shadow-md bg-white/90 flex items-center justify-center group-hover:scale-105 transition-transform duration-300">
             <img
               src="/image-circle.png"
               alt="Gospel Fellowship Church Logo"
@@ -98,7 +98,7 @@ export const Navbar: React.FC<NavbarProps> = ({
           {/* Give - bahagi ng navbar */}
           <button
             onClick={() => go('giveInfo')}
-            className={`group relative flex items-center gap-1.5 text-sm font-bold py-1 transition-colors duration-300 ${
+            className={`group relative flex items-center gap-1.5 text-lg font-bold py-1 transition-colors duration-300 ${
               giveActive ? 'text-white' : 'text-indigo-400 hover:text-white'
             }`}
           >
@@ -180,7 +180,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                   <button
                     key={link.id}
                     onClick={() => go(link.pages[0])}
-                    className={`flex items-center justify-between rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
+                    className={`flex items-center justify-between rounded-lg px-3 py-2 text-lg font-medium transition-colors ${
                       isActive ? 'text-indigo-400 bg-white/10 font-semibold' : 'text-white/80 hover:bg-white/10'
                     }`}
                   >
@@ -191,7 +191,7 @@ export const Navbar: React.FC<NavbarProps> = ({
               })}
               <button
                 onClick={() => go('giveInfo')}
-                className="flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-bold text-indigo-400 transition-colors hover:bg-white/10"
+                className="flex items-center gap-2 rounded-lg px-3 py-2 text-lg font-bold text-indigo-400 transition-colors hover:bg-white/10"
               >
                 <Heart className="w-3.5 h-3.5" />
                 Give
