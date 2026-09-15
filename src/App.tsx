@@ -1,8 +1,9 @@
 import React, { useEffect, useMemo, useRef, useState, useCallback } from 'react';
-import { ArrowLeft, LayoutDashboard, Images, QrCode, Users, UserCheck, Info, Music, Sparkles, Trash2, Settings, Bell } from 'lucide-react';
+import { ArrowLeft, LayoutDashboard, Images, QrCode, Users, UserCheck, Info, Music, Sparkles, Trash2, Settings, Bell, Home, CalendarDays, BookOpen, MapPin, Gift } from 'lucide-react';
 import type { AboutImage, AboutInfo, Activity, Announcement, Attendee, AllPhotoAlbum, ChurchEvent, Collection, GiveInfo, Member, Ministry, Pastor, PrayerRequest, RecordMap, Sermon, SiteSetting, Song, Testimonial, Verse } from './types';
 import { API_URL, clearActivities, createRecord, deleteRecord as apiDeleteRecord, getActivities, getActivityStream, getContent, listCollection, resetRemoteData, updateRecord as apiUpdateRecord } from './api';
 import { Navbar, NavLinkItem, NavMenuItem } from './components/Navbar';
+import { Sidebar, MenuGroup } from './components/Sidebar';
 import { ToastHost, ToastItem, ToastType } from './components/ToastHost';
 import { ConfirmDialog, ConfirmState } from './components/ConfirmDialog';
 import { ManagePage } from './components/ManagePage';
@@ -69,6 +70,7 @@ export default function App() {
   const [toasts, setToasts] = useState<ToastItem[]>([]);
   const toastId = useRef(0);
   const [confirm, setConfirm] = useState<ConfirmState | null>(null);
+  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
 
   const [data, setData] = useState<RecordMap>({
     events: [],
@@ -93,14 +95,6 @@ export default function App() {
     const id = ++toastId.current;
     setToasts(prev => [...prev, { id, message, type }]);
     setTimeout(() => setToasts(prev => prev.filter(t => t.id !== id)), 4500);
-  }, []);
-
-  // ============ CLOCK ============
-  useEffect(() => {
-    const update = () => setCurrentTime(new Date().toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' }));
-    update();
-    const interval = setInterval(update, 1000);
-    return () => clearInterval(interval);
   }, []);
 
   // ============ LOAD DATA ============
@@ -608,6 +602,21 @@ export default function App() {
     { id: 'notifications', label: 'Notifications', icon: <Bell className="w-4 h-4" />, badge: activities.length }
   ], [data, activities.length]);
 
+  const sidebarGroups: MenuGroup[] = [
+    {
+      label: 'Website Pages',
+      items: [
+        { id: 'home', label: 'Home', icon: <Home className="w-4 h-4" />, badge: null },
+        { id: 'about', label: 'About', icon: <Info className="w-4 h-4" />, badge: null },
+        { id: 'events', label: 'Events', icon: <CalendarDays className="w-4 h-4" />, badge: null },
+        { id: 'verses', label: 'Verse', icon: <BookOpen className="w-4 h-4" />, badge: null },
+        { id: 'prayers', label: 'Prayer', icon: <Heart className="w-4 h-4" />, badge: null },
+        { id: 'contact', label: 'Contact', icon: <MapPin className="w-4 h-4" />, badge: null },
+        { id: 'giveInfo', label: 'Give', icon: <Gift className="w-4 h-4" />, badge: null }
+      ]
+    }
+  ];
+
   const aboutHub = useMemo(() => [
     { key: 'aboutImages', title: 'About Images', desc: 'Carousel photos ng About page (umiikot kada 5s)', icon: <Images className="w-5 h-5" />, badge: data.aboutImages.length, tile: 'bg-sky-100 text-sky-600 group-hover:bg-sky-600 group-hover:text-white' },
     { key: 'ministries', title: 'Ministries', desc: 'Mga ministry at ang kanilang details', icon: <Sparkles className="w-5 h-5" />, badge: data.ministries.length, tile: 'bg-violet-100 text-violet-600 group-hover:bg-violet-600 group-hover:text-white' },
@@ -656,45 +665,54 @@ export default function App() {
 
   return (
     <div className={isDark ? 'dark' : ''}>
-      <div className="min-h-screen bg-gradient-to-br from-indigo-50/30 via-white to-purple-50/30 dark:bg-[#0a0a14] dark:from-[#0a0a14] dark:via-[#0f0f1a] dark:to-[#0a0a14] flex h-screen overflow-hidden flex-col relative">
+      <div className="min-h-screen bg-gradient-to-br from-indigo-50/30 via-white to-purple-50/30 dark:bg-[#0a0a14] dark:from-[#0a0a14] dark:via-[#0f0f1a] dark:to-[#0a0a14] flex h-screen overflow-hidden">
         <ToastHost toasts={toasts} dismiss={id => setToasts(prev => prev.filter(t => t.id !== id))} />
         <ConfirmDialog confirm={confirm} onClose={() => setConfirm(null)} />
 
-        <main className="relative flex-1 overflow-y-auto">
+        <Sidebar
+          groups={sidebarGroups}
+          active={page}
+          onNavigate={setPage}
+          isDark={isDark}
+          onToggleTheme={() => setIsDark(!isDark)}
+          mobileOpen={mobileSidebarOpen}
+          onCloseMobile={() => setMobileSidebarOpen(false)}
+        />
+
+        <div className="flex-1 flex flex-col overflow-hidden">
           <Navbar
             active={page}
             onNavigate={setPage}
-            navItems={NAV_ITEMS}
             menuItems={menuItems}
             isDark={isDark}
             onToggleTheme={() => setIsDark(!isDark)}
-            now={currentTime}
-            activityCount={activities.length}
-            overlay={isBarePage}
+            onOpenSidebar={() => setMobileSidebarOpen(true)}
           />
 
-          <div className={isBarePage ? 'bg-white' : 'p-6 md:p-8'}>
-          {!isBarePage && (
-          <div className="flex flex-wrap items-center justify-between gap-4 pb-6 border-b border-gray-200 dark:border-white/5 mb-6">
-            <div className="flex items-center gap-4">
-              <button
-                onClick={() => setPage('dashboard')}
-                className="p-2 rounded-xl bg-gray-100 dark:bg-white/5 hover:bg-gray-200 dark:hover:bg-white/10 text-gray-700 dark:text-[#A1A1A1] transition-all flex items-center gap-2"
-                title="Back to Dashboard"
-              >
-                <ArrowLeft className="w-4 h-4" />
-              </button>
-              <h1 className="text-xl md:text-2xl font-heading font-bold tracking-tight text-[#0f172a] dark:text-white">
-                {pageTitles[page]?.icon} {pageTitles[page]?.title || page}
-              </h1>
+          <main className="flex-1 overflow-y-auto">
+            <div className={isBarePage ? 'bg-white' : 'p-6 md:p-8'}>
+            {!isBarePage && (
+            <div className="flex flex-wrap items-center justify-between gap-4 pb-6 border-b border-gray-200 dark:border-white/5 mb-6">
+              <div className="flex items-center gap-4">
+                <button
+                  onClick={() => setPage('dashboard')}
+                  className="p-2 rounded-xl bg-gray-100 dark:bg-white/5 hover:bg-gray-200 dark:hover:bg-white/10 text-gray-700 dark:text-[#A1A1A1] transition-all flex items-center gap-2"
+                  title="Back to Dashboard"
+                >
+                  <ArrowLeft className="w-4 h-4" />
+                </button>
+                <h1 className="text-xl md:text-2xl font-heading font-bold tracking-tight text-[#0f172a] dark:text-white">
+                  {pageTitles[page]?.icon} {pageTitles[page]?.title || page}
+                </h1>
+              </div>
             </div>
-          </div>
-          )}
+            )}
 
-          {/* REMOVED: loading condition - always render page */}
-          {renderPage()}
-          </div>
-        </main>
+            {/* REMOVED: loading condition - always render page */}
+            {renderPage()}
+            </div>
+          </main>
+        </div>
       </div>
     </div>
   );

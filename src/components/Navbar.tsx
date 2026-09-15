@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Menu, X, Heart, Sun, Moon, Settings } from 'lucide-react';
+import { Menu, X, Heart, Sun, Moon, Settings, PanelLeft } from 'lucide-react';
 
 export interface NavLinkItem {
   id: string;
@@ -17,23 +17,19 @@ export interface NavMenuItem {
 interface NavbarProps {
   active: string;
   onNavigate: (id: string) => void;
-  navItems: NavLinkItem[];
   menuItems: NavMenuItem[];
   isDark: boolean;
   onToggleTheme: () => void;
-  now?: string;
-  activityCount?: number;
-  overlay?: boolean;
+  onOpenSidebar?: () => void;
 }
 
 export const Navbar: React.FC<NavbarProps> = ({
   active,
   onNavigate,
-  navItems,
   menuItems,
   isDark,
   onToggleTheme,
-  overlay
+  onOpenSidebar
 }) => {
   const [open, setOpen] = useState(false);
 
@@ -44,20 +40,9 @@ export const Navbar: React.FC<NavbarProps> = ({
     setOpen(false);
   };
 
-  const activeNav = navItems.find(n => n.pages.includes(active));
-
-  const linkBase = 'relative text-lg font-medium tracking-wide py-1 transition-colors duration-300';
-  const linkColor = (isActive: boolean) => isActive ? 'text-indigo-400' : 'text-white/80 hover:text-white';
-  const underline = (isActive: boolean) =>
-    `absolute -bottom-0.5 left-0 h-px bg-current transition-all duration-300 ease-out ${
-      isActive ? 'w-0' : 'w-0 group-hover:w-full'
-    }`;
-
-  const giveActive = active === 'giveInfo';
-
   return (
-    <header className={`${overlay ? 'absolute inset-x-0 top-0' : 'relative bg-[#0f172a]'} z-40 text-slate-300 shrink-0`}>
-      <div className={`max-w-7xl mx-auto flex items-center justify-between gap-4 px-4 sm:px-6 lg:px-8 py-3.5 ${overlay ? 'relative top-10' : ''}`}>
+    <header className="relative bg-[#0f172a] z-40 text-slate-300 shrink-0">
+      <div className="max-w-7xl mx-auto flex items-center justify-between gap-4 px-4 sm:px-6 lg:px-8 py-3.5">
         {/* Brand & Logo - gaya sa website */}
         <button
           onClick={() => go('dashboard')}
@@ -79,63 +64,32 @@ export const Navbar: React.FC<NavbarProps> = ({
           </span>
         </button>
 
-        {/* Desktop Navigation - kanan */}
-        <nav className="hidden lg:flex items-center gap-7">
-          {navItems.filter(link => link.id !== 'give').map(link => {
-            const isActive = activeNav?.id === link.id;
-            return (
-              <button
-                key={link.id}
-                onClick={() => go(link.pages[0])}
-                className={`group ${linkBase} ${linkColor(isActive)}`}
-              >
-                {link.label}
-                <span className={underline(isActive)} />
-              </button>
-            );
-          })}
-
-          {/* Give - bahagi ng navbar */}
+        {/* Right controls: sidebar toggle (mobile) + admin menu hamburger */}
+        <div className="flex items-center gap-2">
           <button
-            onClick={() => go('giveInfo')}
-            className={`group relative flex items-center gap-1.5 text-lg font-bold py-1 transition-colors duration-300 ${
-              giveActive ? 'text-white' : 'text-indigo-400 hover:text-white'
-            }`}
+            onClick={onOpenSidebar}
+            aria-label="Open website pages"
+            className="md:hidden inline-flex w-11 h-11 items-center justify-center rounded-full bg-white/10 text-white border border-white/20 transition-all duration-300 hover:bg-white/20"
           >
-            <Heart className="w-4 h-4" />
-            Give
-            <span className={underline(giveActive)} />
+            <PanelLeft className="w-5 h-5" />
           </button>
-
-          {/* Hamburger - nasa tabi ng Give */}
           <button
             onClick={() => setOpen(o => !o)}
-            aria-label="Toggle menu"
+            aria-label="Toggle admin menu"
             aria-expanded={open}
             className="inline-flex w-11 h-11 items-center justify-center rounded-full bg-white/10 text-white border border-white/20 transition-all duration-300 hover:bg-white/20"
           >
             {open ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
           </button>
-        </nav>
+        </div>
 
-        {/* Mobile: hamburger rin lantad sa mobile */}
-        <button
-          onClick={() => setOpen(o => !o)}
-          aria-label="Toggle menu"
-          aria-expanded={open}
-          className="lg:hidden inline-flex w-11 h-11 items-center justify-center rounded-full bg-white/10 text-white border border-white/20 transition-all duration-300"
-        >
-          {open ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
-        </button>
-
-        {/* Dropdown panel */}
+        {/* Dropdown panel - admin pages */}
         <div
           className={`absolute top-full right-4 sm:right-6 z-50 origin-top-right transition-all duration-300 ${
             open ? 'opacity-100 translate-y-0 pointer-events-auto' : 'opacity-0 -translate-y-2 pointer-events-none'
           }`}
         >
           <div className="-mt-2 w-64 rounded-2xl bg-[#0f172a]/95 backdrop-blur-xl border border-white/25 shadow-2xl shadow-black/40 p-1.5">
-            {/* Admin pages */}
             <nav className="flex flex-col">
               {menuItems.map(item => {
                 const isActive = active === item.id;
@@ -171,46 +125,28 @@ export const Navbar: React.FC<NavbarProps> = ({
               </button>
             </nav>
 
-            {/* Site nav links - lumalabas lang sa mobile */}
-            <nav className="lg:hidden flex flex-col mt-1">
-              <div className="my-1 h-px bg-white/10" />
-              {navItems.filter(link => link.id !== 'give').map(link => {
-                const isActive = activeNav?.id === link.id;
-                return (
-                  <button
-                    key={link.id}
-                    onClick={() => go(link.pages[0])}
-                    className={`flex items-center justify-between rounded-lg px-3 py-2 text-lg font-medium transition-colors ${
-                      isActive ? 'text-indigo-400 bg-white/10 font-semibold' : 'text-white/80 hover:bg-white/10'
-                    }`}
-                  >
-                    {link.label}
-                    {isActive && <span className="w-1.5 h-1.5 rounded-full bg-indigo-400" />}
-                  </button>
-                );
-              })}
-              <button
-                onClick={() => go('giveInfo')}
-                className="flex items-center gap-2 rounded-lg px-3 py-2 text-lg font-bold text-indigo-400 transition-colors hover:bg-white/10"
-              >
-                <Heart className="w-3.5 h-3.5" />
-                Give
-              </button>
-            </nav>
-
-            {/* Footer: LIVE + theme + API */}
+            {/* Footer: LIVE + theme + Give shortcut */}
             <div className="mt-1 pt-2 border-t border-white/10 flex items-center justify-between px-2">
               <span className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-widest text-emerald-400">
                 <span className="w-1.5 h-1.5 bg-emerald-400 rounded-full animate-pulse pulse-dot" />
                 Live
               </span>
-              <button
-                onClick={onToggleTheme}
-                className="flex items-center gap-2 px-2 py-1.5 rounded-lg text-xs font-medium text-white/70 hover:bg-white/10 transition-all"
-              >
-                {isDark ? <Sun className="w-4 h-4 text-amber-400" /> : <Moon className="w-4 h-4 text-indigo-400" />}
-                {isDark ? 'Light Mode' : 'Dark Mode'}
-              </button>
+              <div className="flex items-center gap-1">
+                <button
+                  onClick={() => go('giveInfo')}
+                  className="flex items-center gap-1.5 px-2 py-1.5 rounded-lg text-xs font-bold text-indigo-400 hover:bg-white/10 transition-all"
+                >
+                  <Heart className="w-3.5 h-3.5" />
+                  Give
+                </button>
+                <button
+                  onClick={onToggleTheme}
+                  className="flex items-center gap-2 px-2 py-1.5 rounded-lg text-xs font-medium text-white/70 hover:bg-white/10 transition-all"
+                >
+                  {isDark ? <Sun className="w-4 h-4 text-amber-400" /> : <Moon className="w-4 h-4 text-indigo-400" />}
+                  {isDark ? 'Light Mode' : 'Dark Mode'}
+                </button>
+              </div>
             </div>
           </div>
         </div>
